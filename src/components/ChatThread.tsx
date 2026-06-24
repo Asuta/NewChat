@@ -2,14 +2,16 @@ import { Bot, CircleAlert } from 'lucide-react';
 import { Fragment, useEffect, useRef } from 'react';
 import type { Conversation } from '../types';
 import { ContextSummaryBar } from './ContextSummaryBar';
+import { FixedContextStatus } from './FixedContextStatus';
 import { MessageBubble } from './MessageBubble';
 
 interface ChatThreadProps {
   conversation: Conversation;
   error: string | null;
+  onOpenSettings: () => void;
 }
 
-export function ChatThread({ conversation, error }: ChatThreadProps) {
+export function ChatThread({ conversation, error, onOpenSettings }: ChatThreadProps) {
   const { messages } = conversation;
   const threadRef = useRef<HTMLDivElement>(null);
   const summary = conversation.contextSummary;
@@ -19,7 +21,7 @@ export function ChatThread({ conversation, error }: ChatThreadProps) {
     const thread = threadRef.current;
     if (!thread) return;
     thread.scrollTop = thread.scrollHeight;
-  }, [error, lastMessage?.content, lastMessage?.status, messages.length, summary?.compressedAt]);
+  }, [conversation.fixedContext?.updatedAt, error, lastMessage?.content, lastMessage?.status, messages.length, summary?.compressedAt]);
 
   const summaryAnchorFound = summary?.lastMessageId
     ? messages.some((message) => message.id === summary.lastMessageId)
@@ -28,6 +30,8 @@ export function ChatThread({ conversation, error }: ChatThreadProps) {
   return (
     <div className="thread-scroll" ref={threadRef}>
       <div className="thread-inner">
+        <FixedContextStatus conversation={conversation} onOpenSettings={onOpenSettings} />
+
         {messages.length === 0 ? (
           <section className="empty-state">
             <div className="assistant-avatar large">

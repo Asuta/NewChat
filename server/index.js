@@ -8,6 +8,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 8787);
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const AVAILABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+const FIXED_CONTEXT_PREFIX = '以下是本会话的固定上下文。';
 const COMPACT_SYSTEM_PROMPT =
   '你是一个对话上下文压缩助手。请用中文总结给定聊天记录，保留用户目标、关键事实、已达成结论、未解决问题、重要偏好和后续需要延续的上下文。不要添加原对话没有的信息。输出一段清晰、紧凑、可直接作为后续大模型上下文的摘要。';
 
@@ -201,7 +202,14 @@ function sanitizeMessages(input) {
 function withSystemPrompt(messages) {
   const prompt = process.env.SYSTEM_PROMPT?.trim();
   if (!prompt) return messages;
+  if (isFixedContextMessage(messages[0])) {
+    return [messages[0], { role: 'system', content: prompt }, ...messages.slice(1)];
+  }
   return [{ role: 'system', content: prompt }, ...messages];
+}
+
+function isFixedContextMessage(message) {
+  return message?.role === 'system' && message.content.startsWith(FIXED_CONTEXT_PREFIX);
 }
 
 function deepSeekThinkingConfig(requestThinking) {

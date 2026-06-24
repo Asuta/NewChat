@@ -1,6 +1,7 @@
 import { Archive, Brain, ChevronDown, Loader2, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import type { ContextMode, Conversation, HealthState, ModelId, ThinkingMode } from '../types';
+import { ConversationSettingsPanel } from './ConversationSettingsPanel';
 
 const MODEL_OPTIONS: Array<{ id: ModelId; label: string; description: string }> = [
   { id: 'deepseek-v4-flash', label: 'Flash', description: '更快，适合日常聊天' },
@@ -22,10 +23,15 @@ interface TopBarProps {
   isStreaming: boolean;
   isCompressing: boolean;
   canCompress: boolean;
+  isSettingsOpen: boolean;
   onModelChange: (model: ModelId) => void;
   onThinkingModeChange: (mode: ThinkingMode) => void;
   onContextModeChange: (mode: ContextMode) => void;
   onCompress: () => void;
+  onSettingsOpenChange: (open: boolean) => void;
+  onSaveFixedContext: (content: string) => void;
+  onClearFixedContext: () => void;
+  onClearChat: () => void;
 }
 
 export function TopBar({
@@ -37,10 +43,15 @@ export function TopBar({
   isStreaming,
   isCompressing,
   canCompress,
+  isSettingsOpen,
   onModelChange,
   onThinkingModeChange,
   onContextModeChange,
   onCompress,
+  onSettingsOpenChange,
+  onSaveFixedContext,
+  onClearFixedContext,
+  onClearChat,
 }: TopBarProps) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -151,10 +162,31 @@ export function TopBar({
             </div>
           ) : null}
         </div>
-        <button className="icon-button" type="button" aria-label="更多">
+        <button
+          className={`icon-button ${isSettingsOpen ? 'active' : ''}`}
+          type="button"
+          aria-label="更多"
+          aria-expanded={isSettingsOpen}
+          aria-haspopup="dialog"
+          onClick={() => {
+            setModelMenuOpen(false);
+            setContextMenuOpen(false);
+            onSettingsOpenChange(!isSettingsOpen);
+          }}
+        >
           <MoreHorizontal size={20} />
         </button>
       </div>
+      {isSettingsOpen ? (
+        <ConversationSettingsPanel
+          conversation={conversation}
+          disabled={controlsDisabled}
+          onClose={() => onSettingsOpenChange(false)}
+          onSaveFixedContext={onSaveFixedContext}
+          onClearFixedContext={onClearFixedContext}
+          onClearChat={onClearChat}
+        />
+      ) : null}
     </header>
   );
 }

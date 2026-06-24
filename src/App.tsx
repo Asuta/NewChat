@@ -27,6 +27,7 @@ export default function App() {
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(getInitialThinkingMode);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,6 +62,10 @@ export default function App() {
       })
       .catch(() => setHealth(null));
   }, []);
+
+  useEffect(() => {
+    setIsSettingsOpen(false);
+  }, [activeId]);
 
   function createNewChat() {
     if (isCompressing) return;
@@ -226,6 +231,42 @@ export default function App() {
     }));
   }
 
+  function saveFixedContext(content: string) {
+    if (!activeConversation || isStreaming || isCompressing) return;
+    const trimmed = content.trim();
+    updateActiveConversation((conversation) => ({
+      ...conversation,
+      fixedContext: trimmed
+        ? {
+            content: trimmed,
+            updatedAt: Date.now(),
+          }
+        : undefined,
+      updatedAt: Date.now(),
+    }));
+  }
+
+  function clearFixedContext() {
+    if (!activeConversation || isStreaming || isCompressing) return;
+    updateActiveConversation((conversation) => ({
+      ...conversation,
+      fixedContext: undefined,
+      updatedAt: Date.now(),
+    }));
+  }
+
+  function clearCurrentChat() {
+    if (!activeConversation || isStreaming || isCompressing) return;
+    updateActiveConversation((conversation) => ({
+      ...conversation,
+      title: '新对话',
+      updatedAt: Date.now(),
+      messages: [],
+      contextSummary: undefined,
+    }));
+    setError(null);
+  }
+
   if (!activeConversation) {
     return null;
   }
@@ -247,6 +288,7 @@ export default function App() {
           isStreaming={isStreaming}
           isCompressing={isCompressing}
           canCompress={getCompactableMessages(activeConversation).length > 0}
+          isSettingsOpen={isSettingsOpen}
           modelId={modelId}
           onModelChange={setModelId}
           thinkingMode={thinkingMode}
@@ -254,8 +296,12 @@ export default function App() {
           contextMode={getConversationContextMode(activeConversation)}
           onContextModeChange={updateContextMode}
           onCompress={compactConversation}
+          onSettingsOpenChange={setIsSettingsOpen}
+          onSaveFixedContext={saveFixedContext}
+          onClearFixedContext={clearFixedContext}
+          onClearChat={clearCurrentChat}
         />
-        <ChatThread conversation={activeConversation} error={error} />
+        <ChatThread conversation={activeConversation} error={error} onOpenSettings={() => setIsSettingsOpen(true)} />
         <Composer isStreaming={isStreaming} isDisabled={isCompressing} onSend={sendMessage} onStop={stopStreaming} />
       </section>
     </main>

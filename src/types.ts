@@ -17,6 +17,7 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
+  fixedContext?: FixedContext;
   contextSummary?: ContextSummary;
   contextMode?: ContextMode;
 }
@@ -36,4 +37,9 @@ export interface ContextSummary {
   compressedAt: number;
   messageCount: number;
   lastMessageId: string | null;
+}
+
+export interface FixedContext {
+  content: string;
+  updatedAt: number;
 }

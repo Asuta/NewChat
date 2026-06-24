@@ -2,6 +2,7 @@ import type { ChatMessage, ContextMode, Conversation, Role } from '../types';
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
+export const FIXED_CONTEXT_PREFIX = '以下是本会话的固定上下文。它具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
 const RECENT_CONTEXT_MESSAGE_LIMIT = 6;
 
 export interface ModelMessage {
@@ -99,7 +100,17 @@ export function buildModelMessages(conversation: Conversation, messages: ChatMes
   );
   const contextMode = getConversationContextMode(conversation);
   const summary = conversation.contextSummary;
+  const fixedContextMessage = getFixedContextMessage(conversation);
+  const dynamicMessages = buildDynamicModelMessages(cleanMessages, summary, contextMode);
 
+  return fixedContextMessage ? [fixedContextMessage, ...dynamicMessages] : dynamicMessages;
+}
+
+function buildDynamicModelMessages(
+  cleanMessages: ChatMessage[],
+  summary: Conversation['contextSummary'],
+  contextMode: ContextMode,
+): ModelMessage[] {
   if (!summary || contextMode === 'full-history') {
     return toModelMessages(cleanMessages);
   }
@@ -120,6 +131,16 @@ export function buildModelMessages(conversation: Conversation, messages: ChatMes
 
   const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
   return [summaryMessage, ...toModelMessages(recentCoveredMessages), ...toModelMessages(messagesAfterSummary)];
+}
+
+function getFixedContextMessage(conversation: Conversation): ModelMessage | null {
+  const content = conversation.fixedContext?.content.trim();
+  if (!content) return null;
+
+  return {
+    role: 'system',
+    content: `${FIXED_CONTEXT_PREFIX}\n\n${content}`,
+  };
 }
 
 export function getCompactableMessages(conversation: Conversation): ChatMessage[] {
