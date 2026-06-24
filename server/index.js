@@ -1,8 +1,9 @@
 import express from 'express';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-loadDotenv();
+const loadedConfigFiles = loadRuntimeConfig();
 
 const app = express();
 const PORT = Number(process.env.PORT || 8787);
@@ -23,6 +24,7 @@ app.get('/api/health', (_req, res) => {
     baseURL: normalizeBaseURL(process.env.LLM_BASE_URL || DEFAULT_BASE_URL),
     thinking: process.env.LLM_THINKING || null,
     availableModels: AVAILABLE_MODELS,
+    configFiles: loadedConfigFiles,
   });
 });
 
@@ -161,17 +163,50 @@ app.listen(PORT, '127.0.0.1', () => {
   console.log(`NewChat server listening on http://127.0.0.1:${PORT}`);
 });
 
-function loadDotenv() {
-  const envPath = resolve(process.cwd(), '.env');
-  if (!existsSync(envPath)) return;
+function loadRuntimeConfig() {
+  const originalKeys = new Set(Object.keys(process.env));
+  const candidates = [
+    process.env.NEWCHAT_CONFIG_FILE,
+    process.env.NEWCHAT_CONFIG_DIR ? resolve(process.env.NEWCHAT_CONFIG_DIR, 'config.env') : null,
+    getGitSharedConfigPath(),
+    resolve(process.cwd(), '.env'),
+  ].filter(Boolean);
+  const loaded = [];
+  const seen = new Set();
 
+  for (const candidate of candidates) {
+    const envPath = resolve(candidate);
+    if (seen.has(envPath) || !existsSync(envPath)) continue;
+    seen.add(envPath);
+    loadDotenvFile(envPath, originalKeys);
+    loaded.push(envPath);
+  }
+
+  return loaded;
+}
+
+function getGitSharedConfigPath() {
+  try {
+    const output = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!output) return null;
+    return resolve(process.cwd(), output, 'newchat', 'config.env');
+  } catch {
+    return null;
+  }
+}
+
+function loadDotenvFile(envPath, originalKeys) {
   for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
     const index = trimmed.indexOf('=');
     const key = trimmed.slice(0, index).trim();
     const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, '');
-    if (key && process.env[key] === undefined) {
+    if (key && !originalKeys.has(key)) {
       process.env[key] = value;
     }
   }
