@@ -1,12 +1,16 @@
 import express from 'express';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const loadedConfigFiles = loadRuntimeConfig();
 
 const app = express();
-const PORT = Number(process.env.PORT || 8787);
+const HOST = '127.0.0.1';
+const DEFAULT_PORT = 8787;
+const PORT = parsePort(process.env.PORT, DEFAULT_PORT);
+const MAX_PORT_ATTEMPTS = 20;
+const DEV_PORT_FILE = resolve(process.cwd(), '.newchat', 'server-port');
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const AVAILABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
 const FIXED_CONTEXT_PREFIX = '以下是本会话的固定上下文。';
@@ -159,9 +163,38 @@ app.post('/api/chat/compact', async (req, res) => {
   }
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`NewChat server listening on http://127.0.0.1:${PORT}`);
-});
+listenWithPortFallback(PORT);
+
+function listenWithPortFallback(startPort) {
+  const tryListen = (port, attemptsLeft) => {
+    const server = app.listen(port, HOST);
+
+    server.once('listening', () => {
+      writeDevPortFile(port);
+      const note = port === startPort ? '' : ` (requested ${startPort} was busy)`;
+      console.log(`NewChat server listening on http://${HOST}:${port}${note}`);
+    });
+
+    server.once('error', (error) => {
+      if (error?.code === 'EADDRINUSE' && attemptsLeft > 1) {
+        const nextPort = port + 1;
+        console.warn(`Port ${port} is in use, trying ${nextPort}...`);
+        tryListen(nextPort, attemptsLeft - 1);
+        return;
+      }
+
+      console.error(error);
+      process.exit(1);
+    });
+  };
+
+  tryListen(startPort, MAX_PORT_ATTEMPTS);
+}
+
+function writeDevPortFile(port) {
+  mkdirSync(resolve(process.cwd(), '.newchat'), { recursive: true });
+  writeFileSync(DEV_PORT_FILE, String(port), 'utf8');
+}
 
 function loadRuntimeConfig() {
   const originalKeys = new Set(Object.keys(process.env));
@@ -183,6 +216,14 @@ function loadRuntimeConfig() {
   }
 
   return loaded;
+}
+
+function parsePort(value, fallback) {
+  const port = Number(value || fallback);
+  if (Number.isInteger(port) && port > 0 && port < 65536) {
+    return port;
+  }
+  return fallback;
 }
 
 function getGitSharedConfigPath() {
