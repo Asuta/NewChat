@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "path": "core/combat.md",
+      "title": "基础战斗规则",
+      "category": "combat",
+      "tags": ["combat", "attack", "damage", "initiative", "advantage", "disadvantage"]
+    }
+  ]
+}

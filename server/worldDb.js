@@ -224,14 +224,29 @@ export function seedWorldIfEmpty() {
     upsertEntity('scene_market', 'scene', '旧市集');
     upsertEntity('character_lina', 'character', '莉娜');
     upsertEntity('item_rusty_key', 'item', '锈钥匙');
+    upsertEntity('item_longsword', 'item', '旧长剑');
     upsertEntity('lore_mist_port', 'lore', '雾港传闻');
 
     setAliases('character_lina', ['Lina', '酒馆老板娘']);
     setAliases('item_rusty_key', ['旧钥匙', 'Rusty Key']);
+    setAliases('item_longsword', ['长剑', 'Longsword']);
 
     upsertComponent('player', 'identity', {
       role: 'player',
       description: '玩家角色，刚抵达雾港。',
+      class: 'fighter',
+      level: 1,
+    });
+    upsertComponent('player', 'stats', getDefaultPlayerStats());
+    upsertComponent('player', 'status', {
+      state: 'healthy',
+      label: '健康',
+      description: '玩家状态良好，可以正常行动。',
+      canAct: true,
+    });
+    upsertComponent('player', 'inventory', {
+      items: ['item_longsword'],
+      equippedWeaponId: 'item_longsword',
     });
     upsertComponent('scene_tavern', 'scene', {
       description: '一间靠近码头的老酒馆，木梁潮湿，墙上挂着褪色的航海图。',
@@ -257,10 +272,44 @@ export function seedWorldIfEmpty() {
       description: '莉娜正在吧台后擦拭酒杯。',
       canAct: true,
     });
+    upsertComponent('character_lina', 'stats', {
+      level: 2,
+      strength: 10,
+      strengthMod: 0,
+      dexterity: 14,
+      dexterityMod: 2,
+      constitution: 11,
+      constitutionMod: 0,
+      intelligence: 12,
+      intelligenceMod: 1,
+      wisdom: 14,
+      wisdomMod: 2,
+      charisma: 15,
+      charismaMod: 2,
+      proficiencyBonus: 2,
+      armorClass: 12,
+      maxHitPoints: 9,
+      currentHitPoints: 9,
+      speed: 30,
+      initiativeBonus: 2,
+      passivePerception: 14,
+      insightBonus: 4,
+      persuasionBonus: 4,
+    });
     upsertComponent('item_rusty_key', 'identity', {
       role: 'key_item',
       description: '一把边缘有盐蚀痕迹的锈钥匙，据说能打开旧市集后巷的一扇铁门。',
       effect: { type: 'unlock', targetEntityId: 'scene_market' },
+    });
+    upsertComponent('item_longsword', 'identity', {
+      role: 'weapon',
+      description: '一把有些旧但保养良好的长剑，适合进行基础近战攻击判定。',
+      weaponCategory: 'martial melee weapon',
+      damageDice: '1d8',
+      versatileDamageDice: '1d10',
+      damageType: 'slashing',
+      attackAbility: 'strength',
+      proficient: true,
     });
     upsertComponent('lore_mist_port', 'identity', {
       role: 'rumor',
@@ -278,6 +327,10 @@ export function seedWorldIfEmpty() {
     upsertRelationship('character_lina', 'item_rusty_key', 'ownership', null, {
       source: 'seed',
       summary: '莉娜保管着锈钥匙。',
+    });
+    upsertRelationship('player', 'item_longsword', 'ownership', null, {
+      source: 'seed',
+      summary: '玩家随身携带一把旧长剑。',
     });
     upsertRelationship('scene_tavern', 'scene_market', 'exit_to', null, {
       source: 'seed',
@@ -297,6 +350,167 @@ export function seedWorldIfEmpty() {
     });
     addEvent('world.seeded', null, null, { summary: '初始化 NewChat 游戏世界。' });
   });
+}
+
+export function ensurePlayableCharacterStats() {
+  withTransaction(() => {
+    if (getEntity('player')) {
+      upsertEntity('item_longsword', 'item', '旧长剑');
+      setAliases('item_longsword', ['长剑', 'Longsword']);
+      mergeComponentDefaults('player', 'identity', {
+        role: 'player',
+        description: '玩家角色，刚抵达雾港。',
+        class: 'fighter',
+        level: 1,
+      });
+      applyStatsProfile('player', getDefaultPlayerStats(), 'dnd-basic-player-v1', ['maxHitPoints', 'currentHitPoints']);
+      mergeComponentDefaults('player', 'status', {
+        state: 'healthy',
+        label: '健康',
+        description: '玩家状态良好，可以正常行动。',
+        canAct: true,
+      });
+      mergeInventoryDefaults('player', {
+        items: ['item_longsword'],
+        equippedWeaponId: 'item_longsword',
+      });
+      mergeComponentDefaults('item_longsword', 'identity', {
+        role: 'weapon',
+        description: '一把有些旧但保养良好的长剑，适合进行基础近战攻击判定。',
+        weaponCategory: 'martial melee weapon',
+        damageDice: '1d8',
+        versatileDamageDice: '1d10',
+        damageType: 'slashing',
+        attackAbility: 'strength',
+        proficient: true,
+      });
+      upsertRelationship('player', 'item_longsword', 'ownership', null, {
+        source: 'baseline',
+        summary: '玩家随身携带一把旧长剑。',
+      });
+    }
+
+    if (getEntity('character_lina')) {
+      applyStatsProfile('character_lina', {
+        level: 2,
+        strength: 10,
+        strengthMod: 0,
+        dexterity: 14,
+        dexterityMod: 2,
+        constitution: 11,
+        constitutionMod: 0,
+        intelligence: 12,
+        intelligenceMod: 1,
+        wisdom: 14,
+        wisdomMod: 2,
+        charisma: 15,
+        charismaMod: 2,
+        proficiencyBonus: 2,
+        armorClass: 12,
+        maxHitPoints: 9,
+        currentHitPoints: 9,
+        speed: 30,
+        initiativeBonus: 2,
+        passivePerception: 14,
+        insightBonus: 4,
+        persuasionBonus: 4,
+      }, 'dnd-basic-npc-lina-v1', ['maxHitPoints', 'currentHitPoints']);
+    }
+  });
+}
+
+function getDefaultPlayerStats() {
+  return {
+    level: 1,
+    strength: 16,
+    strengthMod: 3,
+    dexterity: 14,
+    dexterityMod: 2,
+    constitution: 14,
+    constitutionMod: 2,
+    intelligence: 10,
+    intelligenceMod: 0,
+    wisdom: 12,
+    wisdomMod: 1,
+    charisma: 10,
+    charismaMod: 0,
+    proficiencyBonus: 2,
+    armorClass: 14,
+    ac: 14,
+    maxHitPoints: 12,
+    currentHitPoints: 12,
+    speed: 30,
+    initiativeBonus: 2,
+    passivePerception: 11,
+    longswordAttackBonus: 5,
+    longswordDamageBonus: 3,
+    longswordDamageDice: '1d8',
+    longswordVersatileDamageDice: '1d10',
+    longswordDamageType: 'slashing',
+  };
+}
+
+function applyStatsProfile(entityId, defaults, profileId, preserveKeys = []) {
+  const current = getComponent(entityId, 'stats') || {};
+  const shouldNormalize = current.rulesProfile !== profileId;
+  const next = shouldNormalize ? { ...current, ...defaults, rulesProfile: profileId } : { ...current };
+  let changed = shouldNormalize;
+
+  for (const key of preserveKeys) {
+    if (Object.prototype.hasOwnProperty.call(current, key)) {
+      next[key] = current[key];
+    }
+  }
+
+  if (!shouldNormalize) {
+    for (const [key, value] of Object.entries(defaults)) {
+      if (!Object.prototype.hasOwnProperty.call(next, key)) {
+        next[key] = value;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    upsertComponent(entityId, 'stats', next);
+  }
+}
+
+function mergeComponentDefaults(entityId, type, defaults) {
+  const current = getComponent(entityId, type) || {};
+  const next = { ...current };
+  let changed = false;
+
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!Object.prototype.hasOwnProperty.call(next, key)) {
+      next[key] = value;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    upsertComponent(entityId, type, next);
+  }
+}
+
+function mergeInventoryDefaults(entityId, defaults) {
+  const current = getComponent(entityId, 'inventory') || {};
+  const currentItems = Array.isArray(current.items) ? current.items : [];
+  const defaultItems = Array.isArray(defaults.items) ? defaults.items : [];
+  const items = [...new Set([...currentItems, ...defaultItems])];
+  const next = { ...current, items };
+  let changed = items.length !== currentItems.length;
+
+  for (const [key, value] of Object.entries(defaults)) {
+    if (key !== 'items' && !Object.prototype.hasOwnProperty.call(next, key)) {
+      next[key] = value;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    upsertComponent(entityId, 'inventory', next);
+  }
 }
 
 export function nowIso() {

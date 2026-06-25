@@ -16,6 +16,7 @@ import {
   searchEntities,
 } from './worldDb.js';
 import { readFixedContextBundle } from './contextLoader.js';
+import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 
 export const WORLD_AGENT_MAX_STEPS = 12;
 
@@ -195,6 +196,30 @@ export function executeWorldTool(tool, args, prompt = '') {
       }),
       summary: `已读取 ${entityId || '全部'} 的关系。`,
     };
+  }
+
+  if (tool === 'get_rule_toc') {
+    return getRuleToc();
+  }
+
+  if (tool === 'search_rules') {
+    return searchRules({
+      query: String(args.query || ''),
+      category: String(args.category || ''),
+      tags: Array.isArray(args.tags) ? args.tags : [],
+      limit: Number(args.limit || 8),
+    });
+  }
+
+  if (tool === 'get_rule_section') {
+    return getRuleSection(String(args.id || args.ruleId || ''));
+  }
+
+  if (tool === 'roll_dice') {
+    return rollDice({
+      expression: String(args.expression || args.dice || '1d20'),
+      reason: String(args.reason || ''),
+    });
   }
 
   if (tool === 'enter_scene') {
@@ -511,6 +536,9 @@ function splitAnswerChunks(answer) {
 
 function fallbackToolCall(prompt, steps) {
   if (steps.length === 0) {
+    if (/规则|攻击|命中|检定|豁免|战斗|法术|伤害|先攻|优势|劣势|护甲|ac/i.test(prompt)) {
+      return { tool: 'search_rules', args: { query: prompt, limit: 5 } };
+    }
     if (/当前|这里|场景|地点|在哪|哪里|有什么|出口/.test(prompt)) {
       return { tool: 'get_current_scene', args: {} };
     }
@@ -520,6 +548,10 @@ function fallbackToolCall(prompt, steps) {
   const last = steps.at(-1);
   if (last?.tool === 'search_entities' && last.result?.entities?.[0]) {
     return { tool: 'get_entity_bundle', args: { entityId: last.result.entities[0].id } };
+  }
+
+  if (last?.tool === 'search_rules' && last.result?.results?.[0]) {
+    return { tool: 'get_rule_section', args: { id: last.result.results[0].id } };
   }
 
   return { tool: 'finish', args: { answer: summarizeAgentResult(prompt, steps) } };
@@ -533,6 +565,10 @@ function normalizeToolCall(raw) {
     'get_current_scene',
     'get_scene_entities',
     'get_relationships',
+    'get_rule_toc',
+    'search_rules',
+    'get_rule_section',
+    'roll_dice',
     'enter_scene',
     'apply_world_patch',
     'finish',
@@ -540,6 +576,64 @@ function normalizeToolCall(raw) {
   return {
     tool: valid.has(tool) ? tool : 'finish',
     args: isRecord(raw.args) ? raw.args : raw,
+  };
+}
+
+function rollDice({ expression, reason }) {
+  const parsed = parseDiceExpression(expression);
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const rolls = Array.from({ length: parsed.count }, () => 1 + Math.floor(Math.random() * parsed.sides));
+  const diceTotal = rolls.reduce((sum, value) => sum + value, 0);
+  const total = diceTotal + parsed.modifier;
+  const modifierText = parsed.modifier > 0 ? `+${parsed.modifier}` : parsed.modifier < 0 ? String(parsed.modifier) : '';
+  const normalizedExpression = `${parsed.count}d${parsed.sides}${modifierText}`;
+
+  return {
+    ok: true,
+    expression: normalizedExpression,
+    reason,
+    count: parsed.count,
+    sides: parsed.sides,
+    rolls,
+    diceTotal,
+    modifier: parsed.modifier,
+    total,
+    summary: `${reason ? `${reason}：` : ''}${normalizedExpression} = ${rolls.join(' + ')}${modifierText ? ` ${modifierText}` : ''} => ${total}`,
+  };
+}
+
+function parseDiceExpression(expression) {
+  const normalized = String(expression || '').trim().toLowerCase().replace(/\s+/g, '');
+  const match = normalized.match(/^(\d*)d(\d+)([+-]\d+)?$/);
+  if (!match) {
+    return {
+      ok: false,
+      error: `骰子表达式无效：${expression || '(empty)'}。请使用 1d20、1d20+5 或 2d6-1 这类格式。`,
+    };
+  }
+
+  const count = Number(match[1] || 1);
+  const sides = Number(match[2]);
+  const modifier = Number(match[3] || 0);
+
+  if (!Number.isInteger(count) || count < 1 || count > 20) {
+    return { ok: false, error: '骰子数量必须在 1 到 20 之间。' };
+  }
+  if (!Number.isInteger(sides) || sides < 2 || sides > 100) {
+    return { ok: false, error: '骰子面数必须在 2 到 100 之间。' };
+  }
+  if (!Number.isInteger(modifier) || modifier < -1000 || modifier > 1000) {
+    return { ok: false, error: '骰子修正值必须在 -1000 到 1000 之间。' };
+  }
+
+  return {
+    ok: true,
+    count,
+    sides,
+    modifier,
   };
 }
 

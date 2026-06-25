@@ -9,6 +9,7 @@ import {
   getCurrentScene,
   getEntityBundle,
   getWorldOverview,
+  ensurePlayableCharacterStats,
   listRelationships,
   migrateWorldDb,
   rebuildSearchIndex,
@@ -22,6 +23,7 @@ import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.j
 import {
   createSaveExportBundle,
   ensureTemplateDbFromSaveIfMissing,
+  ensureTemplatePlayableDefaults,
   importSaveBundle,
   resetSaveToTemplate,
   TEMPLATE_DB_FILE,
@@ -30,9 +32,11 @@ import {
 const loadedConfigFiles = loadRuntimeConfig();
 migrateWorldDb();
 seedWorldIfEmpty();
+ensurePlayableCharacterStats();
 rebuildSearchIndex();
 checkpointWorldDb();
 ensureTemplateDbFromSaveIfMissing();
+ensureTemplatePlayableDefaults();
 
 const app = express();
 const HOST = '127.0.0.1';
@@ -73,6 +77,7 @@ app.put('/api/fixed-context', (req, res) => {
 
 app.post('/api/save/reset', (_req, res) => {
   try {
+    ensureTemplatePlayableDefaults();
     checkpointWorldDb();
     restoreWorldDbFromFile(TEMPLATE_DB_FILE);
     resetSaveToTemplate();
@@ -104,6 +109,7 @@ app.post('/api/save/import', (req, res) => {
   try {
     checkpointWorldDb();
     const result = importSaveBundle(req.body);
+    ensureTemplatePlayableDefaults();
     restoreWorldDbFromFile(result.saveDbFile);
     refreshWorldRuntime();
     res.json({
@@ -442,6 +448,7 @@ function loadRuntimeConfig() {
 function refreshWorldRuntime() {
   migrateWorldDb();
   seedWorldIfEmpty();
+  ensurePlayableCharacterStats();
   rebuildSearchIndex();
   checkpointWorldDb();
 }

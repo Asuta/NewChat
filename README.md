@@ -68,6 +68,26 @@ LLM_THINKING=disabled
 - `导出完整存档`：导出当前模板、当前玩家存档、当前固定上下文和浏览器聊天记录。
 - `导入世界包`：导入 `.newchat-save.json` 后覆盖当前模板和当前存档；如果包里有聊天记录，前端会恢复到 localStorage。
 
+## 跑团规则知识库
+
+根目录 `rules/` 是项目自带的出厂规则模板。首次启动时，后端会把它复制到 `data/template/rules/`，再复制到 `data/save/rules/`。运行时世界 Agent 只读取 `data/save/rules/`。
+
+规则通过 `rules/manifest.json` 声明文档、分类和标签，Markdown 文档用二级标题标记可读取段落：
+
+```md
+## [combat.attack-rolls] 攻击检定
+```
+
+Agent 可用规则工具：
+
+- `get_rule_toc`：读取当前规则包目录。
+- `search_rules`：按关键词、分类、标签搜索规则段落。
+- `get_rule_section`：按规则 ID 读取具体规则正文。
+
+规则读取后会自然进入本轮 Agent `previousSteps` 和聊天上下文；项目不维护显式“已读取规则缓存”。如果上下文里已有足够明确的规则文本，Agent 可以复用；如果规则可能已被压缩、遗漏或不确定，Agent 应重新查询规则。
+
+导出基础世界会包含模板规则包；导出完整存档会包含模板规则包和当前存档规则包。导入世界包会覆盖当前规则包；旧导出包如果没有规则文件，会使用当前默认规则初始化。
+
 ## 世界 Agent
 
 聊天发送后会进入后端 `/api/world/agent`。后端读取 `data/save/context/*.md` 固定上下文包、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写当前玩家存档。
@@ -77,6 +97,7 @@ LLM_THINKING=disabled
 - `search_entities`：按名称、别名、FTS、类型、场景搜索实体。
 - `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
 - `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
+- `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
 - `finish`：结束本轮 Agent 任务并返回最终答复。
