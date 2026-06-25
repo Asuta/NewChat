@@ -1,4 +1,4 @@
-import { Eraser, Pin, Save, Trash2, X } from 'lucide-react';
+import { Eraser, FileText, Pin, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Conversation, FixedContext } from '../types';
 
@@ -21,15 +21,15 @@ export function ConversationSettingsPanel({
   onClearFixedContext,
   onSaveFixedContext,
 }: ConversationSettingsPanelProps) {
-  const [value, setValue] = useState(fixedContext.content);
+  const [value, setValue] = useState(fixedContext.editableContent);
 
   useEffect(() => {
-    setValue(fixedContext.content);
-  }, [fixedContext.content]);
+    setValue(fixedContext.editableContent);
+  }, [fixedContext.editableContent]);
 
-  const hasFixedContext = Boolean(fixedContext.content.trim());
+  const hasEditableContext = Boolean(fixedContext.editableContent.trim());
   const hasDynamicChat = conversation.messages.length > 0 || Boolean(conversation.contextSummary);
-  const canSave = !disabled && value !== fixedContext.content;
+  const canSave = !disabled && value !== fixedContext.editableContent;
 
   return (
     <div className="settings-panel" role="dialog" aria-label="会话设置">
@@ -46,10 +46,10 @@ export function ConversationSettingsPanel({
       <label className="fixed-context-field">
         <span>
           <Pin size={16} />
-          固定上下文
+          用户固定上下文
         </span>
         <textarea
-          aria-label="固定上下文"
+          aria-label="用户固定上下文"
           placeholder="输入所有对话每次都需要携带的固定背景、角色设定、约束或长期目标。"
           rows={8}
           value={value}
@@ -63,16 +63,41 @@ export function ConversationSettingsPanel({
           <Save size={16} />
           保存固定上下文
         </button>
-        <button className="settings-secondary" type="button" disabled={disabled || !hasFixedContext} onClick={onClearFixedContext}>
+        <button className="settings-secondary" type="button" disabled={disabled || !hasEditableContext} onClick={onClearFixedContext}>
           <Eraser size={16} />
-          清空固定上下文
+          清空用户上下文
         </button>
       </div>
+
+      <section className="fixed-context-pack" aria-label="固定上下文文档包">
+        <div className="fixed-context-pack-header">
+          <div>
+            <strong>已加载固定上下文文档</strong>
+            <span>{fixedContext.files.length ? `${fixedContext.files.length} 个文档按文件名前缀排序` : '还没有可加载文档'}</span>
+          </div>
+          <FileText size={18} />
+        </div>
+
+        <div className="fixed-context-file-list">
+          {fixedContext.files.map((file) => (
+            <article className="fixed-context-file" key={file.name}>
+              <span>{String(file.order).padStart(3, '0')}</span>
+              <strong>{file.name}</strong>
+              <small>{file.content.trim() ? `${file.content.trim().length} 字符` : '空文档'}</small>
+            </article>
+          ))}
+        </div>
+
+        <details className="fixed-context-preview">
+          <summary>查看合并预览</summary>
+          <pre>{fixedContext.content.trim() || '暂无固定上下文内容。'}</pre>
+        </details>
+      </section>
 
       <div className="settings-danger-zone">
         <div>
           <strong>清空当前聊天</strong>
-          <span>只清空动态消息和压缩摘要，不会修改根目录 fixed-context.md。</span>
+          <span>只清空动态消息和压缩摘要，不会修改 context/001-user-fixed-context.md。</span>
         </div>
         <button className="settings-danger" type="button" disabled={disabled || !hasDynamicChat} onClick={onClearChat}>
           <Trash2 size={16} />

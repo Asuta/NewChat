@@ -32,7 +32,7 @@ import type { ThinkingMode } from './types';
 
 const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
-const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', updatedAt: null };
+const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', editableContent: '', updatedAt: null, files: [] };
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(getInitialConversations);
@@ -440,7 +440,16 @@ export default function App() {
 function normalizeFixedContext(state: Partial<FixedContext> | null | undefined): FixedContext {
   return {
     content: typeof state?.content === 'string' ? state.content : '',
+    editableContent: typeof state?.editableContent === 'string' ? state.editableContent : typeof state?.content === 'string' ? state.content : '',
     updatedAt: typeof state?.updatedAt === 'number' ? state.updatedAt : null,
+    files: Array.isArray(state?.files)
+      ? state.files.map((file) => ({
+          name: typeof file?.name === 'string' ? file.name : '',
+          order: typeof file?.order === 'number' ? file.order : 0,
+          content: typeof file?.content === 'string' ? file.content : '',
+          updatedAt: typeof file?.updatedAt === 'number' ? file.updatedAt : null,
+        }))
+      : [],
   };
 }
 

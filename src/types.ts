@@ -40,9 +40,18 @@ export interface ContextSummary {
   lastMessageId: string | null;
 }
 
-export interface FixedContext {
+export interface FixedContextFile {
+  name: string;
+  order: number;
   content: string;
   updatedAt: number | null;
+}
+
+export interface FixedContext {
+  content: string;
+  editableContent: string;
+  updatedAt: number | null;
+  files: FixedContextFile[];
 }
 
 export type EntityKind = 'player' | 'character' | 'scene' | 'item' | 'quest' | 'event' | 'faction' | 'lore';

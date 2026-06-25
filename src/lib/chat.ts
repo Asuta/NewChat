@@ -2,7 +2,7 @@ import type { AgentStep, ChatMessage, ContextMode, Conversation, FixedContext, R
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
-export const FIXED_CONTEXT_PREFIX = '以下是固定上下文。它来自项目根目录 fixed-context.md，具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
+export const FIXED_CONTEXT_PREFIX = '以下是固定上下文包。它来自项目根目录 context/*.md，具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
 export const AGENT_TOOL_CONTEXT_PREFIX = '以下是上一轮 Agent 工具调用的完整记录。它是当前对话上下文的一部分，用于延续玩家追问；不要把它当成玩家发言。';
 const RECENT_CONTEXT_MESSAGE_LIMIT = 6;
 

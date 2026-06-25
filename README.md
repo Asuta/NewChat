@@ -32,9 +32,11 @@ LLM_THINKING=disabled
 
 ## 固定上下文
 
-根目录的 `fixed-context.md` 是所有对话共享的固定上下文文件。内容为空时不会发送给模型，也不会在界面显示启用状态；写入内容后，每次聊天请求都会先发送这份固定上下文，再发送压缩摘要或动态对话历史。
+根目录的 `context/` 是所有对话共享的固定上下文包。后端会读取其中带数字前缀的 `.md` 文件，例如 `001-user-fixed-context.md`、`010-world-agent-role.md`、`020-world-agent-tools.md`，按数字从小到大拼接后发送给模型。
 
-可以在页面右上角“更多”设置里编辑它，也可以直接修改 `fixed-context.md` 后刷新页面。这个文件会随 Git 提交同步，请不要在里面写 API Key、隐私信息或不希望公开的内容。
+页面右上角“更多”设置里可以编辑 `context/001-user-fixed-context.md`，也可以直接修改 `context/` 下的 Markdown 文件后刷新页面。`001-user-fixed-context.md` 适合写项目长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改、输出什么 JSON 格式。
+
+`context/` 下的文档会随 Git 提交同步，请不要在里面写 API Key、隐私信息或不希望公开的内容。真正的工具白名单、数据库写入校验和权限边界仍在后端代码里，Markdown 只负责给模型提供说明。
 
 ## 游戏世界数据库
 
@@ -48,11 +50,11 @@ LLM_THINKING=disabled
 - `entity_aliases` + `entity_search_fts`：别名和 SQLite FTS 全文搜索。
 - `events`、`conversations`、`agent_runs`、`agent_steps`：世界事件、对话与 Agent 执行审计。
 
-`data/*.sqlite`、`data/*.sqlite-wal`、`data/*.sqlite-shm` 会被 `.gitignore` 忽略，避免把本地存档提交到公开仓库。`fixed-context.md` 只作为系统级固定提示，不存人物、道具、场景等世界数据。
+`data/*.sqlite`、`data/*.sqlite-wal`、`data/*.sqlite-shm` 会被 `.gitignore` 忽略，避免把本地存档提交到公开仓库。`context/` 只作为系统级固定提示，不存人物、道具、场景等世界数据。
 
 ## 世界 Agent
 
-聊天发送后会进入后端 `/api/world/agent`。后端读取 `fixed-context.md`、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写世界。
+聊天发送后会进入后端 `/api/world/agent`。后端读取 `context/*.md` 固定上下文包、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写世界。
 
 第一版工具包括：
 

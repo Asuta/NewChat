@@ -1,6 +1,6 @@
 import express from 'express';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   applyWorldPatch,
@@ -16,6 +16,7 @@ import {
 } from './worldDb.js';
 import { executeWorldTool, getAgentHistory, runWorldAgentTask } from './worldAgent.js';
 import { listWorldSchemas } from './worldSchemas.js';
+import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
 
 const loadedConfigFiles = loadRuntimeConfig();
 migrateWorldDb();
@@ -28,7 +29,6 @@ const DEFAULT_PORT = 8787;
 const PORT = parsePort(process.env.PORT, DEFAULT_PORT);
 const MAX_PORT_ATTEMPTS = 20;
 const DEV_PORT_FILE = resolve(process.cwd(), '.newchat', 'server-port');
-const FIXED_CONTEXT_FILE = resolve(process.cwd(), 'fixed-context.md');
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const AVAILABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
 const FIXED_CONTEXT_PREFIX = '以下是固定上下文。';
@@ -51,13 +51,13 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/fixed-context', (_req, res) => {
-  res.json(readFixedContextFile());
+  res.json(readFixedContextBundle());
 });
 
 app.put('/api/fixed-context', (req, res) => {
   const content = typeof req.body?.content === 'string' ? req.body.content : '';
-  writeFileSync(FIXED_CONTEXT_FILE, content, 'utf8');
-  res.json(readFixedContextFile());
+  writeUserFixedContext(content);
+  res.json(readFixedContextBundle());
 });
 
 app.get('/api/world', (_req, res) => {
@@ -132,12 +132,10 @@ app.post('/api/world/tools/:tool', (req, res) => {
 
 app.post('/api/world/agent', async (req, res) => {
   try {
-    const fixedContext = readFixedContextFile().content;
     const result = await runWorldAgentTask({
       prompt: req.body?.prompt,
       model: req.body?.model,
       thinking: req.body?.thinking,
-      fixedContext,
       conversationContext: sanitizeMessages(req.body?.messages),
     });
     res.json(result);
@@ -312,21 +310,6 @@ function listenWithPortFallback(startPort) {
 function writeDevPortFile(port) {
   mkdirSync(resolve(process.cwd(), '.newchat'), { recursive: true });
   writeFileSync(DEV_PORT_FILE, String(port), 'utf8');
-}
-
-function readFixedContextFile() {
-  if (!existsSync(FIXED_CONTEXT_FILE)) {
-    return {
-      content: '',
-      updatedAt: null,
-    };
-  }
-
-  const stat = statSync(FIXED_CONTEXT_FILE);
-  return {
-    content: readFileSync(FIXED_CONTEXT_FILE, 'utf8'),
-    updatedAt: Math.round(stat.mtimeMs),
-  };
 }
 
 function loadRuntimeConfig() {
