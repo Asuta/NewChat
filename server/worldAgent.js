@@ -15,7 +15,6 @@ import {
   listRelationships,
   searchEntities,
 } from './worldDb.js';
-import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle } from './contextLoader.js';
 
 export const WORLD_AGENT_MAX_STEPS = 12;
@@ -26,6 +25,7 @@ export async function runWorldAgentTask(input) {
 
   const runId = createAgentRun(prompt);
   const steps = [];
+  const requestLog = { entries: [] };
   addConversation('user', 'player', '玩家', prompt);
   addEvent('agent.started', 'player', null, { summary: `Agent 开始处理：${prompt}` });
 
@@ -37,6 +37,8 @@ export async function runWorldAgentTask(input) {
         model: input.model,
         thinking: input.thinking,
         conversationContext: input.conversationContext,
+        stepIndex,
+        requestLog,
       });
       const args = isRecord(call.args) ? call.args : {};
       const result = executeWorldTool(call.tool, args, prompt);
@@ -59,6 +61,7 @@ export async function runWorldAgentTask(input) {
           runId,
           steps,
           world: getWorldOverview(),
+          requestLog,
         };
       }
 
@@ -72,6 +75,7 @@ export async function runWorldAgentTask(input) {
           runId,
           steps,
           world: getWorldOverview(),
+          requestLog,
         };
       }
     }
@@ -84,6 +88,7 @@ export async function runWorldAgentTask(input) {
       runId,
       steps,
       world: getWorldOverview(),
+      requestLog,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -215,7 +220,7 @@ export function getAgentHistory() {
   }));
 }
 
-async function planNextToolCall({ prompt, steps, model, thinking, conversationContext }) {
+async function planNextToolCall({ prompt, steps, model, thinking, conversationContext, stepIndex, requestLog }) {
   if (process.env.LLM_MOCK === '1') {
     return fallbackToolCall(prompt, steps);
   }
@@ -239,7 +244,6 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
           task: prompt,
           conversationContext: Array.isArray(conversationContext) ? conversationContext.slice(-10) : [],
           world: shrinkWorld(getWorldOverview()),
-          schemas: listWorldSchemas(),
           previousSteps: steps.map((step) => ({
             index: step.index,
             tool: step.tool,
@@ -252,6 +256,16 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       ),
     },
   ];
+  requestLog?.entries?.push({
+    stepIndex,
+    model: selectedModel,
+    thinking: normalizeThinkingMode(thinking) || normalizeThinkingMode(process.env.LLM_THINKING),
+    createdAt: Date.now(),
+    messages: messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
+  });
 
   const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
     method: 'POST',
@@ -552,9 +566,13 @@ function normalizeBaseURL(value) {
 }
 
 function deepSeekThinkingConfig(requestThinking) {
-  const thinking = requestThinking === 'enabled' || requestThinking === 'disabled' ? requestThinking : process.env.LLM_THINKING;
+  const thinking = normalizeThinkingMode(requestThinking) || normalizeThinkingMode(process.env.LLM_THINKING);
   if (thinking !== 'enabled' && thinking !== 'disabled') return {};
   return { thinking: { type: thinking } };
+}
+
+function normalizeThinkingMode(value) {
+  return value === 'enabled' || value === 'disabled' ? value : null;
 }
 
 function normalizeModel(value) {

@@ -142,9 +142,27 @@ export interface AgentRun {
   steps?: AgentStep[];
 }
 
+export interface LoggedModelMessage {
+  role: Role;
+  content: string;
+}
+
+export interface ModelRequestLogEntry {
+  stepIndex: number;
+  model: string | null;
+  thinking: ThinkingMode | null;
+  createdAt: number;
+  messages: LoggedModelMessage[];
+}
+
+export interface ModelRequestLog {
+  entries: ModelRequestLogEntry[];
+}
+
 export interface WorldAgentResponse {
   answer: string;
   runId: number;
   steps: AgentStep[];
   world: WorldOverview;
+  requestLog?: ModelRequestLog;
 }

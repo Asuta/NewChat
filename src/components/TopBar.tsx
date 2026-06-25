@@ -1,6 +1,6 @@
 import { Archive, Brain, ChevronDown, Loader2, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
-import type { ContextMode, Conversation, FixedContext, HealthState, ModelId, ThinkingMode } from '../types';
+import type { ContextMode, Conversation, FixedContext, HealthState, ModelId, ModelRequestLog, ThinkingMode } from '../types';
 import { ConversationSettingsPanel } from './ConversationSettingsPanel';
 
 const MODEL_OPTIONS: Array<{ id: ModelId; label: string; description: string }> = [
@@ -21,6 +21,7 @@ interface TopBarProps {
   thinkingMode: ThinkingMode;
   contextMode: ContextMode;
   fixedContext: FixedContext;
+  requestLog: ModelRequestLog | null;
   isStreaming: boolean;
   isCompressing: boolean;
   isFixedContextSaving: boolean;
@@ -43,6 +44,7 @@ export function TopBar({
   thinkingMode,
   contextMode,
   fixedContext,
+  requestLog,
   isStreaming,
   isCompressing,
   isFixedContextSaving,
@@ -185,6 +187,7 @@ export function TopBar({
         <ConversationSettingsPanel
           conversation={conversation}
           fixedContext={fixedContext}
+          requestLog={requestLog}
           disabled={controlsDisabled}
           onClose={() => onSettingsOpenChange(false)}
           onSaveFixedContext={onSaveFixedContext}

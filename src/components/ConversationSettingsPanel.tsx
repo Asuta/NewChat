@@ -1,10 +1,11 @@
 import { Eraser, FileText, Pin, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { Conversation, FixedContext } from '../types';
+import type { Conversation, FixedContext, ModelRequestLog } from '../types';
 
 interface ConversationSettingsPanelProps {
   conversation: Conversation;
   fixedContext: FixedContext;
+  requestLog: ModelRequestLog | null;
   disabled: boolean;
   onClose: () => void;
   onClearChat: () => void;
@@ -15,6 +16,7 @@ interface ConversationSettingsPanelProps {
 export function ConversationSettingsPanel({
   conversation,
   fixedContext,
+  requestLog,
   disabled,
   onClose,
   onClearChat,
@@ -94,6 +96,39 @@ export function ConversationSettingsPanel({
         </details>
       </section>
 
+      <section className="model-request-log" aria-label="上一轮模型请求 Log">
+        <div className="model-request-log-header">
+          <div>
+            <strong>上一轮模型请求 Log</strong>
+            <span>{requestLog?.entries.length ? `${requestLog.entries.length} 次大模型请求` : '还没有记录到模型请求'}</span>
+          </div>
+          <FileText size={18} />
+        </div>
+
+        {requestLog?.entries.length ? (
+          <div className="model-request-log-list">
+            {requestLog.entries.map((entry) => (
+              <details className="model-request-entry" key={`${entry.stepIndex}-${entry.createdAt}`}>
+                <summary>
+                  <span>Step {entry.stepIndex}</span>
+                  <small>{entry.model || '未配置模型'} · {entry.thinking || 'thinking unset'} · {formatLogTime(entry.createdAt)}</small>
+                </summary>
+                <div className="model-request-messages">
+                  {entry.messages.map((message, index) => (
+                    <article className="model-request-message" key={`${message.role}-${index}`}>
+                      <strong>{message.role}</strong>
+                      <pre>{message.content}</pre>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <p className="model-request-empty">发送一条游戏消息后，这里会显示上一轮实际发给大模型的 system/user 文本。</p>
+        )}
+      </section>
+
       <div className="settings-danger-zone">
         <div>
           <strong>清空当前聊天</strong>
@@ -106,4 +141,12 @@ export function ConversationSettingsPanel({
       </div>
     </div>
   );
+}
+
+function formatLogTime(timestamp: number) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(timestamp);
 }

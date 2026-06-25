@@ -23,6 +23,7 @@ import type {
   EntityBundle,
   FixedContext,
   HealthState,
+  ModelRequestLog,
   ModelId,
   WorldAgentResponse,
   WorldEntity,
@@ -41,6 +42,7 @@ export default function App() {
   const [modelId, setModelId] = useState<ModelId>(getInitialModelId);
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(getInitialThinkingMode);
   const [fixedContext, setFixedContext] = useState<FixedContext>(EMPTY_FIXED_CONTEXT);
+  const [lastRequestLog, setLastRequestLog] = useState<ModelRequestLog | null>(null);
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
@@ -127,6 +129,7 @@ export default function App() {
     }));
 
     setError(null);
+    setLastRequestLog(null);
     setIsStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -149,6 +152,7 @@ export default function App() {
       }
 
       const data = (await response.json()) as WorldAgentResponse;
+      setLastRequestLog(data.requestLog || { entries: [] });
       setAgentSteps(data.steps || []);
       setWorld(data.world);
       updateAssistantMessage(assistantMessage.id, data.answer || '世界 Agent 没有返回内容。', 'done', {
@@ -403,6 +407,7 @@ export default function App() {
           canCompress={getCompactableMessages(activeConversation).length > 0}
           isSettingsOpen={isSettingsOpen}
           fixedContext={fixedContext}
+          requestLog={lastRequestLog}
           modelId={modelId}
           onModelChange={setModelId}
           thinkingMode={thinkingMode}
