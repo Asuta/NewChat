@@ -20,6 +20,14 @@ import { readFixedContextBundle } from './contextLoader.js';
 export const WORLD_AGENT_MAX_STEPS = 12;
 
 export async function runWorldAgentTask(input) {
+  return runWorldAgentTaskInternal(input, {});
+}
+
+export async function runWorldAgentTaskStream(input, handlers = {}) {
+  return runWorldAgentTaskInternal(input, handlers);
+}
+
+async function runWorldAgentTaskInternal(input, handlers) {
   const prompt = String(input.prompt || '').trim();
   if (!prompt) throw new Error('prompt 不能为空。');
 
@@ -28,6 +36,7 @@ export async function runWorldAgentTask(input) {
   const requestLog = { entries: [] };
   addConversation('user', 'player', '玩家', prompt);
   addEvent('agent.started', 'player', null, { summary: `Agent 开始处理：${prompt}` });
+  handlers.onStart?.({ runId });
 
   try {
     for (let stepIndex = 1; stepIndex <= WORLD_AGENT_MAX_STEPS; stepIndex += 1) {
@@ -39,10 +48,12 @@ export async function runWorldAgentTask(input) {
         conversationContext: input.conversationContext,
         stepIndex,
         requestLog,
+        signal: input.signal,
       });
       const args = isRecord(call.args) ? call.args : {};
       const result = executeWorldTool(call.tool, args, prompt);
-      steps.push({ index: stepIndex, tool: call.tool, args, result });
+      const step = { index: stepIndex, tool: call.tool, args, result };
+      steps.push(step);
       addAgentStep(runId, stepIndex, call.tool, args, result);
       addEvent('agent.tool', null, null, {
         summary: formatToolSummary(call.tool, result),
@@ -50,52 +61,82 @@ export async function runWorldAgentTask(input) {
         args,
         result,
       });
+      handlers.onStep?.({ step, steps: [...steps], runId });
 
       if (isRepeatedToolFailure(steps)) {
-        const answer = `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`;
-        addConversation('assistant', null, '世界 Agent', answer);
-        finishAgentRun(runId, 'completed', answer, null);
-        addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
-        return {
-          answer,
+        return await finishSuccessfulRun({
+          prompt,
           runId,
           steps,
-          world: getWorldOverview(),
+          model: input.model,
+          thinking: input.thinking,
+          conversationContext: input.conversationContext,
+          seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
           requestLog,
-        };
+          handlers,
+          signal: input.signal,
+        });
       }
 
       if (call.tool === 'finish' || result.done === true) {
-        const answer = String(result.answer || summarizeAgentResult(prompt, steps));
-        addConversation('assistant', null, '世界 Agent', answer);
-        finishAgentRun(runId, 'completed', answer, null);
-        addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
-        return {
-          answer,
+        return await finishSuccessfulRun({
+          prompt,
           runId,
           steps,
-          world: getWorldOverview(),
+          model: input.model,
+          thinking: input.thinking,
+          conversationContext: input.conversationContext,
+          seedAnswer: String(result.answer || summarizeAgentResult(prompt, steps)),
           requestLog,
-        };
+          handlers,
+          signal: input.signal,
+        });
       }
     }
 
-    const answer = summarizeAgentResult(prompt, steps);
-    addConversation('assistant', null, '世界 Agent', answer);
-    finishAgentRun(runId, 'completed', answer, null);
-    return {
-      answer,
+    return await finishSuccessfulRun({
+      prompt,
       runId,
       steps,
-      world: getWorldOverview(),
+      model: input.model,
+      thinking: input.thinking,
+      conversationContext: input.conversationContext,
+      seedAnswer: summarizeAgentResult(prompt, steps),
       requestLog,
-    };
+      handlers,
+      signal: input.signal,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     finishAgentRun(runId, 'failed', null, message);
     addEvent('agent.failed', null, null, { summary: message, prompt, stepCount: steps.length });
     throw error;
   }
+}
+
+async function finishSuccessfulRun({ prompt, runId, steps, model, thinking, conversationContext, seedAnswer, requestLog, handlers, signal }) {
+  const answer = await createFinalAnswer({
+    prompt,
+    steps,
+    model,
+    thinking,
+    conversationContext,
+    seedAnswer,
+    onDelta: handlers.onFinalAnswerDelta,
+    signal,
+  });
+  addConversation('assistant', null, '世界 Agent', answer);
+  finishAgentRun(runId, 'completed', answer, null);
+  addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
+  const result = {
+    answer,
+    runId,
+    steps,
+    world: getWorldOverview(),
+    requestLog,
+  };
+  handlers.onDone?.(result);
+  return result;
 }
 
 export function executeWorldTool(tool, args, prompt = '') {
@@ -220,7 +261,7 @@ export function getAgentHistory() {
   }));
 }
 
-async function planNextToolCall({ prompt, steps, model, thinking, conversationContext, stepIndex, requestLog }) {
+async function planNextToolCall({ prompt, steps, model, thinking, conversationContext, stepIndex, requestLog, signal }) {
   if (process.env.LLM_MOCK === '1') {
     return fallbackToolCall(prompt, steps);
   }
@@ -281,6 +322,7 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       response_format: { type: 'json_object' },
       ...deepSeekThinkingConfig(thinking),
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -290,6 +332,181 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
   const json = await response.json();
   const content = json.choices?.[0]?.message?.content;
   return normalizeToolCall(JSON.parse(stripCodeFence(String(content || '{}'))));
+}
+
+async function createFinalAnswer({ prompt, steps, model, thinking, conversationContext, seedAnswer, onDelta, signal }) {
+  if (process.env.LLM_MOCK === '1') {
+    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
+  }
+
+  const apiKey = process.env.LLM_API_KEY;
+  const selectedModel = normalizeModel(model) || process.env.LLM_MODEL;
+  if (!apiKey || !selectedModel) {
+    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
+  }
+
+  const messages = buildFinalAnswerMessages({ prompt, steps, conversationContext, seedAnswer });
+  try {
+    if (onDelta) {
+      const answer = await streamFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, onDelta, signal });
+      return normalizeFinalAnswer(answer) || seedAnswer;
+    }
+    const answer = await fetchFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, signal });
+    return normalizeFinalAnswer(answer) || seedAnswer;
+  } catch {
+    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
+  }
+}
+
+function buildFinalAnswerMessages({ prompt, steps, conversationContext, seedAnswer }) {
+  return [
+    {
+      role: 'system',
+      content:
+        '你是中文游戏世界 Agent。请根据工具调用结果给玩家一个自然、简洁、可继续互动的最终答复。只输出给玩家看的中文正文，不要输出 JSON、Markdown 代码块、内部工具名或调试过程；如果工具结果包含世界变化，请直接描述玩家可感知的结果。',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify(
+        {
+          task: prompt,
+          conversationContext: Array.isArray(conversationContext) ? conversationContext.slice(-10) : [],
+          world: shrinkWorld(getWorldOverview()),
+          toolSteps: steps.map((step) => ({
+            index: step.index,
+            tool: step.tool,
+            args: step.args,
+            result: shrinkResult(step.result),
+          })),
+          fallbackAnswer: seedAnswer,
+        },
+        null,
+        2,
+      ),
+    },
+  ];
+}
+
+function normalizeFinalAnswer(answer) {
+  const content = String(answer || '').trim();
+  if (!content) return '';
+
+  const stripped = stripCodeFence(content);
+  try {
+    const parsed = JSON.parse(stripped);
+    if (isRecord(parsed)) {
+      const directAnswer = parsed.answer;
+      if (typeof directAnswer === 'string' && directAnswer.trim()) return directAnswer.trim();
+      const argsAnswer = isRecord(parsed.args) ? parsed.args.answer : null;
+      if (typeof argsAnswer === 'string' && argsAnswer.trim()) return argsAnswer.trim();
+    }
+  } catch {
+    // Keep natural-language answers as-is.
+  }
+
+  return content;
+}
+
+async function fetchFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, signal }) {
+  const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: selectedModel,
+      messages,
+      stream: false,
+      temperature: 0.4,
+      ...deepSeekThinkingConfig(thinking),
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`最终回答生成失败：${response.status}`);
+  }
+
+  const json = await response.json();
+  const answer = json.choices?.[0]?.message?.content?.trim();
+  if (!answer) {
+    throw new Error('最终回答为空。');
+  }
+  return answer;
+}
+
+async function streamFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, onDelta, signal }) {
+  const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: selectedModel,
+      messages,
+      stream: true,
+      temperature: 0.4,
+      ...deepSeekThinkingConfig(thinking),
+    }),
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`最终回答流式生成失败：${response.status}`);
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+  let answer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload) continue;
+      if (payload === '[DONE]') return answer.trim();
+
+      const json = JSON.parse(payload);
+      const delta = json.choices?.[0]?.delta?.content;
+      if (delta) {
+        answer += delta;
+        onDelta(delta);
+      }
+    }
+  }
+
+  return answer.trim();
+}
+
+async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
+  const answer = String(seedAnswer || '完成。');
+  if (!onDelta) return answer;
+
+  for (const chunk of splitAnswerChunks(answer)) {
+    if (signal?.aborted) throw new Error('请求已取消。');
+    onDelta(chunk);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 90));
+  }
+  return answer;
+}
+
+function splitAnswerChunks(answer) {
+  const chunks = [];
+  for (let index = 0; index < answer.length; index += 8) {
+    chunks.push(answer.slice(index, index + 8));
+  }
+  return chunks.length ? chunks : ['完成。'];
 }
 
 function fallbackToolCall(prompt, steps) {

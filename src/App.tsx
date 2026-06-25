@@ -25,7 +25,7 @@ import type {
   HealthState,
   ModelRequestLog,
   ModelId,
-  WorldAgentResponse,
+  WorldAgentStreamEvent,
   WorldEntity,
   WorldOverview,
 } from './types';
@@ -135,7 +135,8 @@ export default function App() {
     abortRef.current = controller;
 
     try {
-      const response = await fetch('/api/world/agent', {
+      setAgentSteps([]);
+      const response = await fetch('/api/world/agent/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,15 +151,68 @@ export default function App() {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
+      if (!response.body) {
+        throw new Error('世界 Agent 没有返回流式响应。');
+      }
 
-      const data = (await response.json()) as WorldAgentResponse;
-      setLastRequestLog(data.requestLog || { entries: [] });
-      setAgentSteps(data.steps || []);
-      setWorld(data.world);
-      updateAssistantMessage(assistantMessage.id, data.answer || '世界 Agent 没有返回内容。', 'done', {
-        agentRunId: data.runId,
-        agentSteps: data.steps || [],
+      let runId: number | undefined;
+      let streamedAnswer = '';
+      let streamedSteps: AgentStep[] = [];
+      let didFinish = false;
+
+      await readWorldAgentStream(response.body, (event) => {
+        if (event.type === 'start') {
+          runId = event.runId;
+          patchAssistantMessage(assistantMessage.id, (message) => ({
+            ...message,
+            agentRunId: runId,
+          }));
+          return;
+        }
+
+        if (event.type === 'step') {
+          streamedSteps = [...streamedSteps, event.step];
+          setAgentSteps(streamedSteps);
+          patchAssistantMessage(assistantMessage.id, (message) => ({
+            ...message,
+            agentRunId: runId,
+            agentSteps: streamedSteps,
+          }));
+          return;
+        }
+
+        if (event.type === 'answer_delta') {
+          streamedAnswer += event.delta;
+          updateAssistantMessage(assistantMessage.id, streamedAnswer, 'streaming', {
+            agentRunId: runId,
+            agentSteps: streamedSteps,
+          });
+          return;
+        }
+
+        if (event.type === 'done') {
+          didFinish = true;
+          runId = event.runId;
+          streamedAnswer = event.answer || streamedAnswer;
+          streamedSteps = event.steps || streamedSteps;
+          setLastRequestLog(event.requestLog || { entries: [] });
+          setAgentSteps(streamedSteps);
+          setWorld(event.world);
+          updateAssistantMessage(assistantMessage.id, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
+            agentRunId: runId,
+            agentSteps: streamedSteps,
+          });
+          return;
+        }
+
+        if (event.type === 'error') {
+          throw new Error(event.error || '世界 Agent 执行失败。');
+        }
       });
+
+      if (!didFinish) {
+        throw new Error('世界 Agent 流式响应提前结束。');
+      }
     } catch (caught) {
       if (controller.signal.aborted) {
         updateAssistantMessage(assistantMessage.id, '已停止生成。', 'error');
@@ -192,6 +246,14 @@ export default function App() {
             }
           : message,
       ),
+    }));
+  }
+
+  function patchAssistantMessage(messageId: string, updater: (message: ChatMessage) => ChatMessage) {
+    updateActiveConversation((conversation) => ({
+      ...conversation,
+      updatedAt: Date.now(),
+      messages: conversation.messages.map((message) => (message.id === messageId ? updater(message) : message)),
     }));
   }
 
@@ -467,6 +529,72 @@ async function readErrorMessage(response: Response) {
   } catch {
     return text;
   }
+}
+
+async function readWorldAgentStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: WorldAgentStreamEvent) => void,
+) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n/);
+    buffer = blocks.pop() || '';
+
+    for (const block of blocks) {
+      const event = parseWorldAgentStreamEvent(block);
+      if (event) onEvent(event);
+    }
+  }
+
+  const finalBlock = buffer.trim();
+  if (finalBlock) {
+    const event = parseWorldAgentStreamEvent(finalBlock);
+    if (event) onEvent(event);
+  }
+}
+
+function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null {
+  const lines = block.split(/\r?\n/);
+  const eventType = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
+  const data = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trim())
+    .join('\n');
+
+  if (!eventType || !data) return null;
+  const payload = JSON.parse(data) as Record<string, unknown>;
+
+  if (eventType === 'start') {
+    return { type: 'start', runId: Number(payload.runId) };
+  }
+  if (eventType === 'step') {
+    return { type: 'step', step: payload.step as AgentStep };
+  }
+  if (eventType === 'answer_delta') {
+    return { type: 'answer_delta', delta: String(payload.delta || '') };
+  }
+  if (eventType === 'done') {
+    return {
+      type: 'done',
+      answer: String(payload.answer || ''),
+      runId: Number(payload.runId),
+      steps: Array.isArray(payload.steps) ? (payload.steps as AgentStep[]) : [],
+      world: payload.world as WorldOverview,
+      requestLog: payload.requestLog as ModelRequestLog | undefined,
+    };
+  }
+  if (eventType === 'error') {
+    return { type: 'error', error: String(payload.error || '世界 Agent 执行失败。') };
+  }
+
+  return null;
 }
 
 function getInitialThinkingMode(): ThinkingMode {

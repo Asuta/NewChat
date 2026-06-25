@@ -14,7 +14,7 @@ import {
   searchEntities,
   seedWorldIfEmpty,
 } from './worldDb.js';
-import { executeWorldTool, getAgentHistory, runWorldAgentTask } from './worldAgent.js';
+import { executeWorldTool, getAgentHistory, runWorldAgentTask, runWorldAgentTaskStream } from './worldAgent.js';
 import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
 
@@ -141,6 +141,55 @@ app.post('/api/world/agent', async (req, res) => {
     res.json(result);
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : '世界 Agent 执行失败。' });
+  }
+});
+
+app.post('/api/world/agent/stream', async (req, res) => {
+  const controller = new AbortController();
+  req.on('aborted', () => controller.abort());
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      controller.abort();
+    }
+  });
+
+  setEventStreamHeaders(res);
+  let didSendDone = false;
+
+  try {
+    const result = await runWorldAgentTaskStream(
+      {
+        prompt: req.body?.prompt,
+        model: req.body?.model,
+        thinking: req.body?.thinking,
+        conversationContext: sanitizeMessages(req.body?.messages),
+        signal: controller.signal,
+      },
+      {
+        onStart: (event) => writeSseEvent(res, 'start', event),
+        onStep: (event) => writeSseEvent(res, 'step', { step: event.step }),
+        onFinalAnswerDelta: (delta) => writeSseEvent(res, 'answer_delta', { delta }),
+        onDone: (event) => {
+          didSendDone = true;
+          writeSseEvent(res, 'done', event);
+        },
+      },
+    );
+
+    if (!didSendDone) {
+      writeSseEvent(res, 'done', result);
+    }
+    res.end();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
+    }
+
+    writeSseEvent(res, 'error', { error: error instanceof Error ? error.message : '世界 Agent 执行失败。' });
+    res.end();
   }
 });
 
@@ -379,6 +428,20 @@ function setStreamHeaders(res) {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
+}
+
+function setEventStreamHeaders(res) {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+}
+
+function writeSseEvent(res, event, data) {
+  if (res.destroyed || res.writableEnded) return;
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function sanitizeMessages(input) {

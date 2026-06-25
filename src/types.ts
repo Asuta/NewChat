@@ -166,3 +166,29 @@ export interface WorldAgentResponse {
   world: WorldOverview;
   requestLog?: ModelRequestLog;
 }
+
+export type WorldAgentStreamEvent =
+  | {
+      type: 'start';
+      runId: number;
+    }
+  | {
+      type: 'step';
+      step: AgentStep;
+    }
+  | {
+      type: 'answer_delta';
+      delta: string;
+    }
+  | {
+      type: 'done';
+      answer: string;
+      runId: number;
+      steps: AgentStep[];
+      world: WorldOverview;
+      requestLog?: ModelRequestLog;
+    }
+  | {
+      type: 'error';
+      error: string;
+    };
