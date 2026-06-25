@@ -7,3 +7,6 @@ dist/
 dev-server*.log
 *.tsbuildinfo
 .newchat/
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm

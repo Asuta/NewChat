@@ -1,6 +1,6 @@
 # NewChat
 
-一个普通的本地 Chat 类应用：React + Vite 前端，Express 后端，支持 OpenAI 兼容的大模型接口和流式输出。
+一个本地游戏聊天项目：React + Vite 前端，Express 后端，支持 OpenAI 兼容的大模型接口，并通过 SQLite 世界数据库 + Agent Loop 读取和修改游戏世界。
 
 ## 启动
 
@@ -29,6 +29,41 @@ LLM_THINKING=disabled
 ```
 
 `LLM_BASE_URL` 使用 OpenAI 兼容的 `/chat/completions` 服务地址。DeepSeek 的 OpenAI 兼容地址是 `https://api.deepseek.com`。页面顶栏可以切换 `deepseek-v4-flash` / `deepseek-v4-pro`，也可以临时切换“思考 开/关”，会覆盖 `.env` 里的默认值。没有真实 key 时，可以设置 `LLM_MOCK=1` 验证本地流式 UI。
+
+## 固定上下文
+
+根目录的 `fixed-context.md` 是所有对话共享的固定上下文文件。内容为空时不会发送给模型，也不会在界面显示启用状态；写入内容后，每次聊天请求都会先发送这份固定上下文，再发送压缩摘要或动态对话历史。
+
+可以在页面右上角“更多”设置里编辑它，也可以直接修改 `fixed-context.md` 后刷新页面。这个文件会随 Git 提交同步，请不要在里面写 API Key、隐私信息或不希望公开的内容。
+
+## 游戏世界数据库
+
+首次启动后端时会自动创建 `data/newchat.sqlite`。它是游戏世界的唯一主数据源，用来保存长期存在的实体、组件、关系、事件、对话日志和 Agent 工具调用记录。
+
+核心结构：
+
+- `entities`：玩家、人物、场景、道具、任务、事件、阵营、设定条目。
+- `components`：挂在实体上的 JSON component，例如 `identity`、`scene`、`stats`、`status`、`memory`、`inventory`、`quest`、`schedule`。
+- `relationships`：实体之间的关系边，例如 `located_in`、`ownership`、`exit_to`、`knows`、`trust`、`mentions`。
+- `entity_aliases` + `entity_search_fts`：别名和 SQLite FTS 全文搜索。
+- `events`、`conversations`、`agent_runs`、`agent_steps`：世界事件、对话与 Agent 执行审计。
+
+`data/*.sqlite`、`data/*.sqlite-wal`、`data/*.sqlite-shm` 会被 `.gitignore` 忽略，避免把本地存档提交到公开仓库。`fixed-context.md` 只作为系统级固定提示，不存人物、道具、场景等世界数据。
+
+## 世界 Agent
+
+聊天发送后会进入后端 `/api/world/agent`。后端读取 `fixed-context.md`、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写世界。
+
+第一版工具包括：
+
+- `search_entities`：按名称、别名、FTS、类型、场景搜索实体。
+- `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
+- `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
+- `enter_scene`：校验出口并切换玩家当前场景。
+- `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
+- `finish`：结束本轮 Agent 任务并返回最终答复。
+
+前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 
 ### 多 worktree 共享配置
 

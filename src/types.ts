@@ -9,6 +9,8 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   status?: 'streaming' | 'done' | 'error';
+  agentRunId?: number;
+  agentSteps?: AgentStep[];
 }
 
 export interface Conversation {
@@ -17,7 +19,6 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
-  fixedContext?: FixedContext;
   contextSummary?: ContextSummary;
   contextMode?: ContextMode;
 }
@@ -41,5 +42,100 @@ export interface ContextSummary {
 
 export interface FixedContext {
   content: string;
-  updatedAt: number;
+  updatedAt: number | null;
+}
+
+export type EntityKind = 'player' | 'character' | 'scene' | 'item' | 'quest' | 'event' | 'faction' | 'lore';
+
+export interface WorldEntity {
+  id: string;
+  kind: EntityKind;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+  aliases?: string[];
+  locationId?: string | null;
+}
+
+export interface WorldRelationship {
+  id: number;
+  sourceEntityId: string;
+  targetEntityId: string;
+  type: string;
+  value: number | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorldSceneState {
+  playerId: string;
+  scene: WorldEntity | null;
+  sceneComponent: {
+    description?: string;
+    exits?: string[];
+    tags?: string[];
+    visibility?: string;
+  } | null;
+  residents: WorldEntity[];
+  items: WorldEntity[];
+  events: WorldEntity[];
+  exits: Array<{
+    relationship: WorldRelationship;
+    scene: WorldEntity;
+  }>;
+  relatedLore: WorldEntity[];
+}
+
+export interface WorldOverview {
+  currentScene: WorldSceneState;
+  counts: {
+    entities: number;
+    scenes: number;
+    characters: number;
+    items: number;
+    relationships: number;
+  };
+  recentAgentRuns: AgentRun[];
+}
+
+export interface EntityBundle {
+  entity: WorldEntity;
+  aliases: string[];
+  components: Record<string, unknown>;
+  relationships: WorldRelationship[];
+  events: Array<{
+    id: number;
+    type: string;
+    actorId: string | null;
+    targetId: string | null;
+    payload: Record<string, unknown>;
+    createdAt: string;
+  }>;
+}
+
+export interface AgentStep {
+  index?: number;
+  stepIndex?: number;
+  tool: string;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+}
+
+export interface AgentRun {
+  id: number;
+  prompt: string;
+  status: string;
+  answer: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  steps?: AgentStep[];
+}
+
+export interface WorldAgentResponse {
+  answer: string;
+  runId: number;
+  steps: AgentStep[];
+  world: WorldOverview;
 }

@@ -1,6 +1,6 @@
 import { Archive, Brain, ChevronDown, Loader2, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
-import type { ContextMode, Conversation, HealthState, ModelId, ThinkingMode } from '../types';
+import type { ContextMode, Conversation, FixedContext, HealthState, ModelId, ThinkingMode } from '../types';
 import { ConversationSettingsPanel } from './ConversationSettingsPanel';
 
 const MODEL_OPTIONS: Array<{ id: ModelId; label: string; description: string }> = [
@@ -20,8 +20,10 @@ interface TopBarProps {
   modelId: ModelId;
   thinkingMode: ThinkingMode;
   contextMode: ContextMode;
+  fixedContext: FixedContext;
   isStreaming: boolean;
   isCompressing: boolean;
+  isFixedContextSaving: boolean;
   canCompress: boolean;
   isSettingsOpen: boolean;
   onModelChange: (model: ModelId) => void;
@@ -40,8 +42,10 @@ export function TopBar({
   modelId,
   thinkingMode,
   contextMode,
+  fixedContext,
   isStreaming,
   isCompressing,
+  isFixedContextSaving,
   canCompress,
   isSettingsOpen,
   onModelChange,
@@ -59,7 +63,7 @@ export function TopBar({
   const configured = Boolean(health?.providerConfigured || health?.mock);
   const thinkingEnabled = thinkingMode === 'enabled';
   const contextModeLabel = CONTEXT_MODE_OPTIONS.find((option) => option.id === contextMode)?.label || '仅摘要';
-  const controlsDisabled = isStreaming || isCompressing;
+  const controlsDisabled = isStreaming || isCompressing || isFixedContextSaving;
 
   return (
     <header className="topbar">
@@ -180,6 +184,7 @@ export function TopBar({
       {isSettingsOpen ? (
         <ConversationSettingsPanel
           conversation={conversation}
+          fixedContext={fixedContext}
           disabled={controlsDisabled}
           onClose={() => onSettingsOpenChange(false)}
           onSaveFixedContext={onSaveFixedContext}

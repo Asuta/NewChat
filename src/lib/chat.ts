@@ -1,8 +1,9 @@
-import type { ChatMessage, ContextMode, Conversation, Role } from '../types';
+import type { AgentStep, ChatMessage, ContextMode, Conversation, FixedContext, Role } from '../types';
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
-export const FIXED_CONTEXT_PREFIX = '以下是本会话的固定上下文。它具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
+export const FIXED_CONTEXT_PREFIX = '以下是固定上下文。它来自项目根目录 fixed-context.md，具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
+export const AGENT_TOOL_CONTEXT_PREFIX = '以下是上一轮 Agent 工具调用的完整记录。它是当前对话上下文的一部分，用于延续玩家追问；不要把它当成玩家发言。';
 const RECENT_CONTEXT_MESSAGE_LIMIT = 6;
 
 export interface ModelMessage {
@@ -90,7 +91,12 @@ export function getConversationContextMode(conversation: Conversation): ContextM
   return conversation.contextMode || DEFAULT_CONTEXT_MODE;
 }
 
-export function buildModelMessages(conversation: Conversation, messages: ChatMessage[], excludedMessageId?: string): ModelMessage[] {
+export function buildModelMessages(
+  conversation: Conversation,
+  messages: ChatMessage[],
+  fixedContext: FixedContext,
+  excludedMessageId?: string,
+): ModelMessage[] {
   const cleanMessages = messages.filter(
     (message) =>
       message.id !== excludedMessageId &&
@@ -100,7 +106,7 @@ export function buildModelMessages(conversation: Conversation, messages: ChatMes
   );
   const contextMode = getConversationContextMode(conversation);
   const summary = conversation.contextSummary;
-  const fixedContextMessage = getFixedContextMessage(conversation);
+  const fixedContextMessage = getFixedContextMessage(fixedContext);
   const dynamicMessages = buildDynamicModelMessages(cleanMessages, summary, contextMode);
 
   return fixedContextMessage ? [fixedContextMessage, ...dynamicMessages] : dynamicMessages;
@@ -133,8 +139,8 @@ function buildDynamicModelMessages(
   return [summaryMessage, ...toModelMessages(recentCoveredMessages), ...toModelMessages(messagesAfterSummary)];
 }
 
-function getFixedContextMessage(conversation: Conversation): ModelMessage | null {
-  const content = conversation.fixedContext?.content.trim();
+function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null {
+  const content = fixedContext.content.trim();
   if (!content) return null;
 
   return {
@@ -149,8 +155,44 @@ export function getCompactableMessages(conversation: Conversation): ChatMessage[
   );
 }
 
+export function buildCompactMessages(conversation: Conversation): ModelMessage[] {
+  return toModelMessages(getCompactableMessages(conversation));
+}
+
 function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
-  return messages.map((message) => ({ role: message.role, content: message.content }));
+  return messages.flatMap((message) => {
+    const output: ModelMessage[] = [];
+    if (message.role === 'assistant' && message.agentSteps?.length) {
+      output.push({
+        role: 'system',
+        content: formatAgentStepsForContext(message.agentSteps, message.agentRunId),
+      });
+    }
+    output.push({ role: message.role, content: message.content });
+    return output;
+  });
+}
+
+export function formatAgentStepsForContext(steps: AgentStep[], runId?: number): string {
+  const header = [AGENT_TOOL_CONTEXT_PREFIX, runId ? `Agent Run ID: ${runId}` : null, `工具调用数量：${steps.length}`]
+    .filter(Boolean)
+    .join('\n');
+
+  return [
+    header,
+    ...steps.map((step, index) =>
+      [
+        `\n[工具调用 ${index + 1}]`,
+        `工具名：${step.tool}`,
+        `参数：${formatJson(step.args)}`,
+        `返回：${formatJson(step.result)}`,
+      ].join('\n'),
+    ),
+  ].join('\n');
+}
+
+function formatJson(value: unknown) {
+  return JSON.stringify(value ?? null, null, 2);
 }
 
 function emptyConversation(title: string, updatedAt: number): Conversation {

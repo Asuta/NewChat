@@ -1,9 +1,26 @@
 import express from 'express';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  applyWorldPatch,
+  enterScene,
+  getCurrentScene,
+  getEntityBundle,
+  getWorldOverview,
+  listRelationships,
+  migrateWorldDb,
+  rebuildSearchIndex,
+  searchEntities,
+  seedWorldIfEmpty,
+} from './worldDb.js';
+import { executeWorldTool, getAgentHistory, runWorldAgentTask } from './worldAgent.js';
+import { listWorldSchemas } from './worldSchemas.js';
 
 const loadedConfigFiles = loadRuntimeConfig();
+migrateWorldDb();
+seedWorldIfEmpty();
+rebuildSearchIndex();
 
 const app = express();
 const HOST = '127.0.0.1';
@@ -11,9 +28,10 @@ const DEFAULT_PORT = 8787;
 const PORT = parsePort(process.env.PORT, DEFAULT_PORT);
 const MAX_PORT_ATTEMPTS = 20;
 const DEV_PORT_FILE = resolve(process.cwd(), '.newchat', 'server-port');
+const FIXED_CONTEXT_FILE = resolve(process.cwd(), 'fixed-context.md');
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const AVAILABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
-const FIXED_CONTEXT_PREFIX = '以下是本会话的固定上下文。';
+const FIXED_CONTEXT_PREFIX = '以下是固定上下文。';
 const COMPACT_SYSTEM_PROMPT =
   '你是一个对话上下文压缩助手。请用中文总结给定聊天记录，保留用户目标、关键事实、已达成结论、未解决问题、重要偏好和后续需要延续的上下文。不要添加原对话没有的信息。输出一段清晰、紧凑、可直接作为后续大模型上下文的摘要。';
 
@@ -30,6 +48,106 @@ app.get('/api/health', (_req, res) => {
     availableModels: AVAILABLE_MODELS,
     configFiles: loadedConfigFiles,
   });
+});
+
+app.get('/api/fixed-context', (_req, res) => {
+  res.json(readFixedContextFile());
+});
+
+app.put('/api/fixed-context', (req, res) => {
+  const content = typeof req.body?.content === 'string' ? req.body.content : '';
+  writeFileSync(FIXED_CONTEXT_FILE, content, 'utf8');
+  res.json(readFixedContextFile());
+});
+
+app.get('/api/world', (_req, res) => {
+  res.json(getWorldOverview());
+});
+
+app.get('/api/world/schemas', (_req, res) => {
+  res.json(listWorldSchemas());
+});
+
+app.get('/api/world/current-scene', (_req, res) => {
+  res.json(getCurrentScene());
+});
+
+app.get('/api/world/entities', (req, res) => {
+  res.json({
+    entities: searchEntities({
+      query: String(req.query.query || ''),
+      kind: String(req.query.kind || ''),
+      sceneId: String(req.query.sceneId || ''),
+      limit: Number(req.query.limit || 24),
+    }),
+  });
+});
+
+app.get('/api/world/entities/:entityId', (req, res) => {
+  const bundle = getEntityBundle(req.params.entityId);
+  if (!bundle) {
+    res.status(404).json({ error: `实体 ${req.params.entityId} 不存在。` });
+    return;
+  }
+  res.json(bundle);
+});
+
+app.get('/api/world/relationships', (req, res) => {
+  res.json({
+    relationships: listRelationships({
+      entityId: String(req.query.entityId || ''),
+      direction: String(req.query.direction || 'both'),
+      type: req.query.type ? String(req.query.type) : undefined,
+    }),
+  });
+});
+
+app.post('/api/world/scene/enter', (req, res) => {
+  try {
+    res.json(enterScene(String(req.body?.sceneId || '')));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : '场景切换失败。' });
+  }
+});
+
+app.post('/api/world/patch', (req, res) => {
+  try {
+    res.json(
+      applyWorldPatch({
+        operations: Array.isArray(req.body?.operations) ? req.body.operations : [],
+        confirmedTargetIds: Array.isArray(req.body?.confirmedTargetIds) ? req.body.confirmedTargetIds : [],
+        dryRun: req.body?.dryRun === true,
+        prompt: typeof req.body?.prompt === 'string' ? req.body.prompt : '',
+      }),
+    );
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : '世界数据写入失败。' });
+  }
+});
+
+app.post('/api/world/tools/:tool', (req, res) => {
+  const result = executeWorldTool(req.params.tool, req.body || {}, typeof req.body?.prompt === 'string' ? req.body.prompt : '');
+  res.status(result.ok === false ? 400 : 200).json(result);
+});
+
+app.post('/api/world/agent', async (req, res) => {
+  try {
+    const fixedContext = readFixedContextFile().content;
+    const result = await runWorldAgentTask({
+      prompt: req.body?.prompt,
+      model: req.body?.model,
+      thinking: req.body?.thinking,
+      fixedContext,
+      conversationContext: sanitizeMessages(req.body?.messages),
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : '世界 Agent 执行失败。' });
+  }
+});
+
+app.get('/api/world/agent/runs', (_req, res) => {
+  res.json({ runs: getAgentHistory() });
 });
 
 app.post('/api/chat/stream', async (req, res) => {
@@ -194,6 +312,21 @@ function listenWithPortFallback(startPort) {
 function writeDevPortFile(port) {
   mkdirSync(resolve(process.cwd(), '.newchat'), { recursive: true });
   writeFileSync(DEV_PORT_FILE, String(port), 'utf8');
+}
+
+function readFixedContextFile() {
+  if (!existsSync(FIXED_CONTEXT_FILE)) {
+    return {
+      content: '',
+      updatedAt: null,
+    };
+  }
+
+  const stat = statSync(FIXED_CONTEXT_FILE);
+  return {
+    content: readFileSync(FIXED_CONTEXT_FILE, 'utf8'),
+    updatedAt: Math.round(stat.mtimeMs),
+  };
 }
 
 function loadRuntimeConfig() {

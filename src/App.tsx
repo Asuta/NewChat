@@ -3,8 +3,10 @@ import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
+import { WorldPanel } from './components/WorldPanel';
 import {
   buildModelMessages,
+  buildCompactMessages,
   createConversation,
   createMessage,
   getCompactableMessages,
@@ -13,11 +15,24 @@ import {
   saveConversations,
   titleFromMessage,
 } from './lib/chat';
-import type { ChatMessage, ContextMode, Conversation, HealthState, ModelId } from './types';
+import type {
+  AgentStep,
+  ChatMessage,
+  ContextMode,
+  Conversation,
+  EntityBundle,
+  FixedContext,
+  HealthState,
+  ModelId,
+  WorldAgentResponse,
+  WorldEntity,
+  WorldOverview,
+} from './types';
 import type { ThinkingMode } from './types';
 
 const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
+const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', updatedAt: null };
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(getInitialConversations);
@@ -25,8 +40,14 @@ export default function App() {
   const [health, setHealth] = useState<HealthState | null>(null);
   const [modelId, setModelId] = useState<ModelId>(getInitialModelId);
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(getInitialThinkingMode);
+  const [fixedContext, setFixedContext] = useState<FixedContext>(EMPTY_FIXED_CONTEXT);
+  const [world, setWorld] = useState<WorldOverview | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
+  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isWorldLoading, setIsWorldLoading] = useState(false);
+  const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -61,6 +82,13 @@ export default function App() {
         }
       })
       .catch(() => setHealth(null));
+
+    fetch('/api/fixed-context')
+      .then((response) => response.json())
+      .then((state: FixedContext) => setFixedContext(normalizeFixedContext(state)))
+      .catch(() => setFixedContext(EMPTY_FIXED_CONTEXT));
+
+    void refreshWorld();
   }, []);
 
   useEffect(() => {
@@ -83,13 +111,13 @@ export default function App() {
   }
 
   async function sendMessage(content: string) {
-    if (!activeConversation || isStreaming || isCompressing) return;
+    if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving) return;
 
     const userMessage = createMessage('user', content);
     const assistantMessage = createMessage('assistant', '', 'streaming');
     const shouldRename = activeConversation.messages.length === 0 && activeConversation.title === '新对话';
     const nextMessages = [...activeConversation.messages, userMessage, assistantMessage];
-    const requestMessages = buildModelMessages(activeConversation, nextMessages, assistantMessage.id);
+    const requestMessages = buildModelMessages(activeConversation, nextMessages, EMPTY_FIXED_CONTEXT, assistantMessage.id);
 
     updateActiveConversation((conversation) => ({
       ...conversation,
@@ -104,35 +132,29 @@ export default function App() {
     abortRef.current = controller;
 
     try {
-      const response = await fetch('/api/chat/stream', {
+      const response = await fetch('/api/world/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: modelId,
           thinking: thinkingMode,
+          prompt: content,
           messages: requestMessages,
         }),
         signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) {
-        const message = await response.text();
-        throw new Error(message || `请求失败：${response.status}`);
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantContent = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        assistantContent += decoder.decode(value, { stream: true });
-        updateAssistantMessage(assistantMessage.id, assistantContent, 'streaming');
-      }
-
-      updateAssistantMessage(assistantMessage.id, assistantContent || '模型没有返回内容。', 'done');
+      const data = (await response.json()) as WorldAgentResponse;
+      setAgentSteps(data.steps || []);
+      setWorld(data.world);
+      updateAssistantMessage(assistantMessage.id, data.answer || '世界 Agent 没有返回内容。', 'done', {
+        agentRunId: data.runId,
+        agentSteps: data.steps || [],
+      });
     } catch (caught) {
       if (controller.signal.aborted) {
         updateAssistantMessage(assistantMessage.id, '已停止生成。', 'error');
@@ -147,7 +169,12 @@ export default function App() {
     }
   }
 
-  function updateAssistantMessage(messageId: string, content: string, status: ChatMessage['status']) {
+  function updateAssistantMessage(
+    messageId: string,
+    content: string,
+    status: ChatMessage['status'],
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> = {},
+  ) {
     updateActiveConversation((conversation) => ({
       ...conversation,
       updatedAt: Date.now(),
@@ -157,6 +184,7 @@ export default function App() {
               ...message,
               content,
               status,
+              ...metadata,
             }
           : message,
       ),
@@ -185,7 +213,7 @@ export default function App() {
         body: JSON.stringify({
           model: modelId,
           thinking: thinkingMode,
-          messages: compactableMessages.map((message) => ({ role: message.role, content: message.content })),
+          messages: buildCompactMessages(activeConversation),
         }),
       });
 
@@ -231,28 +259,30 @@ export default function App() {
     }));
   }
 
-  function saveFixedContext(content: string) {
-    if (!activeConversation || isStreaming || isCompressing) return;
-    const trimmed = content.trim();
-    updateActiveConversation((conversation) => ({
-      ...conversation,
-      fixedContext: trimmed
-        ? {
-            content: trimmed,
-            updatedAt: Date.now(),
-          }
-        : undefined,
-      updatedAt: Date.now(),
-    }));
+  async function saveFixedContext(content: string) {
+    if (isStreaming || isCompressing || isFixedContextSaving) return;
+    setIsFixedContextSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/fixed-context', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const state = (await response.json()) as FixedContext;
+      setFixedContext(normalizeFixedContext(state));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '固定上下文保存失败。');
+    } finally {
+      setIsFixedContextSaving(false);
+    }
   }
 
   function clearFixedContext() {
-    if (!activeConversation || isStreaming || isCompressing) return;
-    updateActiveConversation((conversation) => ({
-      ...conversation,
-      fixedContext: undefined,
-      updatedAt: Date.now(),
-    }));
+    void saveFixedContext('');
   }
 
   function clearCurrentChat() {
@@ -265,6 +295,88 @@ export default function App() {
       contextSummary: undefined,
     }));
     setError(null);
+  }
+
+  async function refreshWorld() {
+    setIsWorldLoading(true);
+    try {
+      const response = await fetch('/api/world');
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setWorld((await response.json()) as WorldOverview);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '世界数据库读取失败。');
+    } finally {
+      setIsWorldLoading(false);
+    }
+  }
+
+  async function selectWorldEntity(entityId: string) {
+    setIsWorldLoading(true);
+    try {
+      const response = await fetch(`/api/world/entities/${encodeURIComponent(entityId)}`);
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setSelectedEntity((await response.json()) as EntityBundle);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '实体详情读取失败。');
+    } finally {
+      setIsWorldLoading(false);
+    }
+  }
+
+  async function searchWorld(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      await refreshWorld();
+      return;
+    }
+
+    setIsWorldLoading(true);
+    try {
+      const response = await fetch(`/api/world/entities?query=${encodeURIComponent(trimmed)}&limit=1`);
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const data = (await response.json()) as { entities?: WorldEntity[] };
+      const first = data.entities?.[0];
+      if (!first) {
+        setError(`没有找到“${trimmed}”。`);
+        return;
+      }
+      await selectWorldEntity(first.id);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '世界搜索失败。');
+    } finally {
+      setIsWorldLoading(false);
+    }
+  }
+
+  async function enterWorldScene(sceneId: string) {
+    if (isStreaming || isCompressing) return;
+    setIsWorldLoading(true);
+    try {
+      const response = await fetch('/api/world/scene/enter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const currentScene = await response.json();
+      await refreshWorld();
+      setAgentSteps((current) => [
+        ...current.slice(-4),
+        {
+          tool: 'enter_scene',
+          args: { sceneId },
+          result: {
+            summary: `玩家进入 ${currentScene.scene?.name || sceneId}。`,
+          },
+        },
+      ]);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '场景切换失败。');
+    } finally {
+      setIsWorldLoading(false);
+    }
   }
 
   if (!activeConversation) {
@@ -287,8 +399,10 @@ export default function App() {
           health={health}
           isStreaming={isStreaming}
           isCompressing={isCompressing}
+          isFixedContextSaving={isFixedContextSaving}
           canCompress={getCompactableMessages(activeConversation).length > 0}
           isSettingsOpen={isSettingsOpen}
+          fixedContext={fixedContext}
           modelId={modelId}
           onModelChange={setModelId}
           thinkingMode={thinkingMode}
@@ -301,11 +415,33 @@ export default function App() {
           onClearFixedContext={clearFixedContext}
           onClearChat={clearCurrentChat}
         />
-        <ChatThread conversation={activeConversation} error={error} onOpenSettings={() => setIsSettingsOpen(true)} />
-        <Composer isStreaming={isStreaming} isDisabled={isCompressing} onSend={sendMessage} onStop={stopStreaming} />
+        <ChatThread
+          conversation={activeConversation}
+          error={error}
+          fixedContext={fixedContext}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <Composer isStreaming={isStreaming} isDisabled={isCompressing || isFixedContextSaving} onSend={sendMessage} onStop={stopStreaming} />
       </section>
+      <WorldPanel
+        world={world}
+        selectedEntity={selectedEntity}
+        agentSteps={agentSteps}
+        isLoading={isWorldLoading}
+        onRefresh={refreshWorld}
+        onEnterScene={enterWorldScene}
+        onSearch={searchWorld}
+        onSelectEntity={selectWorldEntity}
+      />
     </main>
   );
+}
+
+function normalizeFixedContext(state: Partial<FixedContext> | null | undefined): FixedContext {
+  return {
+    content: typeof state?.content === 'string' ? state.content : '',
+    updatedAt: typeof state?.updatedAt === 'number' ? state.updatedAt : null,
+  };
 }
 
 async function readErrorMessage(response: Response) {
