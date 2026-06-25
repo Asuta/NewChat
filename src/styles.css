@@ -1220,6 +1220,36 @@ button {
   font-size: 14px;
 }
 
+.scene-transition-row {
+  display: flex;
+  justify-content: center;
+}
+
+.scene-transition-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(620px, 70%);
+  gap: 8px;
+  border: 1px solid rgba(99, 111, 132, 0.16);
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: rgba(244, 247, 251, 0.82);
+  color: #5c687a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.scene-transition-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-transition-pill time {
+  flex: 0 0 auto;
+  color: #8b95a6;
+}
+
 .assistant-actions {
   display: inline-flex;
   align-items: center;

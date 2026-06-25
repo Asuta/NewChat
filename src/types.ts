@@ -8,9 +8,16 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
+  kind?: 'scene-transition';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
+  sceneTransition?: {
+    fromSceneId?: string | null;
+    fromSceneName: string;
+    toSceneId?: string | null;
+    toSceneName: string;
+  };
 }
 
 export interface Conversation {

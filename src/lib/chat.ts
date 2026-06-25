@@ -4,6 +4,7 @@ const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
 export const FIXED_CONTEXT_PREFIX = '以下是固定上下文包。它来自项目根目录 context/*.md，具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
 export const AGENT_TOOL_CONTEXT_PREFIX = '以下是上一轮 Agent 工具调用的完整记录。它是当前对话上下文的一部分，用于延续玩家追问；不要把它当成玩家发言。';
+export const SCENE_TRANSITION_CONTEXT_PREFIX = '以下是玩家在界面中主动触发的场景移动记录。它是当前对话上下文的一部分，用于判断玩家当前位置。';
 const RECENT_CONTEXT_MESSAGE_LIMIT = 6;
 
 export interface ModelMessage {
@@ -29,6 +30,28 @@ export function createMessage(role: ChatMessage['role'], content: string, status
     content,
     createdAt: Date.now(),
     status,
+  };
+}
+
+export function createSceneTransitionMessage({
+  fromSceneId,
+  fromSceneName,
+  toSceneId,
+  toSceneName,
+}: NonNullable<ChatMessage['sceneTransition']>): ChatMessage {
+  return {
+    id: createId('scene'),
+    role: 'system',
+    kind: 'scene-transition',
+    content: `当前玩家从 ${fromSceneName} 移动到 ${toSceneName}`,
+    createdAt: Date.now(),
+    status: 'done',
+    sceneTransition: {
+      fromSceneId,
+      fromSceneName,
+      toSceneId,
+      toSceneName,
+    },
   };
 }
 
@@ -100,7 +123,7 @@ export function buildModelMessages(
   const cleanMessages = messages.filter(
     (message) =>
       message.id !== excludedMessageId &&
-      message.role !== 'system' &&
+      (message.role !== 'system' || message.kind === 'scene-transition') &&
       message.status !== 'streaming' &&
       message.content.trim(),
   );
@@ -151,7 +174,7 @@ function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null
 
 export function getCompactableMessages(conversation: Conversation): ChatMessage[] {
   return conversation.messages.filter(
-    (message) => message.role !== 'system' && message.status !== 'streaming' && message.content.trim(),
+    (message) => (message.role !== 'system' || message.kind === 'scene-transition') && message.status !== 'streaming' && message.content.trim(),
   );
 }
 
@@ -162,6 +185,13 @@ export function buildCompactMessages(conversation: Conversation): ModelMessage[]
 function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
   return messages.flatMap((message) => {
     const output: ModelMessage[] = [];
+    if (message.kind === 'scene-transition') {
+      output.push({
+        role: 'system',
+        content: formatSceneTransitionForContext(message),
+      });
+      return output;
+    }
     if (message.role === 'assistant' && message.agentSteps?.length) {
       output.push({
         role: 'system',
@@ -204,6 +234,14 @@ function emptyConversation(title: string, updatedAt: number): Conversation {
     contextMode: DEFAULT_CONTEXT_MODE,
     messages: [],
   };
+}
+
+function formatSceneTransitionForContext(message: ChatMessage): string {
+  const transition = message.sceneTransition;
+  if (!transition) {
+    return `${SCENE_TRANSITION_CONTEXT_PREFIX}\n\n场景变更：${message.content}。`;
+  }
+  return `${SCENE_TRANSITION_CONTEXT_PREFIX}\n\n场景变更：当前玩家从「${transition.fromSceneName}」移动到「${transition.toSceneName}」。`;
 }
 
 function createSeedMessage(role: ChatMessage['role'], content: string, createdAt: number): ChatMessage {

@@ -1,4 +1,4 @@
-import { Bot, CheckCheck, Copy, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Bot, CheckCheck, Copy, MapPinned, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
 
@@ -7,6 +7,18 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
+  if (message.kind === 'scene-transition') {
+    return (
+      <article className="scene-transition-row" aria-label="场景移动记录">
+        <div className="scene-transition-pill">
+          <MapPinned size={15} />
+          <span>{message.content}</span>
+          <time>{formatTime(message.createdAt)}</time>
+        </div>
+      </article>
+    );
+  }
+
   const isUser = message.role === 'user';
 
   return (

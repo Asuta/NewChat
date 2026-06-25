@@ -9,6 +9,7 @@ import {
   buildCompactMessages,
   createConversation,
   createMessage,
+  createSceneTransitionMessage,
   getCompactableMessages,
   getConversationContextMode,
   getInitialConversations,
@@ -417,6 +418,7 @@ export default function App() {
 
   async function enterWorldScene(sceneId: string) {
     if (isStreaming || isCompressing) return;
+    const previousScene = world?.currentScene.scene;
     setIsWorldLoading(true);
     try {
       const response = await fetch('/api/world/scene/enter', {
@@ -427,16 +429,19 @@ export default function App() {
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const currentScene = await response.json();
       await refreshWorld();
-      setAgentSteps((current) => [
-        ...current.slice(-4),
-        {
-          tool: 'enter_scene',
-          args: { sceneId },
-          result: {
-            summary: `玩家进入 ${currentScene.scene?.name || sceneId}。`,
-          },
-        },
-      ]);
+      const fromSceneName = previousScene?.name || '未知场景';
+      const toSceneName = currentScene.scene?.name || sceneId;
+      const transitionMessage = createSceneTransitionMessage({
+        fromSceneId: previousScene?.id || null,
+        fromSceneName,
+        toSceneId: currentScene.scene?.id || sceneId,
+        toSceneName,
+      });
+      updateActiveConversation((conversation) => ({
+        ...conversation,
+        updatedAt: Date.now(),
+        messages: [...conversation.messages, transitionMessage],
+      }));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '场景切换失败。');
