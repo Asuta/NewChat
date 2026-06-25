@@ -32,17 +32,24 @@ LLM_THINKING=disabled
 
 ## 固定上下文
 
-根目录的 `context/` 是所有对话共享的固定上下文包。后端会读取其中带数字前缀的 `.md` 文件，例如 `001-user-fixed-context.md`、`010-world-agent-role.md`、`020-world-agent-tools.md`，按数字从小到大拼接后发送给模型。
+根目录的 `context/` 是项目自带的出厂固定上下文模板。首次启动时，后端会把它复制到 `data/template/context/` 作为当前世界模板，再复制到 `data/save/context/` 作为玩家当前存档。运行时真正发送给模型、并且会被设置页编辑的是 `data/save/context/*.md`。
 
-页面右上角“更多”设置里可以编辑 `context/001-user-fixed-context.md`，也可以直接修改 `context/` 下的 Markdown 文件后刷新页面。`001-user-fixed-context.md` 适合写项目长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改、输出什么 JSON 格式。
+后端会读取当前存档 `data/save/context/` 中带数字前缀的 `.md` 文件，例如 `001-user-fixed-context.md`、`010-world-agent-role.md`、`020-world-agent-tools.md`，按数字从小到大拼接后发送给模型。没有数字前缀的 `.md` 不会加载，避免顺序不明确。
 
-`context/025-world-schema.generated.md` 由后端根据 `server/worldSchemas.js` 自动生成，用来把实体类型、组件类型和关系类型放进固定上下文包。这样模型仍能看到真实 schema，但每次动态请求里不再重复携带 `schemas` 字段。
+页面右上角“更多”设置里可以编辑 `data/save/context/001-user-fixed-context.md`。`001-user-fixed-context.md` 适合写当前玩家存档里的长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改、输出什么 JSON 格式。
 
-`context/` 下的文档会随 Git 提交同步，请不要在里面写 API Key、隐私信息或不希望公开的内容。真正的工具白名单、数据库写入校验和权限边界仍在后端代码里，Markdown 只负责给模型提供说明。
+`025-world-schema.generated.md` 由后端根据 `server/worldSchemas.js` 自动生成，用来把实体类型、组件类型和关系类型放进固定上下文包。这样模型仍能看到真实 schema，但每次动态请求里不再重复携带 `schemas` 字段。
+
+根目录 `context/` 会随 Git 提交同步，适合放出厂默认说明；运行时个性化内容会进入 `data/save/context/`。无论写在哪个 Markdown 里，都不要放 API Key 或隐私信息。真正的工具白名单、数据库写入校验和权限边界仍在后端代码里，Markdown 只负责给模型提供说明。
 
 ## 游戏世界数据库
 
-首次启动后端时会自动创建 `data/newchat.sqlite`。它是游戏世界的唯一主数据源，用来保存长期存在的实体、组件、关系、事件、对话日志和 Agent 工具调用记录。
+首次启动后端时会自动创建两份世界数据：
+
+- `data/template/`：当前世界模板，包含模板 SQLite 和模板固定上下文。重置存档会回到这里。
+- `data/save/`：当前玩家存档，包含可变 SQLite、可变固定上下文和前端可导出的聊天记录。
+
+运行时世界读取、AI 写入和固定上下文编辑都只作用于 `data/save/`。根目录 `context/` 和代码里的 seed 只作为出厂初始来源，不会被玩家游玩直接修改。
 
 核心结构：
 
@@ -52,11 +59,18 @@ LLM_THINKING=disabled
 - `entity_aliases` + `entity_search_fts`：别名和 SQLite FTS 全文搜索。
 - `events`、`conversations`、`agent_runs`、`agent_steps`：世界事件、对话与 Agent 执行审计。
 
-`data/*.sqlite`、`data/*.sqlite-wal`、`data/*.sqlite-shm` 会被 `.gitignore` 忽略，避免把本地存档提交到公开仓库。`context/` 只作为系统级固定提示，不存人物、道具、场景等世界数据。
+`data/template/`、`data/save/`、`data/*.sqlite`、`data/*.sqlite-wal`、`data/*.sqlite-shm` 会被 `.gitignore` 忽略，避免把本地模板和存档提交到公开仓库。
+
+设置页的数据管理功能提供：
+
+- `重置当前存档`：用 `data/template/` 覆盖 `data/save/`，并清空当前聊天。
+- `导出基础世界`：导出当前模板世界和模板固定上下文，不包含聊天记录。
+- `导出完整存档`：导出当前模板、当前玩家存档、当前固定上下文和浏览器聊天记录。
+- `导入世界包`：导入 `.newchat-save.json` 后覆盖当前模板和当前存档；如果包里有聊天记录，前端会恢复到 localStorage。
 
 ## 世界 Agent
 
-聊天发送后会进入后端 `/api/world/agent`。后端读取 `context/*.md` 固定上下文包、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写世界。
+聊天发送后会进入后端 `/api/world/agent`。后端读取 `data/save/context/*.md` 固定上下文包、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写当前玩家存档。
 
 第一版工具包括：
 

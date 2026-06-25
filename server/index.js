@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   applyWorldPatch,
+  checkpointWorldDb,
   enterScene,
   getCurrentScene,
   getEntityBundle,
@@ -11,17 +12,27 @@ import {
   listRelationships,
   migrateWorldDb,
   rebuildSearchIndex,
+  restoreWorldDbFromFile,
   searchEntities,
   seedWorldIfEmpty,
 } from './worldDb.js';
 import { executeWorldTool, getAgentHistory, runWorldAgentTask, runWorldAgentTaskStream } from './worldAgent.js';
 import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
+import {
+  createSaveExportBundle,
+  ensureTemplateDbFromSaveIfMissing,
+  importSaveBundle,
+  resetSaveToTemplate,
+  TEMPLATE_DB_FILE,
+} from './saveManager.js';
 
 const loadedConfigFiles = loadRuntimeConfig();
 migrateWorldDb();
 seedWorldIfEmpty();
 rebuildSearchIndex();
+checkpointWorldDb();
+ensureTemplateDbFromSaveIfMissing();
 
 const app = express();
 const HOST = '127.0.0.1';
@@ -35,7 +46,7 @@ const FIXED_CONTEXT_PREFIX = '以下是固定上下文。';
 const COMPACT_SYSTEM_PROMPT =
   '你是一个对话上下文压缩助手。请用中文总结给定聊天记录，保留用户目标、关键事实、已达成结论、未解决问题、重要偏好和后续需要延续的上下文。不要添加原对话没有的信息。输出一段清晰、紧凑、可直接作为后续大模型上下文的摘要。';
 
-app.use(express.json({ limit: '4mb' }));
+app.use(express.json({ limit: '64mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -58,6 +69,51 @@ app.put('/api/fixed-context', (req, res) => {
   const content = typeof req.body?.content === 'string' ? req.body.content : '';
   writeUserFixedContext(content);
   res.json(readFixedContextBundle());
+});
+
+app.post('/api/save/reset', (_req, res) => {
+  try {
+    checkpointWorldDb();
+    restoreWorldDbFromFile(TEMPLATE_DB_FILE);
+    resetSaveToTemplate();
+    refreshWorldRuntime();
+    res.json({
+      world: getWorldOverview(),
+      fixedContext: readFixedContextBundle(),
+      conversations: null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || '重置存档失败。' });
+  }
+});
+
+app.get('/api/save/export', (req, res) => {
+  try {
+    const mode = req.query.mode === 'full' ? 'full' : 'template';
+    checkpointWorldDb();
+    const bundle = createSaveExportBundle(mode);
+    const suffix = mode === 'full' ? 'full' : 'template';
+    res.setHeader('Content-Disposition', `attachment; filename="newchat-${suffix}.newchat-save.json"`);
+    res.json(bundle);
+  } catch (error) {
+    res.status(500).json({ error: error.message || '导出世界包失败。' });
+  }
+});
+
+app.post('/api/save/import', (req, res) => {
+  try {
+    checkpointWorldDb();
+    const result = importSaveBundle(req.body);
+    restoreWorldDbFromFile(result.saveDbFile);
+    refreshWorldRuntime();
+    res.json({
+      world: getWorldOverview(),
+      fixedContext: readFixedContextBundle(),
+      conversations: result.conversations,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message || '导入世界包失败。' });
+  }
 });
 
 app.get('/api/world', (_req, res) => {
@@ -381,6 +437,13 @@ function loadRuntimeConfig() {
   }
 
   return loaded;
+}
+
+function refreshWorldRuntime() {
+  migrateWorldDb();
+  seedWorldIfEmpty();
+  rebuildSearchIndex();
+  checkpointWorldDb();
 }
 
 function parsePort(value, fallback) {

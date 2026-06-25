@@ -174,6 +174,14 @@ export interface WorldAgentResponse {
   requestLog?: ModelRequestLog;
 }
 
+export type SaveExportMode = 'template' | 'full';
+
+export interface SaveDataResponse {
+  world: WorldOverview;
+  fixedContext: FixedContext;
+  conversations?: Conversation[] | null;
+}
+
 export type WorldAgentStreamEvent =
   | {
       type: 'start';

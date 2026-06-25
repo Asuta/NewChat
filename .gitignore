@@ -10,3 +10,5 @@ dev-server*.log
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
+data/template/
+data/save/

@@ -1,6 +1,15 @@
 import { Archive, Brain, ChevronDown, Loader2, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
-import type { ContextMode, Conversation, FixedContext, HealthState, ModelId, ModelRequestLog, ThinkingMode } from '../types';
+import type {
+  ContextMode,
+  Conversation,
+  FixedContext,
+  HealthState,
+  ModelId,
+  ModelRequestLog,
+  SaveExportMode,
+  ThinkingMode,
+} from '../types';
 import { ConversationSettingsPanel } from './ConversationSettingsPanel';
 
 const MODEL_OPTIONS: Array<{ id: ModelId; label: string; description: string }> = [
@@ -25,6 +34,7 @@ interface TopBarProps {
   isStreaming: boolean;
   isCompressing: boolean;
   isFixedContextSaving: boolean;
+  isSaveDataBusy: boolean;
   canCompress: boolean;
   isSettingsOpen: boolean;
   onModelChange: (model: ModelId) => void;
@@ -35,6 +45,9 @@ interface TopBarProps {
   onSaveFixedContext: (content: string) => void;
   onClearFixedContext: () => void;
   onClearChat: () => void;
+  onResetSaveData: () => void;
+  onExportSaveData: (mode: SaveExportMode) => void;
+  onImportSaveData: (file: File) => void;
 }
 
 export function TopBar({
@@ -48,6 +61,7 @@ export function TopBar({
   isStreaming,
   isCompressing,
   isFixedContextSaving,
+  isSaveDataBusy,
   canCompress,
   isSettingsOpen,
   onModelChange,
@@ -58,6 +72,9 @@ export function TopBar({
   onSaveFixedContext,
   onClearFixedContext,
   onClearChat,
+  onResetSaveData,
+  onExportSaveData,
+  onImportSaveData,
 }: TopBarProps) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -65,7 +82,7 @@ export function TopBar({
   const configured = Boolean(health?.providerConfigured || health?.mock);
   const thinkingEnabled = thinkingMode === 'enabled';
   const contextModeLabel = CONTEXT_MODE_OPTIONS.find((option) => option.id === contextMode)?.label || '仅摘要';
-  const controlsDisabled = isStreaming || isCompressing || isFixedContextSaving;
+  const controlsDisabled = isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy;
 
   return (
     <header className="topbar">
@@ -193,6 +210,10 @@ export function TopBar({
           onSaveFixedContext={onSaveFixedContext}
           onClearFixedContext={onClearFixedContext}
           onClearChat={onClearChat}
+          onResetSaveData={onResetSaveData}
+          onExportSaveData={onExportSaveData}
+          onImportSaveData={onImportSaveData}
+          isSaveDataBusy={isSaveDataBusy}
         />
       ) : null}
     </header>

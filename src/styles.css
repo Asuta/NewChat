@@ -843,6 +843,55 @@ button {
   white-space: pre-wrap;
 }
 
+.save-data-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(57, 126, 88, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f7fcf8;
+}
+
+.save-data-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #243a2d;
+}
+
+.save-data-panel-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.save-data-panel-header strong {
+  font-size: 14px;
+}
+
+.save-data-panel-header span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.save-data-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.save-data-actions button {
+  justify-content: center;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .model-request-log {
   display: grid;
   gap: 10px;

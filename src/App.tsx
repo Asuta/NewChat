@@ -26,6 +26,8 @@ import type {
   HealthState,
   ModelRequestLog,
   ModelId,
+  SaveDataResponse,
+  SaveExportMode,
   WorldAgentStreamEvent,
   WorldEntity,
   WorldOverview,
@@ -51,6 +53,7 @@ export default function App() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [isWorldLoading, setIsWorldLoading] = useState(false);
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
+  const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -364,6 +367,93 @@ export default function App() {
     setError(null);
   }
 
+  async function resetSaveData() {
+    if (isStreaming || isCompressing || isSaveDataBusy) return;
+    if (!window.confirm('重置会用当前世界模板覆盖玩家存档，并清空当前聊天记录。确定继续吗？')) return;
+
+    setIsSaveDataBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/save/reset', { method: 'POST' });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const state = (await response.json()) as SaveDataResponse;
+      applySaveDataResponse(state, { resetConversations: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '重置存档失败。');
+    } finally {
+      setIsSaveDataBusy(false);
+    }
+  }
+
+  async function exportSaveData(mode: SaveExportMode) {
+    if (isSaveDataBusy) return;
+
+    setIsSaveDataBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/save/export?mode=${mode}`);
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const bundle = (await response.json()) as Record<string, unknown> & {
+        save?: Record<string, unknown>;
+      };
+
+      if (mode === 'full') {
+        bundle.save = {
+          ...(bundle.save || {}),
+          conversations,
+        };
+      }
+
+      downloadJsonBundle(bundle, mode);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '导出世界包失败。');
+    } finally {
+      setIsSaveDataBusy(false);
+    }
+  }
+
+  async function importSaveData(file: File) {
+    if (isStreaming || isCompressing || isSaveDataBusy) return;
+    if (!window.confirm('导入世界包会覆盖当前模板、当前存档、固定上下文和可恢复的聊天记录。确定继续吗？')) return;
+
+    setIsSaveDataBusy(true);
+    setError(null);
+    try {
+      const bundle = JSON.parse(await file.text()) as unknown;
+      const response = await fetch('/api/save/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const state = (await response.json()) as SaveDataResponse;
+      applySaveDataResponse(state, { resetConversations: !state.conversations?.length });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '导入世界包失败。');
+    } finally {
+      setIsSaveDataBusy(false);
+    }
+  }
+
+  function applySaveDataResponse(state: SaveDataResponse, options: { resetConversations: boolean }) {
+    setWorld(state.world);
+    setFixedContext(normalizeFixedContext(state.fixedContext));
+    setSelectedEntity(null);
+    setAgentSteps([]);
+    setLastRequestLog(null);
+
+    if (options.resetConversations) {
+      const next = createConversation();
+      setConversations([next]);
+      setActiveId(next.id);
+      return;
+    }
+
+    const nextConversations = normalizeImportedConversations(state.conversations);
+    setConversations(nextConversations);
+    setActiveId(nextConversations[0]?.id || '');
+  }
+
   async function refreshWorld() {
     setIsWorldLoading(true);
     try {
@@ -486,6 +576,10 @@ export default function App() {
           onSaveFixedContext={saveFixedContext}
           onClearFixedContext={clearFixedContext}
           onClearChat={clearCurrentChat}
+          onResetSaveData={resetSaveData}
+          onExportSaveData={exportSaveData}
+          onImportSaveData={importSaveData}
+          isSaveDataBusy={isSaveDataBusy}
         />
         <ChatThread
           conversation={activeConversation}
@@ -493,7 +587,12 @@ export default function App() {
           fixedContext={fixedContext}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
-        <Composer isStreaming={isStreaming} isDisabled={isCompressing || isFixedContextSaving} onSend={sendMessage} onStop={stopStreaming} />
+        <Composer
+          isStreaming={isStreaming}
+          isDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
+          onSend={sendMessage}
+          onStop={stopStreaming}
+        />
       </section>
       <WorldPanel
         world={world}
@@ -523,6 +622,38 @@ function normalizeFixedContext(state: Partial<FixedContext> | null | undefined):
         }))
       : [],
   };
+}
+
+function normalizeImportedConversations(value: unknown): Conversation[] {
+  if (!Array.isArray(value)) {
+    return [createConversation()];
+  }
+
+  const conversations = value.filter((conversation): conversation is Conversation => {
+    const candidate = conversation as Partial<Conversation>;
+    return (
+      Boolean(conversation) &&
+      typeof conversation === 'object' &&
+      typeof candidate.id === 'string' &&
+      typeof candidate.title === 'string' &&
+      Array.isArray(candidate.messages)
+    );
+  });
+
+  return conversations.length > 0 ? conversations : [createConversation()];
+}
+
+function downloadJsonBundle(bundle: unknown, mode: SaveExportMode) {
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  anchor.href = url;
+  anchor.download = `newchat-${mode}-${timestamp}.newchat-save.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function readErrorMessage(response: Response) {

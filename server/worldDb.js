@@ -1,17 +1,102 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { SAVE_DB_FILE } from './saveManager.js';
 import {
   isEntityKind,
   validateComponentData,
   validateRelationshipInput,
 } from './worldSchemas.js';
 
-const dbPath = join(process.cwd(), 'data', 'newchat.sqlite');
-mkdirSync(dirname(dbPath), { recursive: true });
+function openWorldDatabase() {
+  mkdirSync(dirname(SAVE_DB_FILE), { recursive: true });
+  const database = new DatabaseSync(SAVE_DB_FILE);
+  database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  return database;
+}
 
-export const db = new DatabaseSync(dbPath);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+export let db = openWorldDatabase();
+
+export function checkpointWorldDb() {
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+}
+
+export function closeWorldDb() {
+  db.close();
+}
+
+export function reopenWorldDb() {
+  db = openWorldDatabase();
+}
+
+export function restoreWorldDbFromFile(sourceFile) {
+  if (!existsSync(sourceFile)) {
+    throw new Error(`Restore source database does not exist: ${sourceFile}`);
+  }
+
+  const sourceLiteral = sourceFile.replace(/'/g, "''");
+  const attachName = 'restore_source';
+  const deleteOrder = [
+    'agent_steps',
+    'agent_runs',
+    'conversations',
+    'events',
+    'relationships',
+    'components',
+    'entity_aliases',
+    'entity_search_fts',
+    'entities',
+    'meta',
+  ];
+  const copyOrder = [
+    'meta',
+    'entities',
+    'entity_aliases',
+    'components',
+    'relationships',
+    'events',
+    'conversations',
+    'agent_runs',
+    'agent_steps',
+  ];
+
+  db.exec(`ATTACH DATABASE '${sourceLiteral}' AS ${attachName};`);
+  try {
+    const sourceTables = new Set(
+      db.prepare(`SELECT name FROM ${attachName}.sqlite_master WHERE type = 'table'`).all().map((row) => row.name),
+    );
+    if (!sourceTables.has('entities')) {
+      throw new Error('Restore source database is not a valid NewChat world database.');
+    }
+
+    db.exec('PRAGMA foreign_keys = OFF;');
+    db.exec('BEGIN;');
+    for (const tableName of deleteOrder) {
+      db.exec(`DELETE FROM ${tableName};`);
+    }
+    db.exec('DELETE FROM sqlite_sequence;');
+    for (const tableName of copyOrder) {
+      if (!sourceTables.has(tableName)) {
+        continue;
+      }
+      db.exec(`INSERT INTO ${tableName} SELECT * FROM ${attachName}.${tableName};`);
+    }
+    if (sourceTables.has('sqlite_sequence')) {
+      db.exec(`INSERT INTO sqlite_sequence SELECT * FROM ${attachName}.sqlite_sequence;`);
+    }
+    db.exec('COMMIT;');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK;');
+    } catch {
+      // Preserve the original restore error.
+    }
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+    db.exec(`DETACH DATABASE ${attachName};`);
+  }
+}
 
 let transactionDepth = 0;
 

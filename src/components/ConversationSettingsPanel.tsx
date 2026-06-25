@@ -1,6 +1,6 @@
-import { Eraser, FileText, Pin, Save, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { Conversation, FixedContext, ModelRequestLog } from '../types';
+import { Download, Eraser, FileText, Pin, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { Conversation, FixedContext, ModelRequestLog, SaveExportMode } from '../types';
 
 interface ConversationSettingsPanelProps {
   conversation: Conversation;
@@ -10,7 +10,11 @@ interface ConversationSettingsPanelProps {
   onClose: () => void;
   onClearChat: () => void;
   onClearFixedContext: () => void;
+  onExportSaveData: (mode: SaveExportMode) => void;
+  onImportSaveData: (file: File) => void;
+  onResetSaveData: () => void;
   onSaveFixedContext: (content: string) => void;
+  isSaveDataBusy: boolean;
 }
 
 export function ConversationSettingsPanel({
@@ -21,9 +25,14 @@ export function ConversationSettingsPanel({
   onClose,
   onClearChat,
   onClearFixedContext,
+  onExportSaveData,
+  onImportSaveData,
+  onResetSaveData,
   onSaveFixedContext,
+  isSaveDataBusy,
 }: ConversationSettingsPanelProps) {
   const [value, setValue] = useState(fixedContext.editableContent);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setValue(fixedContext.editableContent);
@@ -96,6 +105,51 @@ export function ConversationSettingsPanel({
         </details>
       </section>
 
+      <section className="save-data-panel" aria-label="数据管理">
+        <div className="save-data-panel-header">
+          <div>
+            <strong>数据管理</strong>
+            <span>当前游玩只写入 data/save，可重置回 data/template 或导入导出世界包。</span>
+          </div>
+          <FileText size={18} />
+        </div>
+
+        <div className="save-data-actions">
+          <button className="settings-danger" type="button" disabled={disabled || isSaveDataBusy} onClick={onResetSaveData}>
+            <RotateCcw size={16} />
+            重置当前存档
+          </button>
+          <button className="settings-secondary" type="button" disabled={disabled || isSaveDataBusy} onClick={() => onExportSaveData('template')}>
+            <Download size={16} />
+            导出基础世界
+          </button>
+          <button className="settings-secondary" type="button" disabled={disabled || isSaveDataBusy} onClick={() => onExportSaveData('full')}>
+            <Download size={16} />
+            导出完整存档
+          </button>
+          <button
+            className="settings-secondary"
+            type="button"
+            disabled={disabled || isSaveDataBusy}
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload size={16} />
+            导入世界包
+          </button>
+          <input
+            ref={importInputRef}
+            className="hidden-file-input"
+            type="file"
+            accept=".json,.newchat-save.json,application/json"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (file) onImportSaveData(file);
+            }}
+          />
+        </div>
+      </section>
+
       <section className="model-request-log" aria-label="上一轮模型请求 Log">
         <div className="model-request-log-header">
           <div>
@@ -132,7 +186,7 @@ export function ConversationSettingsPanel({
       <div className="settings-danger-zone">
         <div>
           <strong>清空当前聊天</strong>
-          <span>只清空动态消息和压缩摘要，不会修改 context/001-user-fixed-context.md。</span>
+          <span>只清空动态消息和压缩摘要，不会修改 data/save/context/001-user-fixed-context.md。</span>
         </div>
         <button className="settings-danger" type="button" disabled={disabled || !hasDynamicChat} onClick={onClearChat}>
           <Trash2 size={16} />
