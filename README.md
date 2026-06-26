@@ -100,7 +100,9 @@ Agent 可用规则工具：
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
-- `finish`：结束本轮 Agent 任务并返回最终答复。
+- `finish`：结束本轮 Agent 任务。
+
+Agent 规划 JSON 可以额外带 `say` 字段向玩家输出可见文字；`say` 不是工具，可以和任意工具或 `finish` 在同一个 JSON 中出现。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 

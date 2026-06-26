@@ -11,8 +11,10 @@
 - search_rules：按关键词、分类、标签搜索跑团规则。
 - get_rule_section：读取具体规则段落正文。
 - roll_dice：掷骰并返回随机结果、明细和总值。
-- enter_scene：校验出口并切换玩家当前场景。
+- enter_scene：校验出口并切换玩家当前场景。参数优先使用 `sceneId`（目标场景实体 id，例如 `scene_market`）；如果只有当前场景 exits 里的出口关系 id，也可以使用 `exitId`。
 - apply_world_patch：创建或修改长期世界事实。
-- finish：结束本轮 Agent 任务并返回最终答复。
+- finish：结束本轮 Agent 任务。
+
+向玩家输出可见文字时，不使用工具名 speak；在 JSON 决策里使用顶层 `say` 字段。`say` 可以和任意工具同时出现，也可以和 finish 同时出现。
 
 AI 只能申请调用这些工具。真正能否执行、如何执行，由后端工具白名单和数据库校验决定。

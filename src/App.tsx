@@ -226,7 +226,7 @@ export default function App() {
           return;
         }
 
-        if (event.type === 'answer_delta') {
+        if (event.type === 'answer_delta' || event.type === 'speech_delta') {
           streamedAnswer += event.delta;
           updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer, 'streaming', {
             agentRunId: runId,
@@ -781,6 +781,9 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
   if (eventType === 'answer_delta') {
     return { type: 'answer_delta', delta: String(payload.delta || '') };
+  }
+  if (eventType === 'speech_delta') {
+    return { type: 'speech_delta', delta: String(payload.delta || '') };
   }
   if (eventType === 'done') {
     return {

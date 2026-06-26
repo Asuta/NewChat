@@ -1,6 +1,10 @@
 # 世界 Agent 输出格式
 
-每次只输出一个 JSON 工具调用，不要输出 Markdown。
+每次只输出一个 JSON 决策，不要输出 Markdown。JSON 可以包含：
+
+- `say`：可选，向玩家显示的文字。
+- `tool`：必填，下一步工具名或 finish。
+- `args`：可选，工具参数。
 
 输出格式示例：
 
@@ -8,11 +12,25 @@
 {"tool":"search_entities","args":{"query":"莉娜","kind":"character"}}
 ```
 
-或：
+静默读取工具示例：
 
 ```json
-{"tool":"finish","args":{"answer":"中文回答"}}
+{"tool":"get_current_scene","args":{}}
 ```
+
+说完并结束本轮任务示例：
+
+```json
+{"say":"雾港酒馆里炉火摇晃，莉娜在吧台后抬眼看你。你要做什么？","tool":"finish","args":{}}
+```
+
+禁止输出 `{"tool":"speak", ...}`。发言不是工具调用，必须使用顶层 `say` 字段。
+
+第一步如果需要读取世界、规则或掷骰，先只输出工具调用，不要带 say。读取完成后，下一次 JSON 可以使用 say，并且如果已经回答完，应同时使用 tool=finish。
+
+禁止第一步直接输出 `{"tool":"finish","args":{}}`。只有同一个 JSON 已经通过 say 给出完整可见回复，或本轮之前已经 say 过完整回复时，finish 才可以空 args；如果没有 say，finish 必须使用 `args.answer` 给出玩家能看到的回答。
+
+兼容旧格式：如果没有使用 say，也可以用 `{"tool":"finish","args":{"answer":"中文回答"}}` 一次性结束并回答。
 
 规则查询示例：
 

@@ -14,9 +14,14 @@ const TOOL_LABELS: Record<string, string> = {
   get_current_scene: '读取当前场景',
   get_scene_entities: '读取场景实体',
   get_relationships: '读取关系',
+  get_rule_toc: '读取规则目录',
+  search_rules: '搜索规则',
+  get_rule_section: '读取规则段落',
+  roll_dice: '掷骰',
+  speak: '发言',
   enter_scene: '切换场景',
   apply_world_patch: '修改世界数据',
-  finish: '生成最终回答',
+  finish: '结束本轮任务',
 };
 
 export function AgentStepsTimelineItem({ runId, steps, onLayoutChange }: AgentStepsTimelineItemProps) {

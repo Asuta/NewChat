@@ -19,6 +19,7 @@ import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 
 export const WORLD_AGENT_MAX_STEPS = 12;
+const WORLD_AGENT_MAX_PARSE_REPAIRS = 2;
 
 export async function runWorldAgentTask(input) {
   return runWorldAgentTaskInternal(input, {});
@@ -34,6 +35,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
   const runId = createAgentRun(prompt);
   const steps = [];
+  let visibleAnswer = '';
   const requestLog = { entries: [] };
   const baseContextEvents = Array.isArray(input.contextEvents)
     ? input.contextEvents
@@ -43,47 +45,84 @@ async function runWorldAgentTaskInternal(input, handlers) {
   handlers.onStart?.({ runId });
 
   try {
-    for (let stepIndex = 1; stepIndex <= WORLD_AGENT_MAX_STEPS; stepIndex += 1) {
-      const call = await planNextToolCall({
+    let stepIndex = 1;
+    for (let plannerTurn = 1; plannerTurn <= WORLD_AGENT_MAX_STEPS; plannerTurn += 1) {
+      const decision = await planNextToolCall({
         prompt,
         steps,
         model: input.model,
         thinking: input.thinking,
         contextEvents: baseContextEvents,
         runId,
-        stepIndex,
+        stepIndex: plannerTurn,
         requestLog,
         signal: input.signal,
       });
-      const args = isRecord(call.args) ? call.args : {};
-      const result = executeWorldTool(call.tool, args, prompt);
-      const step = { index: stepIndex, tool: call.tool, args, result };
-      steps.push(step);
-      addAgentStep(runId, stepIndex, call.tool, args, result);
-      addEvent('agent.tool', null, null, {
-        summary: formatToolSummary(call.tool, result),
-        tool: call.tool,
-        args,
-        result,
-      });
-      handlers.onStep?.({ step, steps: [...steps], runId });
 
-      if (isRepeatedToolFailure(steps)) {
+      const canSayNow = decision.tool === 'finish' || steps.length > 0;
+      if (decision.say && canSayNow) {
+        const args = { text: decision.say };
+        const result = executeWorldTool('speak', args, prompt);
+        const step = recordAgentStep({
+          runId,
+          stepIndex,
+          tool: 'speak',
+          args,
+          result,
+          steps,
+          handlers,
+        });
+        stepIndex += 1;
+
+        const delta = createSpeechDelta(visibleAnswer, result.text);
+        if (delta) {
+          visibleAnswer += delta;
+          handlers.onSpeechDelta?.(delta);
+        }
+        if (step.result?.ok === false) {
+          return await finishSuccessfulRun({
+            runId,
+            steps,
+            seedAnswer: step.result.error || '发言失败。',
+            visibleAnswer,
+            requestLog,
+            handlers,
+            signal: input.signal,
+          });
+        }
+      }
+
+      if (decision.tool === 'finish') {
         return await finishSuccessfulRun({
           runId,
           steps,
-          seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
+          seedAnswer: String(decision.args?.answer || (visibleAnswer ? '' : summarizeAgentResult(prompt, steps))),
+          visibleAnswer,
           requestLog,
           handlers,
           signal: input.signal,
         });
       }
 
-      if (call.tool === 'finish' || result.done === true) {
+      const args = isRecord(decision.args) ? decision.args : {};
+      const result = executeWorldTool(decision.tool, args, prompt);
+      const step = recordAgentStep({
+        runId,
+        stepIndex,
+        tool: decision.tool,
+        args,
+        result,
+        steps,
+        handlers,
+      });
+      stepIndex += 1;
+
+      if (isRepeatedToolFailure(steps)) {
         return await finishSuccessfulRun({
           runId,
           steps,
-          seedAnswer: String(result.answer || summarizeAgentResult(prompt, steps)),
+          seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
+          visibleAnswer,
           requestLog,
           handlers,
           signal: input.signal,
@@ -94,7 +133,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
     return await finishSuccessfulRun({
       runId,
       steps,
-      seedAnswer: summarizeAgentResult(prompt, steps),
+      seedAnswer: visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
+      visibleAnswer,
       requestLog,
       handlers,
       signal: input.signal,
@@ -107,8 +147,38 @@ async function runWorldAgentTaskInternal(input, handlers) {
   }
 }
 
-async function finishSuccessfulRun({ runId, steps, seedAnswer, requestLog, handlers, signal }) {
-  const answer = await streamFallbackAnswer(seedAnswer, handlers.onFinalAnswerDelta, signal);
+function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers }) {
+  const step = { index: stepIndex, tool, args, result };
+  steps.push(step);
+  addAgentStep(runId, stepIndex, tool, args, result);
+  addEvent('agent.tool', null, null, {
+    summary: formatToolSummary(tool, result),
+    tool,
+    args,
+    result,
+  });
+  handlers.onStep?.({ step, steps: [...steps], runId });
+  return step;
+}
+
+async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, requestLog, handlers, signal }) {
+  let answer = String(visibleAnswer || '').trim();
+  const finalText = String(seedAnswer || '').trim();
+
+  if (finalText && finalText !== answer) {
+    if (answer) {
+      const delta = createSpeechDelta(answer, finalText);
+      answer += delta;
+      handlers.onFinalAnswerDelta?.(delta);
+    } else {
+      answer = await streamFallbackAnswer(finalText, handlers.onFinalAnswerDelta, signal);
+    }
+  }
+
+  if (!answer) {
+    answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onFinalAnswerDelta, signal);
+  }
+
   addConversation('assistant', null, '世界 Agent', answer);
   finishAgentRun(runId, 'completed', answer, null);
   addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
@@ -205,15 +275,30 @@ export function executeWorldTool(tool, args, prompt = '') {
     });
   }
 
+  if (tool === 'speak') {
+    const text = String(args.text || args.message || args.answer || '').trim();
+    return text
+      ? {
+          ok: true,
+          text,
+          answer: text,
+          summary: 'Agent 对玩家发言。',
+        }
+      : {
+          ok: false,
+          error: 'speak.text 不能为空。',
+        };
+  }
+
   if (tool === 'enter_scene') {
     try {
-      const scene = enterScene(String(args.sceneId || ''));
+      const targetSceneId = resolveEnterSceneTargetId(args);
+      const scene = enterScene(targetSceneId);
       return {
         ok: true,
-        done: true,
         scene,
         answer: `你进入了${scene.scene?.name ?? '新的场景'}。${scene.sceneComponent?.description ?? ''}`,
-        summary: `玩家进入 ${scene.scene?.name ?? args.sceneId}。`,
+        summary: `玩家进入 ${scene.scene?.name ?? targetSceneId}。`,
       };
     } catch (error) {
       return {
@@ -234,7 +319,6 @@ export function executeWorldTool(tool, args, prompt = '') {
       });
       return {
         ok: true,
-        done: args.dryRun !== true,
         patch,
         answer: args.dryRun === true ? `我已经生成变更预览：${patch.summary}` : `已写入世界数据：${patch.summary}`,
         summary: patch.summary,
@@ -251,8 +335,8 @@ export function executeWorldTool(tool, args, prompt = '') {
     return {
       ok: true,
       done: true,
-      answer: String(args.answer || '完成。'),
-      summary: 'Agent 输出最终答复。',
+      answer: typeof args.answer === 'string' && args.answer.trim() ? args.answer.trim() : '',
+      summary: 'Agent 结束本轮任务。',
     };
   }
 
@@ -260,6 +344,31 @@ export function executeWorldTool(tool, args, prompt = '') {
     ok: false,
     error: `未知工具：${tool}`,
   };
+}
+
+function resolveEnterSceneTargetId(args) {
+  const explicitSceneId = firstNonEmptyString(
+    args.sceneId,
+    args.targetSceneId,
+    args.destinationSceneId,
+    args.entityId,
+  );
+  if (explicitSceneId) return explicitSceneId;
+
+  const rawExitId = args.exitId ?? args.relationshipId ?? args.id;
+  const exitId = Number(rawExitId);
+  if (!Number.isFinite(exitId)) return '';
+
+  const currentScene = getCurrentScene();
+  const exit = currentScene.exits?.find((item) => item.relationship?.id === exitId);
+  return exit?.scene?.id ?? '';
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
 }
 
 export function getAgentHistory() {
@@ -302,48 +411,133 @@ async function planNextToolCall({ prompt, steps, model, thinking, contextEvents,
       ),
     },
   ];
-  const logEntry = {
-    kind: 'tool-plan',
-    stepIndex,
-    model: selectedModel,
-    thinking: normalizeThinkingMode(thinking) || normalizeThinkingMode(process.env.LLM_THINKING),
-    createdAt: Date.now(),
-    messages: messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
-  };
-  requestLog?.entries?.push(logEntry);
+  const endpoint = `${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`;
+  const thinkingMode = normalizeThinkingMode(thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
+  let lastContent = '';
+  let lastParseError = '';
 
-  const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  for (let repairAttempt = 0; repairAttempt <= WORLD_AGENT_MAX_PARSE_REPAIRS; repairAttempt += 1) {
+    const attemptMessages = repairAttempt === 0
+      ? messages
+      : [
+        ...messages,
+        createParseRepairMessage({
+          previousContent: lastContent,
+          parseError: lastParseError,
+        }),
+      ];
+    const logEntry = {
+      kind: 'tool-plan',
+      stepIndex,
       model: selectedModel,
-      messages,
-      stream: false,
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-      ...deepSeekThinkingConfig(thinking),
-    }),
-    signal,
-  });
+      thinking: thinkingMode,
+      createdAt: Date.now(),
+      ...(repairAttempt > 0 ? { parseRepairAttempt: repairAttempt } : {}),
+      messages: attemptMessages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+    };
+    requestLog?.entries?.push(logEntry);
 
-  if (!response.ok) {
-    return fallbackToolCall(prompt, steps);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        messages: attemptMessages,
+        stream: false,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        ...deepSeekThinkingConfig(thinking),
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`模型服务请求失败：${response.status}${detail ? ` ${detail}` : ''}`);
+    }
+
+    const json = await response.json();
+    logEntry.usage = normalizeUsage(json.usage);
+    const content = json.choices?.[0]?.message?.content;
+    lastContent = typeof content === 'string' ? content : '';
+    logEntry.content = lastContent;
+
+    const parseResult = parseModelToolCall(lastContent);
+    if (parseResult.ok) {
+      return parseResult.toolCall;
+    }
+
+    lastParseError = parseResult.error;
+    logEntry.parseError = lastParseError;
   }
 
-  const json = await response.json();
-  logEntry.usage = normalizeUsage(json.usage);
-  const content = json.choices?.[0]?.message?.content;
-  return normalizeToolCall(JSON.parse(stripCodeFence(String(content || '{}'))));
+  throw new Error(`模型连续返回不可解析的工具规划 JSON：${lastParseError || '未知解析错误'}。`);
 }
 
 function normalizeUsage(usage) {
   return isRecord(usage) ? usage : null;
+}
+
+function parseModelToolCall(content) {
+  const rawContent = String(content || '').trim();
+  const normalized = stripCodeFence(rawContent).trim();
+  const candidates = [normalized, extractJsonObject(normalized)].filter(Boolean);
+  let parseError = '';
+
+  for (const candidate of candidates) {
+    try {
+      return {
+        ok: true,
+        toolCall: normalizeToolCall(JSON.parse(candidate)),
+      };
+    } catch (error) {
+      parseError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return {
+    ok: false,
+    error: parseError || '模型没有返回 JSON。',
+  };
+}
+
+function createParseRepairMessage({ previousContent, parseError }) {
+  return {
+    role: 'user',
+    content: JSON.stringify(
+      {
+        type: 'model_output_parse_error',
+        instruction: '你上一条回复无法解析为工具规划 JSON。请根据 parseError 修正输出；不要解释，不要使用 Markdown，不要输出代码块，只输出一个完整 JSON 对象。',
+        parseError,
+        previousOutput: truncateForRepairPrompt(previousContent),
+        requiredShape: {
+          say: '可选。要展示给玩家的话；如果还需要先调用工具，可以省略或留空。',
+          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、roll_dice、apply_world_patch、finish。',
+          args: '必须是对象。finish 时可以为空对象。',
+        },
+      },
+      null,
+      2,
+    ),
+  };
+}
+
+function truncateForRepairPrompt(value) {
+  const text = String(value || '');
+  return text.length > 4000 ? `${text.slice(0, 4000)}\n...[已截断]` : text;
+}
+
+function extractJsonObject(content) {
+  const start = content.indexOf('{');
+  const end = content.lastIndexOf('}');
+  if (start < 0 || end <= start) return '';
+  return content.slice(start, end + 1);
 }
 
 async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
@@ -366,8 +560,19 @@ function splitAnswerChunks(answer) {
   return chunks.length ? chunks : ['完成。'];
 }
 
+function createSpeechDelta(currentAnswer, text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) return '';
+  const lastVisibleSegment = String(currentAnswer || '').split(/\n{2,}/).pop()?.trim();
+  if (lastVisibleSegment === normalized) return '';
+  return currentAnswer ? `\n\n${normalized}` : normalized;
+}
+
 function fallbackToolCall(prompt, steps) {
   if (steps.length === 0) {
+    if (/hp|血量|生命|生命值|血|还剩|剩多少|受伤|昏迷|状态/i.test(prompt)) {
+      return { tool: 'search_entities', args: { query: prompt, kind: 'character', limit: 8 } };
+    }
     if (/规则|攻击|命中|检定|豁免|战斗|法术|伤害|先攻|优势|劣势|护甲|ac/i.test(prompt)) {
       return { tool: 'search_rules', args: { query: prompt, limit: 5 } };
     }
@@ -390,7 +595,33 @@ function fallbackToolCall(prompt, steps) {
 }
 
 function normalizeToolCall(raw) {
-  const tool = typeof raw.tool === 'string' ? raw.tool : typeof raw.name === 'string' ? raw.name : 'finish';
+  const action = isRecord(raw.action) ? raw.action : null;
+  const args = isRecord(action?.args) ? action.args : isRecord(raw.args) ? raw.args : {};
+  const say = normalizeSay(raw.say ?? raw.speech ?? raw.message ?? raw.visibleText);
+  const tool = typeof action?.tool === 'string'
+    ? action.tool
+    : typeof raw.tool === 'string'
+      ? raw.tool
+      : typeof raw.name === 'string'
+        ? raw.name
+        : 'finish';
+
+  if (tool === 'speak') {
+    return {
+      say: normalizeSay(args.text ?? args.message ?? args.answer),
+      tool: 'finish',
+      args: {},
+    };
+  }
+
+  if (tool === 'finish' && !args.answer && !say && (typeof args.text === 'string' || typeof args.message === 'string')) {
+    return {
+      say: normalizeSay(args.text ?? args.message),
+      tool: 'finish',
+      args: {},
+    };
+  }
+
   const valid = new Set([
     'search_entities',
     'get_entity_bundle',
@@ -406,9 +637,14 @@ function normalizeToolCall(raw) {
     'finish',
   ]);
   return {
+    say,
     tool: valid.has(tool) ? tool : 'finish',
-    args: isRecord(raw.args) ? raw.args : raw,
+    args,
   };
+}
+
+function normalizeSay(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
 function rollDice({ expression, reason }) {
@@ -655,38 +891,6 @@ function formatToolSummary(tool, result) {
   return `${tool}: ${result.summary || result.error || (result.ok ? 'ok' : 'failed')}`;
 }
 
-function shrinkResult(result) {
-  const text = JSON.stringify(result);
-  if (text.length <= 2200) return result;
-  return {
-    ok: result.ok,
-    summary: result.summary,
-    error: result.error,
-    entities: result.entities?.slice?.(0, 8),
-    scene: result.scene
-      ? {
-          scene: result.scene.scene,
-          residents: result.scene.residents,
-          items: result.scene.items,
-          exits: result.scene.exits?.map((exit) => exit.scene),
-        }
-      : undefined,
-    bundle: result.bundle
-      ? {
-          entity: result.bundle.entity,
-          aliases: result.bundle.aliases,
-          components: {
-            identity: result.bundle.components.identity,
-            scene: result.bundle.components.scene,
-            status: result.bundle.components.status,
-            quest: result.bundle.components.quest,
-          },
-          relationships: result.bundle.relationships?.slice(0, 12),
-        }
-      : undefined,
-  };
-}
-
 function createAgentStepContextEvent(step, runId) {
   const stepIndex = Number.isFinite(step.stepIndex) ? step.stepIndex : Number.isFinite(step.index) ? step.index : undefined;
   return {
@@ -695,7 +899,7 @@ function createAgentStepContextEvent(step, runId) {
     ...(Number.isFinite(stepIndex) ? { stepIndex } : {}),
     tool: step.tool,
     args: isRecord(step.args) ? step.args : {},
-    result: shrinkResult(isRecord(step.result) ? step.result : {}),
+    result: isRecord(step.result) ? step.result : {},
   };
 }
 

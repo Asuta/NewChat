@@ -232,6 +232,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
       {
         onStart: (event) => writeSseEvent(res, 'start', event),
         onStep: (event) => writeSseEvent(res, 'step', { step: event.step }),
+        onSpeechDelta: (delta) => writeSseEvent(res, 'speech_delta', { delta }),
         onFinalAnswerDelta: (delta) => writeSseEvent(res, 'answer_delta', { delta }),
         onDone: (event) => {
           didSendDone = true;

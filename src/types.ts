@@ -205,6 +205,9 @@ export interface ModelRequestLogEntry {
   thinking: ThinkingMode | null;
   createdAt: number;
   messages: LoggedModelMessage[];
+  content?: string;
+  parseError?: string;
+  parseRepairAttempt?: number;
   usage?: ModelRequestUsage | null;
 }
 
@@ -239,6 +242,10 @@ export type WorldAgentStreamEvent =
     }
   | {
       type: 'answer_delta';
+      delta: string;
+    }
+  | {
+      type: 'speech_delta';
       delta: string;
     }
   | {
