@@ -77,7 +77,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
         const delta = createSpeechDelta(visibleAnswer, result.text);
         if (delta) {
           visibleAnswer += delta;
-          handlers.onSpeechDelta?.(delta);
+          await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
         }
         if (step.result?.ok === false) {
           return await finishSuccessfulRun({
@@ -169,7 +169,7 @@ async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, re
     if (answer) {
       const delta = createSpeechDelta(answer, finalText);
       answer += delta;
-      handlers.onFinalAnswerDelta?.(delta);
+      await streamTextDeltas(delta, handlers.onFinalAnswerDelta, signal);
     } else {
       answer = await streamFallbackAnswer(finalText, handlers.onFinalAnswerDelta, signal);
     }
@@ -542,14 +542,20 @@ function extractJsonObject(content) {
 
 async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
   const answer = String(seedAnswer || '完成。');
-  if (!onDelta) return answer;
+  await streamTextDeltas(answer, onDelta, signal);
+  return answer;
+}
+
+async function streamTextDeltas(text, onDelta, signal) {
+  if (!onDelta) return;
+  const answer = String(text || '');
+  if (!answer) return;
 
   for (const chunk of splitAnswerChunks(answer)) {
     if (signal?.aborted) throw new Error('请求已取消。');
     onDelta(chunk);
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 90));
   }
-  return answer;
 }
 
 function splitAnswerChunks(answer) {
