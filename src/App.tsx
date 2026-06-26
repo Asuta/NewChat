@@ -37,6 +37,11 @@ import type { ThinkingMode } from './types';
 const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
 const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', editableContent: '', updatedAt: null, files: [] };
+type PendingSceneTransition = NonNullable<ChatMessage['sceneTransition']>;
+
+interface SendMessageOptions {
+  pendingSceneTransition?: PendingSceneTransition;
+}
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(getInitialConversations);
@@ -116,7 +121,7 @@ export default function App() {
     );
   }
 
-  async function sendMessage(content: string) {
+  async function sendMessage(content: string, options: SendMessageOptions = {}) {
     if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving) return;
 
     const userMessage = createMessage('user', content);
@@ -199,6 +204,7 @@ export default function App() {
           runId = event.runId;
           streamedAnswer = event.answer || streamedAnswer;
           streamedSteps = event.steps || streamedSteps;
+          const completedSceneTransition = getCompletedSceneTransition(streamedSteps, options.pendingSceneTransition);
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
           setWorld(event.world);
@@ -206,6 +212,9 @@ export default function App() {
             agentRunId: runId,
             agentSteps: streamedSteps,
           });
+          if (completedSceneTransition) {
+            appendSceneTransitionMessage(completedSceneTransition);
+          }
           return;
         }
 
@@ -258,6 +267,15 @@ export default function App() {
       ...conversation,
       updatedAt: Date.now(),
       messages: conversation.messages.map((message) => (message.id === messageId ? updater(message) : message)),
+    }));
+  }
+
+  function appendSceneTransitionMessage(transition: PendingSceneTransition) {
+    const transitionMessage = createSceneTransitionMessage(transition);
+    updateActiveConversation((conversation) => ({
+      ...conversation,
+      updatedAt: Date.now(),
+      messages: [...conversation.messages, transitionMessage],
     }));
   }
 
@@ -507,37 +525,25 @@ export default function App() {
   }
 
   async function enterWorldScene(sceneId: string) {
-    if (isStreaming || isCompressing) return;
+    if (isStreaming || isCompressing || isFixedContextSaving) return;
     const previousScene = world?.currentScene.scene;
-    setIsWorldLoading(true);
-    try {
-      const response = await fetch('/api/world/scene/enter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneId }),
-      });
-      if (!response.ok) throw new Error(await readErrorMessage(response));
-      const currentScene = await response.json();
-      await refreshWorld();
-      const fromSceneName = previousScene?.name || '未知场景';
-      const toSceneName = currentScene.scene?.name || sceneId;
-      const transitionMessage = createSceneTransitionMessage({
+    const targetScene = world?.currentScene.exits.find((exit) => exit.scene.id === sceneId)?.scene;
+    const fromSceneName = previousScene?.name || '未知场景';
+    const toSceneName = targetScene?.name || sceneId;
+    const prompt = [
+      `我想从「${fromSceneName}」前往「${toSceneName}」。`,
+      `请作为 AI DM 判定这次场景移动是否能够成功。`,
+      `如果成功，请调用 enter_scene 工具应用场景移动到目标场景（sceneId: ${sceneId}）；如果失败，请保持当前位置并说明原因。`,
+    ].join('');
+
+    await sendMessage(prompt, {
+      pendingSceneTransition: {
         fromSceneId: previousScene?.id || null,
         fromSceneName,
-        toSceneId: currentScene.scene?.id || sceneId,
+        toSceneId: targetScene?.id || sceneId,
         toSceneName,
-      });
-      updateActiveConversation((conversation) => ({
-        ...conversation,
-        updatedAt: Date.now(),
-        messages: [...conversation.messages, transitionMessage],
-      }));
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '场景切换失败。');
-    } finally {
-      setIsWorldLoading(false);
-    }
+      },
+    });
   }
 
   if (!activeConversation) {
@@ -731,6 +737,38 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
 
   return null;
+}
+
+function getCompletedSceneTransition(
+  steps: AgentStep[],
+  pendingTransition?: PendingSceneTransition,
+): PendingSceneTransition | null {
+  if (!pendingTransition) return null;
+
+  const completedStep = steps.find((step) => {
+    if (step.tool !== 'enter_scene' || step.result?.ok !== true) return false;
+    const argsSceneId = typeof step.args?.sceneId === 'string' ? step.args.sceneId : '';
+    const resultScene = getStepResultScene(step);
+    return argsSceneId === pendingTransition.toSceneId || resultScene?.id === pendingTransition.toSceneId;
+  });
+  if (!completedStep) return null;
+
+  const resultScene = getStepResultScene(completedStep);
+  return {
+    ...pendingTransition,
+    toSceneId: resultScene?.id || pendingTransition.toSceneId,
+    toSceneName: resultScene?.name || pendingTransition.toSceneName,
+  };
+}
+
+function getStepResultScene(step: AgentStep): { id?: string; name?: string } | null {
+  const sceneState = step.result?.scene;
+  if (!sceneState || typeof sceneState !== 'object') return null;
+
+  const scene = (sceneState as { scene?: unknown }).scene;
+  if (!scene || typeof scene !== 'object') return null;
+
+  return scene as { id?: string; name?: string };
 }
 
 function getInitialThinkingMode(): ThinkingMode {
