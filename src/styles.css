@@ -968,6 +968,36 @@ button {
   padding: 10px;
 }
 
+.model-request-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.model-request-usage span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(18, 100, 220, 0.14);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #f5f9ff;
+  color: #29415f;
+  font-size: 12px;
+}
+
+.model-request-usage strong {
+  color: #1264dc;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.model-request-usage-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .model-request-message {
   display: grid;
   gap: 6px;

@@ -154,12 +154,31 @@ export interface LoggedModelMessage {
   content: string;
 }
 
+export interface ModelRequestUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    [key: string]: number | undefined;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+    [key: string]: number | undefined;
+  };
+  [key: string]: unknown;
+}
+
 export interface ModelRequestLogEntry {
+  kind?: 'tool-plan' | 'final-answer';
   stepIndex: number;
   model: string | null;
   thinking: ThinkingMode | null;
   createdAt: number;
   messages: LoggedModelMessage[];
+  usage?: ModelRequestUsage | null;
 }
 
 export interface ModelRequestLog {

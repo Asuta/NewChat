@@ -1,6 +1,6 @@
 import { Download, Eraser, FileText, Pin, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { Conversation, FixedContext, ModelRequestLog, SaveExportMode } from '../types';
+import type { Conversation, FixedContext, ModelRequestLog, ModelRequestLogEntry, ModelRequestUsage, SaveExportMode } from '../types';
 
 interface ConversationSettingsPanelProps {
   conversation: Conversation;
@@ -164,10 +164,13 @@ export function ConversationSettingsPanel({
             {requestLog.entries.map((entry) => (
               <details className="model-request-entry" key={`${entry.stepIndex}-${entry.createdAt}`}>
                 <summary>
-                  <span>Step {entry.stepIndex}</span>
-                  <small>{entry.model || '未配置模型'} · {entry.thinking || 'thinking unset'} · {formatLogTime(entry.createdAt)}</small>
+                  <span>{formatRequestEntryTitle(entry)}</span>
+                  <small>
+                    {entry.model || '未配置模型'} · {entry.thinking || 'thinking unset'} · {formatUsageSummary(entry.usage)} · {formatLogTime(entry.createdAt)}
+                  </small>
                 </summary>
                 <div className="model-request-messages">
+                  <ModelUsageSummary usage={entry.usage} />
                   {entry.messages.map((message, index) => (
                     <article className="model-request-message" key={`${message.role}-${index}`}>
                       <strong>{message.role}</strong>
@@ -195,6 +198,63 @@ export function ConversationSettingsPanel({
       </div>
     </div>
   );
+}
+
+function ModelUsageSummary({ usage }: { usage?: ModelRequestUsage | null }) {
+  if (!usage) {
+    return <p className="model-request-usage-empty">本次响应没有返回 usage 信息。</p>;
+  }
+
+  const cachedTokens = getCachedTokens(usage);
+  const metrics = [
+    ['Prompt', usage.prompt_tokens],
+    ['Completion', usage.completion_tokens],
+    ['Total', usage.total_tokens],
+    ['Cache hit', getUsageNumber(usage, 'prompt_cache_hit_tokens') ?? cachedTokens],
+    ['Cache miss', usage.prompt_cache_miss_tokens],
+    ['Reasoning', usage.completion_tokens_details?.reasoning_tokens],
+  ].filter((item): item is [string, number] => typeof item[1] === 'number');
+
+  if (!metrics.length) {
+    return <p className="model-request-usage-empty">本次响应返回了 usage，但没有可识别的 token 字段。</p>;
+  }
+
+  return (
+    <div className="model-request-usage" aria-label="模型 token 与缓存统计">
+      {metrics.map(([label, value]) => (
+        <span key={label}>
+          <strong>{label}</strong>
+          {value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function formatRequestEntryTitle(entry: ModelRequestLogEntry) {
+  return entry.kind === 'final-answer' ? '最终答复' : `Step ${entry.stepIndex}`;
+}
+
+function formatUsageSummary(usage?: ModelRequestUsage | null) {
+  if (!usage) return '无 usage';
+  const cacheHit = getUsageNumber(usage, 'prompt_cache_hit_tokens') ?? getCachedTokens(usage);
+  const cacheMiss = usage.prompt_cache_miss_tokens;
+  const total = usage.total_tokens;
+  const parts = [
+    typeof total === 'number' ? `${total} tokens` : null,
+    typeof cacheHit === 'number' ? `缓存命中 ${cacheHit}` : null,
+    typeof cacheMiss === 'number' ? `未命中 ${cacheMiss}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'usage 已返回';
+}
+
+function getCachedTokens(usage: ModelRequestUsage) {
+  return usage.prompt_tokens_details?.cached_tokens;
+}
+
+function getUsageNumber(usage: ModelRequestUsage, key: keyof ModelRequestUsage) {
+  const value = usage[key];
+  return typeof value === 'number' ? value : undefined;
 }
 
 function formatLogTime(timestamp: number) {

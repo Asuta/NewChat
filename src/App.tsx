@@ -37,6 +37,12 @@ import type { ThinkingMode } from './types';
 const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
 const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', editableContent: '', updatedAt: null, files: [] };
+const OPENING_STORY_PROMPT = [
+  '新会话刚开始，请由 AI DM 主动给玩家一段故事梗概式开场白。',
+  '本轮必须先调用 get_current_scene 读取玩家当前场景数据，再基于当前场景描述、人物、道具、出口和相关设定生成开场。',
+  '不要移动场景，不要修改世界状态，不要提及工具名或内部流程。',
+  '开场要有氛围感、简洁，并以一个自然的问题或可行动钩子收尾。',
+].join('\n');
 type PendingSceneTransition = NonNullable<ChatMessage['sceneTransition']>;
 
 interface SendMessageOptions {
@@ -109,16 +115,24 @@ export default function App() {
   function createNewChat() {
     if (isCompressing) return;
     stopStreaming();
-    const next = createConversation();
-    setConversations((current) => [next, ...current]);
-    setActiveId(next.id);
+    const { conversation, assistantMessage } = createOpeningConversation();
+    setConversations((current) => [conversation, ...current]);
+    setActiveId(conversation.id);
     setError(null);
+    void streamAgentResponse({
+      conversationId: conversation.id,
+      assistantMessageId: assistantMessage.id,
+      prompt: OPENING_STORY_PROMPT,
+      messages: [],
+    });
+  }
+
+  function updateConversation(conversationId: string, updater: (conversation: Conversation) => Conversation) {
+    setConversations((current) => current.map((conversation) => (conversation.id === conversationId ? updater(conversation) : conversation)));
   }
 
   function updateActiveConversation(updater: (conversation: Conversation) => Conversation) {
-    setConversations((current) =>
-      current.map((conversation) => (conversation.id === activeConversation.id ? updater(conversation) : conversation)),
-    );
+    updateConversation(activeConversation.id, updater);
   }
 
   async function sendMessage(content: string, options: SendMessageOptions = {}) {
@@ -128,7 +142,7 @@ export default function App() {
     const assistantMessage = createMessage('assistant', '', 'streaming');
     const shouldRename = activeConversation.messages.length === 0 && activeConversation.title === '新对话';
     const nextMessages = [...activeConversation.messages, userMessage, assistantMessage];
-    const requestMessages = buildModelMessages(activeConversation, nextMessages, EMPTY_FIXED_CONTEXT, assistantMessage.id);
+    const requestMessages = buildModelMessages(activeConversation, activeConversation.messages, EMPTY_FIXED_CONTEXT);
 
     updateActiveConversation((conversation) => ({
       ...conversation,
@@ -137,6 +151,28 @@ export default function App() {
       messages: nextMessages,
     }));
 
+    await streamAgentResponse({
+      conversationId: activeConversation.id,
+      assistantMessageId: assistantMessage.id,
+      prompt: content,
+      messages: requestMessages,
+      pendingSceneTransition: options.pendingSceneTransition,
+    });
+  }
+
+  async function streamAgentResponse({
+    conversationId,
+    assistantMessageId,
+    prompt,
+    messages,
+    pendingSceneTransition,
+  }: {
+    conversationId: string;
+    assistantMessageId: string;
+    prompt: string;
+    messages: ReturnType<typeof buildModelMessages>;
+    pendingSceneTransition?: PendingSceneTransition;
+  }) {
     setError(null);
     setLastRequestLog(null);
     setIsStreaming(true);
@@ -151,8 +187,8 @@ export default function App() {
         body: JSON.stringify({
           model: modelId,
           thinking: thinkingMode,
-          prompt: content,
-          messages: requestMessages,
+          prompt,
+          messages,
         }),
         signal: controller.signal,
       });
@@ -172,7 +208,7 @@ export default function App() {
       await readWorldAgentStream(response.body, (event) => {
         if (event.type === 'start') {
           runId = event.runId;
-          patchAssistantMessage(assistantMessage.id, (message) => ({
+          patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
             ...message,
             agentRunId: runId,
           }));
@@ -182,7 +218,7 @@ export default function App() {
         if (event.type === 'step') {
           streamedSteps = [...streamedSteps, event.step];
           setAgentSteps(streamedSteps);
-          patchAssistantMessage(assistantMessage.id, (message) => ({
+          patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
             ...message,
             agentRunId: runId,
             agentSteps: streamedSteps,
@@ -192,7 +228,7 @@ export default function App() {
 
         if (event.type === 'answer_delta') {
           streamedAnswer += event.delta;
-          updateAssistantMessage(assistantMessage.id, streamedAnswer, 'streaming', {
+          updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer, 'streaming', {
             agentRunId: runId,
             agentSteps: streamedSteps,
           });
@@ -204,16 +240,16 @@ export default function App() {
           runId = event.runId;
           streamedAnswer = event.answer || streamedAnswer;
           streamedSteps = event.steps || streamedSteps;
-          const completedSceneTransition = getCompletedSceneTransition(streamedSteps, options.pendingSceneTransition);
+          const completedSceneTransition = getCompletedSceneTransition(streamedSteps, pendingSceneTransition);
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
           setWorld(event.world);
-          updateAssistantMessage(assistantMessage.id, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
+          updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
             agentRunId: runId,
             agentSteps: streamedSteps,
           });
           if (completedSceneTransition) {
-            appendSceneTransitionMessage(completedSceneTransition);
+            appendSceneTransitionMessage(conversationId, completedSceneTransition);
           }
           return;
         }
@@ -228,25 +264,28 @@ export default function App() {
       }
     } catch (caught) {
       if (controller.signal.aborted) {
-        updateAssistantMessage(assistantMessage.id, '已停止生成。', 'error');
+        updateAssistantMessage(conversationId, assistantMessageId, '已停止生成。', 'error');
       } else {
         const message = caught instanceof Error ? caught.message : '未知错误';
         setError(message);
-        updateAssistantMessage(assistantMessage.id, message, 'error');
+        updateAssistantMessage(conversationId, assistantMessageId, message, 'error');
       }
     } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
+      if (abortRef.current === controller) {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
     }
   }
 
   function updateAssistantMessage(
+    conversationId: string,
     messageId: string,
     content: string,
     status: ChatMessage['status'],
     metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> = {},
   ) {
-    updateActiveConversation((conversation) => ({
+    updateConversation(conversationId, (conversation) => ({
       ...conversation,
       updatedAt: Date.now(),
       messages: conversation.messages.map((message) =>
@@ -262,17 +301,17 @@ export default function App() {
     }));
   }
 
-  function patchAssistantMessage(messageId: string, updater: (message: ChatMessage) => ChatMessage) {
-    updateActiveConversation((conversation) => ({
+  function patchAssistantMessage(conversationId: string, messageId: string, updater: (message: ChatMessage) => ChatMessage) {
+    updateConversation(conversationId, (conversation) => ({
       ...conversation,
       updatedAt: Date.now(),
       messages: conversation.messages.map((message) => (message.id === messageId ? updater(message) : message)),
     }));
   }
 
-  function appendSceneTransitionMessage(transition: PendingSceneTransition) {
+  function appendSceneTransitionMessage(conversationId: string, transition: PendingSceneTransition) {
     const transitionMessage = createSceneTransitionMessage(transition);
-    updateActiveConversation((conversation) => ({
+    updateConversation(conversationId, (conversation) => ({
       ...conversation,
       updatedAt: Date.now(),
       messages: [...conversation.messages, transitionMessage],
@@ -395,7 +434,14 @@ export default function App() {
       const response = await fetch('/api/save/reset', { method: 'POST' });
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const state = (await response.json()) as SaveDataResponse;
-      applySaveDataResponse(state, { resetConversations: true });
+      const { conversation, assistantMessage } = createOpeningConversation();
+      applySaveDataResponse(state, { resetConversations: true, openingConversation: conversation });
+      void streamAgentResponse({
+        conversationId: conversation.id,
+        assistantMessageId: assistantMessage.id,
+        prompt: OPENING_STORY_PROMPT,
+        messages: [],
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '重置存档失败。');
     } finally {
@@ -453,7 +499,10 @@ export default function App() {
     }
   }
 
-  function applySaveDataResponse(state: SaveDataResponse, options: { resetConversations: boolean }) {
+  function applySaveDataResponse(
+    state: SaveDataResponse,
+    options: { resetConversations: boolean; openingConversation?: Conversation },
+  ) {
     setWorld(state.world);
     setFixedContext(normalizeFixedContext(state.fixedContext));
     setSelectedEntity(null);
@@ -461,7 +510,7 @@ export default function App() {
     setLastRequestLog(null);
 
     if (options.resetConversations) {
-      const next = createConversation();
+      const next = options.openingConversation || createConversation();
       setConversations([next]);
       setActiveId(next.id);
       return;
@@ -627,6 +676,17 @@ function normalizeFixedContext(state: Partial<FixedContext> | null | undefined):
           updatedAt: typeof file?.updatedAt === 'number' ? file.updatedAt : null,
         }))
       : [],
+  };
+}
+
+function createOpeningConversation() {
+  const assistantMessage = createMessage('assistant', '', 'streaming');
+  return {
+    conversation: {
+      ...createConversation('故事开场'),
+      messages: [assistantMessage],
+    },
+    assistantMessage,
   };
 }
 

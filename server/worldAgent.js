@@ -66,12 +66,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
       if (isRepeatedToolFailure(steps)) {
         return await finishSuccessfulRun({
-          prompt,
           runId,
           steps,
-          model: input.model,
-          thinking: input.thinking,
-          conversationContext: input.conversationContext,
           seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
           requestLog,
           handlers,
@@ -79,14 +75,10 @@ async function runWorldAgentTaskInternal(input, handlers) {
         });
       }
 
-      if (call.tool === 'finish' || result.done === true) {
+      if (call.tool === 'finish') {
         return await finishSuccessfulRun({
-          prompt,
           runId,
           steps,
-          model: input.model,
-          thinking: input.thinking,
-          conversationContext: input.conversationContext,
           seedAnswer: String(result.answer || summarizeAgentResult(prompt, steps)),
           requestLog,
           handlers,
@@ -96,12 +88,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
     }
 
     return await finishSuccessfulRun({
-      prompt,
       runId,
       steps,
-      model: input.model,
-      thinking: input.thinking,
-      conversationContext: input.conversationContext,
       seedAnswer: summarizeAgentResult(prompt, steps),
       requestLog,
       handlers,
@@ -115,17 +103,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
   }
 }
 
-async function finishSuccessfulRun({ prompt, runId, steps, model, thinking, conversationContext, seedAnswer, requestLog, handlers, signal }) {
-  const answer = await createFinalAnswer({
-    prompt,
-    steps,
-    model,
-    thinking,
-    conversationContext,
-    seedAnswer,
-    onDelta: handlers.onFinalAnswerDelta,
-    signal,
-  });
+async function finishSuccessfulRun({ runId, steps, seedAnswer, requestLog, handlers, signal }) {
+  const answer = await streamFallbackAnswer(seedAnswer, handlers.onFinalAnswerDelta, signal);
   addConversation('assistant', null, '世界 Agent', answer);
   finishAgentRun(runId, 'completed', answer, null);
   addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
@@ -307,9 +286,9 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       role: 'user',
       content: JSON.stringify(
         {
-          task: prompt,
-          conversationContext: Array.isArray(conversationContext) ? conversationContext.slice(-10) : [],
           world: shrinkWorld(getWorldOverview()),
+          conversationContext: Array.isArray(conversationContext) ? conversationContext : [],
+          task: prompt,
           previousSteps: steps.map((step) => ({
             index: step.index,
             tool: step.tool,
@@ -322,7 +301,8 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       ),
     },
   ];
-  requestLog?.entries?.push({
+  const logEntry = {
+    kind: 'tool-plan',
     stepIndex,
     model: selectedModel,
     thinking: normalizeThinkingMode(thinking) || normalizeThinkingMode(process.env.LLM_THINKING),
@@ -331,7 +311,8 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       role: message.role,
       content: message.content,
     })),
-  });
+  };
+  requestLog?.entries?.push(logEntry);
 
   const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
     method: 'POST',
@@ -355,163 +336,13 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
   }
 
   const json = await response.json();
+  logEntry.usage = normalizeUsage(json.usage);
   const content = json.choices?.[0]?.message?.content;
   return normalizeToolCall(JSON.parse(stripCodeFence(String(content || '{}'))));
 }
 
-async function createFinalAnswer({ prompt, steps, model, thinking, conversationContext, seedAnswer, onDelta, signal }) {
-  if (process.env.LLM_MOCK === '1') {
-    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
-  }
-
-  const apiKey = process.env.LLM_API_KEY;
-  const selectedModel = normalizeModel(model) || process.env.LLM_MODEL;
-  if (!apiKey || !selectedModel) {
-    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
-  }
-
-  const messages = buildFinalAnswerMessages({ prompt, steps, conversationContext, seedAnswer });
-  try {
-    if (onDelta) {
-      const answer = await streamFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, onDelta, signal });
-      return normalizeFinalAnswer(answer) || seedAnswer;
-    }
-    const answer = await fetchFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, signal });
-    return normalizeFinalAnswer(answer) || seedAnswer;
-  } catch {
-    return await streamFallbackAnswer(seedAnswer, onDelta, signal);
-  }
-}
-
-function buildFinalAnswerMessages({ prompt, steps, conversationContext, seedAnswer }) {
-  return [
-    {
-      role: 'system',
-      content:
-        '你是中文游戏世界 Agent。请根据工具调用结果给玩家一个自然、简洁、可继续互动的最终答复。只输出给玩家看的中文正文，不要输出 JSON、Markdown 代码块、内部工具名或调试过程；如果工具结果包含世界变化，请直接描述玩家可感知的结果。',
-    },
-    {
-      role: 'user',
-      content: JSON.stringify(
-        {
-          task: prompt,
-          conversationContext: Array.isArray(conversationContext) ? conversationContext.slice(-10) : [],
-          world: shrinkWorld(getWorldOverview()),
-          toolSteps: steps.map((step) => ({
-            index: step.index,
-            tool: step.tool,
-            args: step.args,
-            result: shrinkResult(step.result),
-          })),
-          fallbackAnswer: seedAnswer,
-        },
-        null,
-        2,
-      ),
-    },
-  ];
-}
-
-function normalizeFinalAnswer(answer) {
-  const content = String(answer || '').trim();
-  if (!content) return '';
-
-  const stripped = stripCodeFence(content);
-  try {
-    const parsed = JSON.parse(stripped);
-    if (isRecord(parsed)) {
-      const directAnswer = parsed.answer;
-      if (typeof directAnswer === 'string' && directAnswer.trim()) return directAnswer.trim();
-      const argsAnswer = isRecord(parsed.args) ? parsed.args.answer : null;
-      if (typeof argsAnswer === 'string' && argsAnswer.trim()) return argsAnswer.trim();
-    }
-  } catch {
-    // Keep natural-language answers as-is.
-  }
-
-  return content;
-}
-
-async function fetchFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, signal }) {
-  const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      messages,
-      stream: false,
-      temperature: 0.4,
-      ...deepSeekThinkingConfig(thinking),
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`最终回答生成失败：${response.status}`);
-  }
-
-  const json = await response.json();
-  const answer = json.choices?.[0]?.message?.content?.trim();
-  if (!answer) {
-    throw new Error('最终回答为空。');
-  }
-  return answer;
-}
-
-async function streamFinalAnswerFromModel({ apiKey, selectedModel, messages, thinking, onDelta, signal }) {
-  const response = await fetch(`${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      messages,
-      stream: true,
-      temperature: 0.4,
-      ...deepSeekThinkingConfig(thinking),
-    }),
-    signal,
-  });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`最终回答流式生成失败：${response.status}`);
-  }
-
-  const decoder = new TextDecoder();
-  const reader = response.body.getReader();
-  let buffer = '';
-  let answer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload) continue;
-      if (payload === '[DONE]') return answer.trim();
-
-      const json = JSON.parse(payload);
-      const delta = json.choices?.[0]?.delta?.content;
-      if (delta) {
-        answer += delta;
-        onDelta(delta);
-      }
-    }
-  }
-
-  return answer.trim();
+function normalizeUsage(usage) {
+  return isRecord(usage) ? usage : null;
 }
 
 async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
