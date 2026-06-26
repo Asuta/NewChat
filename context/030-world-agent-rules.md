@@ -1,8 +1,8 @@
 # 世界 Agent 行动规则
 
-conversationContext 里可能包含上一轮 Agent 工具调用记录；这些记录是已经读取过的数据库事实，可以作为本轮回答依据。
+contextEvents 里可能包含上一轮 Agent 工具调用记录；这些记录是已经读取过的数据库事实，可以作为本轮回答依据。
 
-如果玩家重复询问同一人物、道具、场景或设定，并且 conversationContext 已有对应的 get_entity_bundle、get_current_scene、get_scene_entities 或 get_relationships 结果，优先直接 finish 回答，不要重复调用读取工具。
+如果玩家重复询问同一人物、道具、场景或设定，并且 contextEvents 已有对应的 get_entity_bundle、get_current_scene、get_scene_entities 或 get_relationships 结果，优先直接 finish 回答，不要重复调用读取工具。
 
 只有当上下文中没有相关工具结果、结果不完整、目标不明确、或玩家明确要求最新/重新查看/当前状态时，才调用读取工具。
 

@@ -1,4 +1,4 @@
-import type { AgentStep, ChatMessage, ContextMode, Conversation, FixedContext, Role } from '../types';
+import type { AgentContextEvent, AgentStep, ChatMessage, ContextMode, Conversation, FixedContext, Role } from '../types';
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
@@ -135,6 +135,21 @@ export function buildModelMessages(
   return fixedContextMessage ? [fixedContextMessage, ...dynamicMessages] : dynamicMessages;
 }
 
+export function buildContextEvents(
+  conversation: Conversation,
+  messages: ChatMessage[],
+  excludedMessageId?: string,
+): AgentContextEvent[] {
+  const cleanMessages = messages.filter(
+    (message) =>
+      message.id !== excludedMessageId &&
+      (message.role !== 'system' || message.kind === 'scene-transition') &&
+      message.status !== 'streaming' &&
+      message.content.trim(),
+  );
+  return buildDynamicContextEvents(cleanMessages, conversation.contextSummary, getConversationContextMode(conversation));
+}
+
 function buildDynamicModelMessages(
   cleanMessages: ChatMessage[],
   summary: Conversation['contextSummary'],
@@ -160,6 +175,33 @@ function buildDynamicModelMessages(
 
   const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
   return [summaryMessage, ...toModelMessages(recentCoveredMessages), ...toModelMessages(messagesAfterSummary)];
+}
+
+function buildDynamicContextEvents(
+  cleanMessages: ChatMessage[],
+  summary: Conversation['contextSummary'],
+  contextMode: ContextMode,
+): AgentContextEvent[] {
+  if (!summary || contextMode === 'full-history') {
+    return toContextEvents(cleanMessages);
+  }
+
+  const summaryEvent: AgentContextEvent = {
+    type: 'summary',
+    content: summary.content,
+  };
+  const summaryEndIndex = cleanMessages.findIndex((message) => message.id === summary.lastMessageId);
+  if (summaryEndIndex < 0) {
+    return [summaryEvent, ...toContextEvents(cleanMessages)];
+  }
+
+  const messagesAfterSummary = cleanMessages.slice(summaryEndIndex + 1);
+  if (contextMode === 'summary-only') {
+    return [summaryEvent, ...toContextEvents(messagesAfterSummary)];
+  }
+
+  const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
+  return [summaryEvent, ...toContextEvents(recentCoveredMessages), ...toContextEvents(messagesAfterSummary)];
 }
 
 function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null {
@@ -203,6 +245,55 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
   });
 }
 
+function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
+  return messages.flatMap((message) => {
+    if (message.kind === 'scene-transition') {
+      return [createSceneTransitionContextEvent(message)];
+    }
+
+    const output: AgentContextEvent[] = [];
+    if (message.role === 'assistant' && message.agentSteps?.length) {
+      output.push(...createAgentStepContextEvents(message.agentSteps, message.agentRunId));
+    }
+    output.push({
+      type: 'message',
+      role: message.role,
+      content: message.content,
+    });
+    return output;
+  });
+}
+
+function createSceneTransitionContextEvent(message: ChatMessage): AgentContextEvent {
+  const transition = message.sceneTransition;
+  return {
+    type: 'scene_transition',
+    content: formatSceneTransitionForContext(message),
+    ...(transition
+      ? {
+          fromSceneId: transition.fromSceneId,
+          fromSceneName: transition.fromSceneName,
+          toSceneId: transition.toSceneId,
+          toSceneName: transition.toSceneName,
+        }
+      : {}),
+  };
+}
+
+function createAgentStepContextEvents(steps: AgentStep[], runId?: number): AgentContextEvent[] {
+  return steps.map((step, index) => {
+    const stepIndex = typeof step.stepIndex === 'number' ? step.stepIndex : typeof step.index === 'number' ? step.index : index + 1;
+    return {
+      type: 'agent_step',
+      ...(typeof runId === 'number' && Number.isFinite(runId) ? { runId } : {}),
+      ...(Number.isFinite(stepIndex) ? { stepIndex } : {}),
+      tool: step.tool,
+      args: isRecord(step.args) ? step.args : {},
+      result: shrinkAgentResult(isRecord(step.result) ? step.result : {}),
+    };
+  });
+}
+
 export function formatAgentStepsForContext(steps: AgentStep[], runId?: number): string {
   const header = [AGENT_TOOL_CONTEXT_PREFIX, runId ? `Agent Run ID: ${runId}` : null, `工具调用数量：${steps.length}`]
     .filter(Boolean)
@@ -223,6 +314,47 @@ export function formatAgentStepsForContext(steps: AgentStep[], runId?: number): 
 
 function formatJson(value: unknown) {
   return JSON.stringify(value ?? null, null, 2);
+}
+
+function shrinkAgentResult(result: Record<string, unknown>): Record<string, unknown> {
+  const text = JSON.stringify(result);
+  if (text.length <= 2200) return result;
+
+  const scene = isRecord(result.scene) ? result.scene : null;
+  const bundle = isRecord(result.bundle) ? result.bundle : null;
+  const bundleComponents: Record<string, unknown> = isRecord(bundle?.components) ? bundle.components : {};
+
+  return {
+    ok: result.ok,
+    summary: result.summary,
+    error: result.error,
+    entities: Array.isArray(result.entities) ? result.entities.slice(0, 8) : undefined,
+    scene: scene
+      ? {
+          scene: scene.scene,
+          residents: scene.residents,
+          items: scene.items,
+          exits: Array.isArray(scene.exits) ? scene.exits.map((exit) => (isRecord(exit) ? exit.scene : undefined)) : undefined,
+        }
+      : undefined,
+    bundle: bundle
+      ? {
+          entity: bundle.entity,
+          aliases: bundle.aliases,
+          components: {
+            identity: bundleComponents.identity,
+            scene: bundleComponents.scene,
+            status: bundleComponents.status,
+            quest: bundleComponents.quest,
+          },
+          relationships: Array.isArray(bundle.relationships) ? bundle.relationships.slice(0, 12) : undefined,
+        }
+      : undefined,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 function emptyConversation(title: string, updatedAt: number): Conversation {

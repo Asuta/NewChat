@@ -5,8 +5,8 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { WorldPanel } from './components/WorldPanel';
 import {
-  buildModelMessages,
   buildCompactMessages,
+  buildContextEvents,
   createConversation,
   createMessage,
   createSceneTransitionMessage,
@@ -123,7 +123,7 @@ export default function App() {
       conversationId: conversation.id,
       assistantMessageId: assistantMessage.id,
       prompt: OPENING_STORY_PROMPT,
-      messages: [],
+      contextEvents: [],
     });
   }
 
@@ -142,7 +142,7 @@ export default function App() {
     const assistantMessage = createMessage('assistant', '', 'streaming');
     const shouldRename = activeConversation.messages.length === 0 && activeConversation.title === '新对话';
     const nextMessages = [...activeConversation.messages, userMessage, assistantMessage];
-    const requestMessages = buildModelMessages(activeConversation, activeConversation.messages, EMPTY_FIXED_CONTEXT);
+    const contextEvents = buildContextEvents(activeConversation, activeConversation.messages);
 
     updateActiveConversation((conversation) => ({
       ...conversation,
@@ -155,7 +155,7 @@ export default function App() {
       conversationId: activeConversation.id,
       assistantMessageId: assistantMessage.id,
       prompt: content,
-      messages: requestMessages,
+      contextEvents,
       pendingSceneTransition: options.pendingSceneTransition,
     });
   }
@@ -164,13 +164,13 @@ export default function App() {
     conversationId,
     assistantMessageId,
     prompt,
-    messages,
+    contextEvents,
     pendingSceneTransition,
   }: {
     conversationId: string;
     assistantMessageId: string;
     prompt: string;
-    messages: ReturnType<typeof buildModelMessages>;
+    contextEvents: ReturnType<typeof buildContextEvents>;
     pendingSceneTransition?: PendingSceneTransition;
   }) {
     setError(null);
@@ -188,7 +188,7 @@ export default function App() {
           model: modelId,
           thinking: thinkingMode,
           prompt,
-          messages,
+          contextEvents,
         }),
         signal: controller.signal,
       });
@@ -440,7 +440,7 @@ export default function App() {
         conversationId: conversation.id,
         assistantMessageId: assistantMessage.id,
         prompt: OPENING_STORY_PROMPT,
-        messages: [],
+        contextEvents: [],
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '重置存档失败。');

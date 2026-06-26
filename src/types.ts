@@ -138,6 +138,33 @@ export interface AgentStep {
   result: Record<string, unknown>;
 }
 
+export type AgentContextEvent =
+  | {
+      type: 'summary';
+      content: string;
+    }
+  | {
+      type: 'message';
+      role: Role;
+      content: string;
+    }
+  | {
+      type: 'scene_transition';
+      content: string;
+      fromSceneId?: string | null;
+      fromSceneName?: string;
+      toSceneId?: string | null;
+      toSceneName?: string;
+    }
+  | {
+      type: 'agent_step';
+      runId?: number;
+      stepIndex?: number;
+      tool: string;
+      args: Record<string, unknown>;
+      result: Record<string, unknown>;
+    };
+
 export interface AgentRun {
   id: number;
   prompt: string;

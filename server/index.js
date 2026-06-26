@@ -198,6 +198,7 @@ app.post('/api/world/agent', async (req, res) => {
       prompt: req.body?.prompt,
       model: req.body?.model,
       thinking: req.body?.thinking,
+      contextEvents: sanitizeContextEvents(req.body?.contextEvents),
       conversationContext: sanitizeMessages(req.body?.messages),
     });
     res.json(result);
@@ -224,6 +225,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
         prompt: req.body?.prompt,
         model: req.body?.model,
         thinking: req.body?.thinking,
+        contextEvents: sanitizeContextEvents(req.body?.contextEvents),
         conversationContext: sanitizeMessages(req.body?.messages),
         signal: controller.signal,
       },
@@ -524,6 +526,64 @@ function sanitizeMessages(input) {
     }));
 }
 
+function sanitizeContextEvents(input) {
+  if (!Array.isArray(input)) return [];
+  return input.map(sanitizeContextEvent).filter(Boolean);
+}
+
+function sanitizeContextEvent(event) {
+  if (!isRecord(event)) return null;
+  const type = String(event.type || '');
+
+  if (type === 'summary') {
+    return {
+      type: 'summary',
+      content: String(event.content || '').slice(0, 16000),
+    };
+  }
+
+  if (type === 'message') {
+    if (!['system', 'user', 'assistant'].includes(event.role)) return null;
+    return {
+      type: 'message',
+      role: event.role,
+      content: String(event.content || '').slice(0, 16000),
+    };
+  }
+
+  if (type === 'scene_transition') {
+    return {
+      type: 'scene_transition',
+      content: String(event.content || '').slice(0, 16000),
+      fromSceneId: sanitizeOptionalString(event.fromSceneId, 400),
+      fromSceneName: sanitizeOptionalString(event.fromSceneName, 400),
+      toSceneId: sanitizeOptionalString(event.toSceneId, 400),
+      toSceneName: sanitizeOptionalString(event.toSceneName, 400),
+    };
+  }
+
+  if (type === 'agent_step') {
+    const tool = String(event.tool || '').trim();
+    if (!tool) return null;
+    return {
+      type: 'agent_step',
+      ...(Number.isFinite(event.runId) ? { runId: event.runId } : {}),
+      ...(Number.isFinite(event.stepIndex) ? { stepIndex: event.stepIndex } : {}),
+      tool,
+      args: isRecord(event.args) ? event.args : {},
+      result: isRecord(event.result) ? event.result : {},
+    };
+  }
+
+  return null;
+}
+
+function sanitizeOptionalString(value, limit) {
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  return value.slice(0, limit);
+}
+
 function withSystemPrompt(messages) {
   const prompt = process.env.SYSTEM_PROMPT?.trim();
   if (!prompt) return messages;
@@ -555,6 +615,10 @@ function normalizeThinkingMode(value) {
 function normalizeModel(value) {
   if (!AVAILABLE_MODELS.includes(value)) return null;
   return value;
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 async function pipeOpenAIStream(body, res) {

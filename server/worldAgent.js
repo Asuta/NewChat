@@ -35,6 +35,9 @@ async function runWorldAgentTaskInternal(input, handlers) {
   const runId = createAgentRun(prompt);
   const steps = [];
   const requestLog = { entries: [] };
+  const baseContextEvents = Array.isArray(input.contextEvents)
+    ? input.contextEvents
+    : legacyMessagesToContextEvents(input.conversationContext);
   addConversation('user', 'player', '玩家', prompt);
   addEvent('agent.started', 'player', null, { summary: `Agent 开始处理：${prompt}` });
   handlers.onStart?.({ runId });
@@ -46,7 +49,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
         steps,
         model: input.model,
         thinking: input.thinking,
-        conversationContext: input.conversationContext,
+        contextEvents: baseContextEvents,
+        runId,
         stepIndex,
         requestLog,
         signal: input.signal,
@@ -75,7 +79,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
         });
       }
 
-      if (call.tool === 'finish') {
+      if (call.tool === 'finish' || result.done === true) {
         return await finishSuccessfulRun({
           runId,
           steps,
@@ -265,7 +269,7 @@ export function getAgentHistory() {
   }));
 }
 
-async function planNextToolCall({ prompt, steps, model, thinking, conversationContext, stepIndex, requestLog, signal }) {
+async function planNextToolCall({ prompt, steps, model, thinking, contextEvents, runId, stepIndex, requestLog, signal }) {
   if (process.env.LLM_MOCK === '1') {
     return fallbackToolCall(prompt, steps);
   }
@@ -277,6 +281,10 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
   }
 
   const fixedContext = readFixedContextBundle().content;
+  const planningContextEvents = [
+    ...(Array.isArray(contextEvents) ? contextEvents : []),
+    ...steps.map((step) => createAgentStepContextEvent(step, runId)),
+  ];
   const messages = [
     {
       role: 'system',
@@ -286,15 +294,8 @@ async function planNextToolCall({ prompt, steps, model, thinking, conversationCo
       role: 'user',
       content: JSON.stringify(
         {
-          world: shrinkWorld(getWorldOverview()),
-          conversationContext: Array.isArray(conversationContext) ? conversationContext : [],
+          contextEvents: planningContextEvents,
           task: prompt,
-          previousSteps: steps.map((step) => ({
-            index: step.index,
-            tool: step.tool,
-            args: step.args,
-            result: shrinkResult(step.result),
-          })),
         },
         null,
         2,
@@ -654,19 +655,6 @@ function formatToolSummary(tool, result) {
   return `${tool}: ${result.summary || result.error || (result.ok ? 'ok' : 'failed')}`;
 }
 
-function shrinkWorld(world) {
-  return {
-    counts: world.counts,
-    currentScene: {
-      scene: world.currentScene.scene,
-      description: world.currentScene.sceneComponent?.description,
-      residents: world.currentScene.residents,
-      items: world.currentScene.items,
-      exits: world.currentScene.exits.map((exit) => exit.scene),
-    },
-  };
-}
-
 function shrinkResult(result) {
   const text = JSON.stringify(result);
   if (text.length <= 2200) return result;
@@ -697,6 +685,29 @@ function shrinkResult(result) {
         }
       : undefined,
   };
+}
+
+function createAgentStepContextEvent(step, runId) {
+  const stepIndex = Number.isFinite(step.stepIndex) ? step.stepIndex : Number.isFinite(step.index) ? step.index : undefined;
+  return {
+    type: 'agent_step',
+    ...(Number.isFinite(runId) ? { runId } : {}),
+    ...(Number.isFinite(stepIndex) ? { stepIndex } : {}),
+    tool: step.tool,
+    args: isRecord(step.args) ? step.args : {},
+    result: shrinkResult(isRecord(step.result) ? step.result : {}),
+  };
+}
+
+function legacyMessagesToContextEvents(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((message) => ['system', 'user', 'assistant'].includes(message?.role) && typeof message?.content === 'string')
+    .map((message) => ({
+      type: 'message',
+      role: message.role,
+      content: message.content,
+    }));
 }
 
 function stripCodeFence(content) {
