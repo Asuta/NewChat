@@ -10,6 +10,7 @@ import {
   createActionResultMessage,
   createConversation,
   createMessage,
+  createNpcSpeechMessage,
   createSceneTransitionMessage,
   getCompactableMessages,
   getConversationContextMode,
@@ -261,6 +262,43 @@ export default function App() {
           updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
             agentRunId: runId,
           });
+          return;
+        }
+
+        if (event.type === 'npc_speech') {
+          const npcMessage = createNpcSpeechMessage({
+            entityId: event.npcEntityId,
+            name: event.npcName,
+            content: event.content,
+            status: 'streaming',
+          });
+          streamedAnswer = streamedAnswer ? `${streamedAnswer}\n\n${event.content}` : event.content;
+          hasVisibleAssistantContent = true;
+
+          if (!activeAssistantContent && activeAssistantMessageId === assistantMessageId && runAssistantMessageIds.length === 1) {
+            activeAssistantMessageId = assistantMessageId;
+            activeAssistantContent = event.content;
+            patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
+              ...message,
+              kind: 'npc-speech',
+              content: event.content,
+              status: 'streaming',
+              agentRunId: runId,
+              npcSpeech: {
+                entityId: event.npcEntityId,
+                name: event.npcName,
+              },
+            }));
+          } else {
+            const nextMessage = {
+              ...npcMessage,
+              agentRunId: runId,
+            };
+            activeAssistantMessageId = nextMessage.id;
+            activeAssistantContent = event.content;
+            runAssistantMessageIds.push(nextMessage.id);
+            appendAssistantMessage(conversationId, nextMessage);
+          }
           return;
         }
 
@@ -951,6 +989,16 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
   if (eventType === 'speech_delta') {
     return { type: 'speech_delta', delta: String(payload.delta || '') };
+  }
+  if (eventType === 'npc_speech') {
+    return {
+      type: 'npc_speech',
+      npcEntityId: String(payload.npcEntityId || ''),
+      npcName: String(payload.npcName || ''),
+      content: String(payload.content || ''),
+      runId: typeof payload.runId === 'number' ? payload.runId : undefined,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+    };
   }
   if (eventType === 'done') {
     return {

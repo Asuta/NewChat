@@ -50,6 +50,20 @@
 {"tool":"roll_dice","args":{"expression":"1d20+5","reason":"玩家使用长剑攻击，攻击检定"}}
 ```
 
+NPC 气泡发言示例：
+
+```json
+{"tool":"npc_speak","args":{"npcEntityId":"character_lina","content":"别在这里拔剑，雾港的夜晚已经够糟了。"}}
+```
+
+玩家直接询问 NPC 时的示例：
+
+```json
+{"tool":"npc_speak","args":{"npcEntityId":"character_lina","content":"还行吧，比昨天强点。码头那边卸了批货，水手们手头宽裕了些。你呢，老主顾了，要点什么？"}}
+```
+
+`npc_speak.args.content` 只填写 NPC 实际说出口的话；不要包含旁白、动作描写、心理描写、引号、说话人前缀或其他 NPC 的对白。`npc_speak` 不会自动结束本轮；如果已经完成回复，继续使用 `tool=finish`。
+
 命中后的伤害掷骰示例：
 
 ```json

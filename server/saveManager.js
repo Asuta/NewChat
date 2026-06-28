@@ -47,14 +47,14 @@ export function ensureDataLayout() {
   if (isMissingOrEmptyDirectory(TEMPLATE_CONTEXT_DIR)) {
     copyDirectoryContents(FACTORY_CONTEXT_DIR, TEMPLATE_CONTEXT_DIR, { clear: true });
   }
-  copyMissingDirectoryFiles(FACTORY_CONTEXT_DIR, TEMPLATE_CONTEXT_DIR);
+  syncSystemContextFiles(FACTORY_CONTEXT_DIR, TEMPLATE_CONTEXT_DIR);
 
   syncGeneratedWorldSchemaContext(TEMPLATE_CONTEXT_DIR);
 
   if (isMissingOrEmptyDirectory(SAVE_CONTEXT_DIR)) {
     copyDirectoryContents(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR, { clear: true });
   }
-  copyMissingDirectoryFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR);
+  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR);
 
   syncGeneratedWorldSchemaContext(SAVE_CONTEXT_DIR);
 
@@ -233,11 +233,13 @@ export function importSaveBundle(bundle) {
 
   writeDbBase64(TEMPLATE_DB_FILE, bundle.template.worldDbBase64);
   writeContextFiles(TEMPLATE_CONTEXT_DIR, bundle.template.contextFiles);
+  syncSystemContextFiles(FACTORY_CONTEXT_DIR, TEMPLATE_CONTEXT_DIR);
   syncGeneratedWorldSchemaContext(TEMPLATE_CONTEXT_DIR);
   writePackFiles(TEMPLATE_RULES_DIR, templateRuleFiles);
 
   writeDbBase64(SAVE_IMPORT_DB_FILE, savePart.worldDbBase64);
   writeContextFiles(SAVE_CONTEXT_DIR, savePart.contextFiles);
+  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR);
   syncGeneratedWorldSchemaContext(SAVE_CONTEXT_DIR);
   writePackFiles(SAVE_RULES_DIR, saveRuleFiles);
 
@@ -475,6 +477,35 @@ function copyMissingDirectoryFiles(sourceDir, targetDir) {
       copyFileSync(sourcePath, targetPath);
     }
   }
+}
+
+function syncSystemContextFiles(sourceDir, targetDir) {
+  if (!existsSync(sourceDir)) {
+    return;
+  }
+
+  mkdirSync(targetDir, { recursive: true });
+
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = join(sourceDir, entry.name);
+    const targetPath = join(targetDir, entry.name);
+
+    if (entry.isDirectory()) {
+      syncSystemContextFiles(sourcePath, targetPath);
+      continue;
+    }
+
+    if (!entry.isFile() || isPreservedContextFile(entry.name)) {
+      continue;
+    }
+
+    mkdirSync(dirname(targetPath), { recursive: true });
+    copyFileSync(sourcePath, targetPath);
+  }
+}
+
+function isPreservedContextFile(name) {
+  return name === USER_CONTEXT_FILE_NAME || name === GENERATED_SCHEMA_CONTEXT_FILE_NAME;
 }
 
 function copySqliteFamily(sourceFile, targetFile) {

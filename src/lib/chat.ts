@@ -68,6 +68,31 @@ export function createActionResultMessage(actionResult: NonNullable<ChatMessage[
   };
 }
 
+export function createNpcSpeechMessage({
+  entityId,
+  name,
+  content,
+  status = 'done',
+}: {
+  entityId: string;
+  name: string;
+  content: string;
+  status?: ChatMessage['status'];
+}): ChatMessage {
+  return {
+    id: createId('npc'),
+    role: 'assistant',
+    kind: 'npc-speech',
+    content,
+    createdAt: Date.now(),
+    status,
+    npcSpeech: {
+      entityId,
+      name,
+    },
+  };
+}
+
 export function createConversation(title = '新对话'): Conversation {
   const now = Date.now();
   return {
@@ -263,6 +288,9 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
         content: formatAgentStepsForContext(message.agentSteps, message.agentRunId),
       });
     }
+    if (message.kind === 'npc-speech') {
+      return output;
+    }
     output.push({ role: message.role, content: message.content });
     return output;
   });
@@ -280,6 +308,9 @@ function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
     const output: AgentContextEvent[] = [];
     if (message.role === 'assistant' && message.agentSteps?.length) {
       output.push(...createAgentStepContextEvents(message.agentSteps, message.agentRunId));
+    }
+    if (message.kind === 'npc-speech') {
+      return output;
     }
     output.push({
       type: 'message',

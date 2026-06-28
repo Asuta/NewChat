@@ -119,6 +119,33 @@ async function runWorldAgentTaskInternal(input, handlers) {
       });
       stepIndex += 1;
 
+      if (isRepeatedSuccessfulNpcSpeech(steps)) {
+        return await finishSuccessfulRun({
+          runId,
+          steps,
+          seedAnswer: '',
+          visibleAnswer,
+          requestLog,
+          handlers,
+          signal: input.signal,
+        });
+      }
+
+      if (decision.tool === 'npc_speak' && step.result?.ok !== false) {
+        const npcSpeechText = String(args.content || args.text || args.message || '').trim();
+        const npc = isRecord(step.result?.npc) ? step.result.npc : {};
+        if (npcSpeechText && typeof npc.id === 'string' && typeof npc.name === 'string') {
+          visibleAnswer = appendVisibleAnswer(visibleAnswer, npcSpeechText);
+          handlers.onNpcSpeech?.({
+            runId,
+            stepIndex: step.index,
+            npcEntityId: npc.id,
+            npcName: npc.name,
+            content: npcSpeechText,
+          });
+        }
+      }
+
       if (isRepeatedToolFailure(steps)) {
         return await finishSuccessfulRun({
           runId,
@@ -171,6 +198,18 @@ function compactToolResultForAgentStep(tool, result) {
     return {
       ok: true,
       summary: '说话成功。',
+    };
+  }
+
+  if (tool === 'npc_speak') {
+    const npc = isRecord(result.npc) ? result.npc : {};
+    return {
+      ok: true,
+      npc: {
+        id: typeof npc.id === 'string' ? npc.id : '',
+        name: typeof npc.name === 'string' ? npc.name : '',
+      },
+      summary: result.summary || 'NPC 发言成功。',
     };
   }
 
@@ -338,6 +377,41 @@ export function executeWorldTool(tool, args, prompt = '') {
           ok: false,
           error: 'speak.text 不能为空。',
         };
+  }
+
+  if (tool === 'npc_speak') {
+    const npcEntityId = String(args.npcEntityId || args.entityId || args.id || '').trim();
+    const content = String(args.content || args.text || args.message || '').trim();
+    if (!npcEntityId) {
+      return {
+        ok: false,
+        error: 'npc_speak.npcEntityId 不能为空。',
+      };
+    }
+    if (!content) {
+      return {
+        ok: false,
+        error: 'npc_speak.content 不能为空。',
+      };
+    }
+
+    const entity = getEntity(npcEntityId);
+    if (!entity) {
+      return {
+        ok: false,
+        error: `实体 ${npcEntityId} 不存在。`,
+      };
+    }
+
+    addConversation('npc', entity.id, entity.name, content);
+    return {
+      ok: true,
+      npc: {
+        id: entity.id,
+        name: entity.name,
+      },
+      summary: `${entity.name}发言成功。`,
+    };
   }
 
   if (tool === 'enter_scene') {
@@ -569,7 +643,7 @@ function createParseRepairMessage({ previousContent, parseError }) {
         previousOutput: truncateForRepairPrompt(previousContent),
         requiredShape: {
           say: '可选。要展示给玩家的话；如果还需要先调用工具，可以省略或留空。',
-          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、roll_dice、apply_world_patch、finish。',
+          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、npc_speak、roll_dice、apply_world_patch、finish。',
           args: '必须是对象。finish 时可以为空对象。',
         },
       },
@@ -701,6 +775,7 @@ function normalizeToolCall(raw) {
     'search_rules',
     'get_rule_section',
     'roll_dice',
+    'npc_speak',
     'enter_scene',
     'apply_world_patch',
     'finish',
@@ -787,6 +862,22 @@ function isRepeatedToolFailure(steps) {
       JSON.stringify(step.args) === JSON.stringify(first.args)
     );
   });
+}
+
+function isRepeatedSuccessfulNpcSpeech(steps) {
+  if (steps.length < 2) return false;
+  const current = steps.at(-1);
+  const previous = steps.at(-2);
+  if (current?.tool !== 'npc_speak' || previous?.tool !== 'npc_speak') return false;
+  if (current.result?.ok === false || previous.result?.ok === false) return false;
+  return normalizeNpcSpeechSignature(current.args) === normalizeNpcSpeechSignature(previous.args);
+}
+
+function normalizeNpcSpeechSignature(args) {
+  if (!isRecord(args)) return '';
+  const entityId = String(args.npcEntityId || args.entityId || args.id || '').trim();
+  const content = String(args.content || args.text || args.message || '').trim();
+  return `${entityId}\n${content}`;
 }
 
 function normalizeWorldPatchOperations(args) {

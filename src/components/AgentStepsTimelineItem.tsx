@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_rules: '搜索规则',
   get_rule_section: '读取规则段落',
   roll_dice: '掷骰',
+  npc_speak: 'NPC 发言',
   speak: '发言',
   enter_scene: '切换场景',
   apply_world_patch: '修改世界数据',

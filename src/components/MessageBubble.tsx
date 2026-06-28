@@ -1,4 +1,4 @@
-import { Bot, CheckCheck, Copy, MapPinned, Swords, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Bot, CheckCheck, Copy, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
 
@@ -26,6 +26,24 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <Swords size={16} />
           <span>{message.content}</span>
           <time>{formatTime(message.createdAt)}</time>
+        </div>
+      </article>
+    );
+  }
+
+  if (message.kind === 'npc-speech') {
+    return (
+      <article className="message-row npc" aria-label={`${message.npcSpeech?.name || 'NPC'} 发言`}>
+        <div className="npc-avatar" aria-hidden="true">
+          <UserRound size={19} />
+        </div>
+
+        <div className="message-bubble npc-message-bubble">
+          <header className="npc-bubble-header">{message.npcSpeech?.name || 'NPC'}</header>
+          <p>{message.content}</p>
+          <footer className="message-meta npc-message-meta">
+            <time>{formatTime(message.createdAt)}</time>
+          </footer>
         </div>
       </article>
     );

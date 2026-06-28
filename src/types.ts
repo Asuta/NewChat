@@ -8,10 +8,14 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
-  kind?: 'scene-transition' | 'action-result';
+  kind?: 'scene-transition' | 'action-result' | 'npc-speech';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
+  npcSpeech?: {
+    entityId: string;
+    name: string;
+  };
   sceneTransition?: {
     fromSceneId?: string | null;
     fromSceneName: string;
@@ -286,6 +290,14 @@ export type WorldAgentStreamEvent =
   | {
       type: 'speech_delta';
       delta: string;
+    }
+  | {
+      type: 'npc_speech';
+      npcEntityId: string;
+      npcName: string;
+      content: string;
+      runId?: number;
+      stepIndex?: number;
     }
   | {
       type: 'done';
