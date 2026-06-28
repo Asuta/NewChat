@@ -7,6 +7,7 @@ import { WorldPanel } from './components/WorldPanel';
 import {
   buildCompactMessages,
   buildContextEvents,
+  createActionResultMessage,
   createConversation,
   createMessage,
   createSceneTransitionMessage,
@@ -18,6 +19,7 @@ import {
 } from './lib/chat';
 import type {
   AgentStep,
+  ExecuteWorldActionResponse,
   ChatMessage,
   ContextMode,
   Conversation,
@@ -29,6 +31,7 @@ import type {
   SaveDataResponse,
   SaveExportMode,
   WorldAgentStreamEvent,
+  WorldAction,
   WorldEntity,
   WorldOverview,
 } from './types';
@@ -48,6 +51,8 @@ type PendingSceneTransition = NonNullable<ChatMessage['sceneTransition']>;
 interface SendMessageOptions {
   pendingSceneTransition?: PendingSceneTransition;
 }
+
+type AgentTaskRole = 'user' | 'system';
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(getInitialConversations);
@@ -166,12 +171,14 @@ export default function App() {
     prompt,
     contextEvents,
     pendingSceneTransition,
+    taskRole = 'user',
   }: {
     conversationId: string;
     assistantMessageId: string;
     prompt: string;
     contextEvents: ReturnType<typeof buildContextEvents>;
     pendingSceneTransition?: PendingSceneTransition;
+    taskRole?: AgentTaskRole;
   }) {
     setError(null);
     setLastRequestLog(null);
@@ -196,6 +203,7 @@ export default function App() {
           model: modelId,
           thinking: thinkingMode,
           prompt,
+          taskRole,
           contextEvents,
         }),
         signal: controller.signal,
@@ -693,6 +701,58 @@ export default function App() {
     });
   }
 
+  async function requestWorldActions(targetId: string): Promise<WorldAction[]> {
+    if (isStreaming) throw new Error('DM 正在叙事，动作暂不可用。');
+    if (isCompressing || isFixedContextSaving || isSaveDataBusy) throw new Error('系统正在处理数据，动作暂不可用。');
+    const response = await fetch(`/api/world/actions?actorId=player&targetId=${encodeURIComponent(targetId)}`);
+    if (!response.ok) throw new Error(await readErrorMessage(response));
+    const data = (await response.json()) as { actions?: WorldAction[] };
+    return Array.isArray(data.actions) ? data.actions : [];
+  }
+
+  async function executeWorldAction(action: WorldAction) {
+    if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy) return;
+    setError(null);
+    setIsWorldLoading(true);
+    try {
+      const response = await fetch('/api/world/actions/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const data = (await response.json()) as ExecuteWorldActionResponse;
+      const actionMessage = createActionResultMessage(data.result);
+      const assistantMessage = createMessage('assistant', '', 'streaming');
+      const nextMessages = [...activeConversation.messages, actionMessage, assistantMessage];
+      const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
+      setWorld(data.world);
+      updateActiveConversation((conversation) => ({
+        ...conversation,
+        updatedAt: Date.now(),
+        messages: nextMessages,
+      }));
+      if (selectedEntity?.entity.id === action.targetId) {
+        void selectWorldEntity(action.targetId);
+      }
+      await streamAgentResponse({
+        conversationId: activeConversation.id,
+        assistantMessageId: assistantMessage.id,
+        prompt: [
+          '请根据刚刚的本地硬逻辑动作结果进行 AI DM 叙事。',
+          'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害或 HP。',
+          '请叙事化这个结果，然后判断受影响 NPC 或周围环境是否应立即反应；如需要规则裁定或世界状态变化，请继续调用合适工具。',
+        ].join('\n'),
+        contextEvents,
+        taskRole: 'system',
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '动作执行失败。');
+    } finally {
+      setIsWorldLoading(false);
+    }
+  }
+
   if (!activeConversation) {
     return null;
   }
@@ -756,6 +816,8 @@ export default function App() {
         onEnterScene={enterWorldScene}
         onSearch={searchWorld}
         onSelectEntity={selectWorldEntity}
+        onRequestEntityActions={requestWorldActions}
+        onExecuteWorldAction={executeWorldAction}
       />
     </main>
   );

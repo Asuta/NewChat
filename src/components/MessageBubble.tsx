@@ -1,4 +1,4 @@
-import { Bot, CheckCheck, Copy, MapPinned, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Bot, CheckCheck, Copy, MapPinned, Swords, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
 
@@ -12,6 +12,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <article className="scene-transition-row" aria-label="场景移动记录">
         <div className="scene-transition-pill">
           <MapPinned size={15} />
+          <span>{message.content}</span>
+          <time>{formatTime(message.createdAt)}</time>
+        </div>
+      </article>
+    );
+  }
+
+  if (message.kind === 'action-result') {
+    return (
+      <article className="action-result-row" aria-label="硬逻辑动作结果">
+        <div className="action-result-card">
+          <Swords size={16} />
           <span>{message.content}</span>
           <time>{formatTime(message.createdAt)}</time>
         </div>

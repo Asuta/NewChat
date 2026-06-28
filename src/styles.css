@@ -392,6 +392,55 @@ button {
   background: #f5f9ff;
 }
 
+.world-action-menu {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  min-width: 210px;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(22, 35, 55, 0.18);
+}
+
+.world-action-menu > strong {
+  padding: 5px 7px 3px;
+  color: #273041;
+  font-size: 13px;
+}
+
+.world-action-menu > span {
+  padding: 5px 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.world-action-menu .world-action-error {
+  color: var(--danger);
+}
+
+.world-action-menu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 8px;
+  background: transparent;
+  color: #263043;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.world-action-menu button:hover {
+  background: #edf5ff;
+  color: var(--accent);
+}
+
 .world-list-row span,
 .entity-detail span,
 .entity-detail small,
@@ -1304,7 +1353,8 @@ button {
   justify-content: center;
 }
 
-.scene-transition-pill {
+.scene-transition-pill,
+.action-result-card {
   display: inline-flex;
   align-items: center;
   max-width: min(620px, 70%);
@@ -1318,13 +1368,27 @@ button {
   line-height: 1.4;
 }
 
-.scene-transition-pill span {
+.action-result-row {
+  display: flex;
+  justify-content: center;
+}
+
+.action-result-card {
+  border-color: rgba(18, 100, 220, 0.16);
+  border-radius: 8px;
+  background: rgba(237, 245, 255, 0.82);
+  color: #29415f;
+}
+
+.scene-transition-pill span,
+.action-result-card span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.scene-transition-pill time {
+.scene-transition-pill time,
+.action-result-card time {
   flex: 0 0 auto;
   color: #8b95a6;
 }

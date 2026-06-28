@@ -5,6 +5,7 @@ export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
 export const FIXED_CONTEXT_PREFIX = '以下是固定上下文包。它来自项目根目录 context/*.md，具有最高优先级，并且不会随对话压缩或聊天清空而改变。';
 export const AGENT_TOOL_CONTEXT_PREFIX = '以下是上一轮 Agent 工具调用的完整记录。它是当前对话上下文的一部分，用于延续玩家追问；不要把它当成玩家发言。';
 export const SCENE_TRANSITION_CONTEXT_PREFIX = '以下是玩家在界面中主动触发的场景移动记录。它是当前对话上下文的一部分，用于判断玩家当前位置。';
+export const ACTION_RESULT_CONTEXT_PREFIX = '以下是本地硬逻辑已经执行并写入世界数据的动作结果。它不是玩家发言；其中 facts 和 stateChanges 是不可重算、不可反转的事实，AI DM 只能基于它叙事并判断后续 NPC 反应。';
 const RECENT_CONTEXT_MESSAGE_LIMIT = 6;
 
 export interface ModelMessage {
@@ -52,6 +53,18 @@ export function createSceneTransitionMessage({
       toSceneId,
       toSceneName,
     },
+  };
+}
+
+export function createActionResultMessage(actionResult: NonNullable<ChatMessage['actionResult']>): ChatMessage {
+  return {
+    id: createId('action'),
+    role: 'system',
+    kind: 'action-result',
+    content: actionResult.summary,
+    createdAt: Date.now(),
+    status: 'done',
+    actionResult,
   };
 }
 
@@ -123,7 +136,7 @@ export function buildModelMessages(
   const cleanMessages = messages.filter(
     (message) =>
       message.id !== excludedMessageId &&
-      (message.role !== 'system' || message.kind === 'scene-transition') &&
+      (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
       message.content.trim(),
   );
@@ -143,7 +156,7 @@ export function buildContextEvents(
   const cleanMessages = messages.filter(
     (message) =>
       message.id !== excludedMessageId &&
-      (message.role !== 'system' || message.kind === 'scene-transition') &&
+      (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
       message.content.trim(),
   );
@@ -216,7 +229,10 @@ function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null
 
 export function getCompactableMessages(conversation: Conversation): ChatMessage[] {
   return conversation.messages.filter(
-    (message) => (message.role !== 'system' || message.kind === 'scene-transition') && message.status !== 'streaming' && message.content.trim(),
+    (message) =>
+      (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
+      message.status !== 'streaming' &&
+      message.content.trim(),
   );
 }
 
@@ -231,6 +247,13 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
       output.push({
         role: 'system',
         content: formatSceneTransitionForContext(message),
+      });
+      return output;
+    }
+    if (message.kind === 'action-result') {
+      output.push({
+        role: 'system',
+        content: formatActionResultForContext(message),
       });
       return output;
     }
@@ -249,6 +272,9 @@ function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
   return messages.flatMap((message) => {
     if (message.kind === 'scene-transition') {
       return [createSceneTransitionContextEvent(message)];
+    }
+    if (message.kind === 'action-result') {
+      return [createActionResultContextEvent(message)];
     }
 
     const output: AgentContextEvent[] = [];
@@ -292,6 +318,30 @@ function createAgentStepContextEvents(steps: AgentStep[], runId?: number): Agent
       result: isRecord(step.result) ? step.result : {},
     };
   });
+}
+
+function createActionResultContextEvent(message: ChatMessage): AgentContextEvent {
+  const result = message.actionResult;
+  return {
+    type: 'action_result',
+    summary: result?.summary || message.content,
+    result: result || {
+      type: 'attack.resolved',
+      facts: {},
+      stateChanges: [],
+      narrationHints: {},
+      summary: message.content,
+    },
+  };
+}
+
+function formatActionResultForContext(message: ChatMessage): string {
+  return [
+    ACTION_RESULT_CONTEXT_PREFIX,
+    '',
+    `摘要：${message.actionResult?.summary || message.content}`,
+    `完整结果：${formatJson(message.actionResult || null)}`,
+  ].join('\n');
 }
 
 export function formatAgentStepsForContext(steps: AgentStep[], runId?: number): string {

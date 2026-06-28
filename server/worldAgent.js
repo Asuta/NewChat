@@ -32,6 +32,7 @@ export async function runWorldAgentTaskStream(input, handlers = {}) {
 async function runWorldAgentTaskInternal(input, handlers) {
   const prompt = String(input.prompt || '').trim();
   if (!prompt) throw new Error('prompt 不能为空。');
+  const taskRole = input.taskRole === 'system' ? 'system' : 'user';
 
   const runId = createAgentRun(prompt);
   const steps = [];
@@ -40,7 +41,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
   const baseContextEvents = Array.isArray(input.contextEvents)
     ? input.contextEvents
     : legacyMessagesToContextEvents(input.conversationContext);
-  addConversation('user', 'player', '玩家', prompt);
+  addConversation(taskRole, taskRole === 'user' ? 'player' : null, taskRole === 'user' ? '玩家' : '系统', prompt);
   addEvent('agent.started', 'player', null, { summary: `Agent 开始处理：${prompt}` });
   handlers.onStart?.({ runId });
 

@@ -18,6 +18,7 @@ import {
   seedWorldIfEmpty,
 } from './worldDb.js';
 import { executeWorldTool, getAgentHistory, runWorldAgentTask, runWorldAgentTaskStream } from './worldAgent.js';
+import { executeWorldAction, listWorldActions } from './worldActions.js';
 import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
 import {
@@ -164,6 +165,27 @@ app.get('/api/world/relationships', (req, res) => {
   });
 });
 
+app.get('/api/world/actions', (req, res) => {
+  try {
+    res.json(
+      listWorldActions({
+        actorId: String(req.query.actorId || 'player'),
+        targetId: String(req.query.targetId || ''),
+      }),
+    );
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : '可用动作读取失败。' });
+  }
+});
+
+app.post('/api/world/actions/execute', (req, res) => {
+  try {
+    res.json(executeWorldAction(req.body || {}));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : '动作执行失败。' });
+  }
+});
+
 app.post('/api/world/scene/enter', (req, res) => {
   try {
     res.json(enterScene(String(req.body?.sceneId || '')));
@@ -196,6 +218,7 @@ app.post('/api/world/agent', async (req, res) => {
   try {
     const result = await runWorldAgentTask({
       prompt: req.body?.prompt,
+      taskRole: req.body?.taskRole,
       model: req.body?.model,
       thinking: req.body?.thinking,
       contextEvents: sanitizeContextEvents(req.body?.contextEvents),
@@ -223,6 +246,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
     const result = await runWorldAgentTaskStream(
       {
         prompt: req.body?.prompt,
+        taskRole: req.body?.taskRole,
         model: req.body?.model,
         thinking: req.body?.thinking,
         contextEvents: sanitizeContextEvents(req.body?.contextEvents),
@@ -561,6 +585,14 @@ function sanitizeContextEvent(event) {
       fromSceneName: sanitizeOptionalString(event.fromSceneName, 400),
       toSceneId: sanitizeOptionalString(event.toSceneId, 400),
       toSceneName: sanitizeOptionalString(event.toSceneName, 400),
+    };
+  }
+
+  if (type === 'action_result') {
+    return {
+      type: 'action_result',
+      summary: String(event.summary || '').slice(0, 4000),
+      result: isRecord(event.result) ? event.result : {},
     };
   }
 

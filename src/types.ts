@@ -8,7 +8,7 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
-  kind?: 'scene-transition';
+  kind?: 'scene-transition' | 'action-result';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
@@ -18,6 +18,7 @@ export interface ChatMessage {
     toSceneId?: string | null;
     toSceneName: string;
   };
+  actionResult?: ActionResult;
 }
 
 export interface Conversation {
@@ -115,6 +116,34 @@ export interface WorldOverview {
   recentAgentRuns: AgentRun[];
 }
 
+export interface WorldAction {
+  id: string;
+  kind: 'attack.weapon';
+  label: string;
+  actorId: string;
+  actorName?: string;
+  targetId: string;
+  targetName?: string;
+  weaponId: string;
+  weaponName: string;
+}
+
+export interface ActionResult {
+  type: 'attack.resolved';
+  action?: WorldAction;
+  facts: Record<string, unknown>;
+  stateChanges: Array<Record<string, unknown>>;
+  narrationHints: Record<string, unknown>;
+  summary: string;
+}
+
+export interface ExecuteWorldActionResponse {
+  ok: boolean;
+  eventId: number;
+  result: ActionResult;
+  world: WorldOverview;
+}
+
 export interface EntityBundle {
   entity: WorldEntity;
   aliases: string[];
@@ -155,6 +184,11 @@ export type AgentContextEvent =
       fromSceneName?: string;
       toSceneId?: string | null;
       toSceneName?: string;
+    }
+  | {
+      type: 'action_result';
+      summary: string;
+      result: ActionResult;
     }
   | {
       type: 'agent_step';
