@@ -394,6 +394,10 @@ async function planNextToolCall({ prompt, steps, model, thinking, contextEvents,
     ...(Array.isArray(contextEvents) ? contextEvents : []),
     ...steps.map((step) => createAgentStepContextEvent(step, runId)),
   ];
+  const payload = {
+    contextEvents: planningContextEvents,
+    ...(!hasPromptMessageEvent(contextEvents, prompt) ? { task: prompt } : {}),
+  };
   const messages = [
     {
       role: 'system',
@@ -402,10 +406,7 @@ async function planNextToolCall({ prompt, steps, model, thinking, contextEvents,
     {
       role: 'user',
       content: JSON.stringify(
-        {
-          contextEvents: planningContextEvents,
-          task: prompt,
-        },
+        payload,
         null,
         2,
       ),
@@ -918,6 +919,14 @@ function legacyMessagesToContextEvents(messages) {
       role: message.role,
       content: message.content,
     }));
+}
+
+function hasPromptMessageEvent(contextEvents, prompt) {
+  if (!Array.isArray(contextEvents)) return false;
+  const latestUserMessage = [...contextEvents]
+    .reverse()
+    .find((event) => event?.type === 'message' && event.role === 'user' && typeof event.content === 'string');
+  return latestUserMessage?.content === prompt;
 }
 
 function stripCodeFence(content) {

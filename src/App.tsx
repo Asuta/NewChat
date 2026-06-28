@@ -142,7 +142,7 @@ export default function App() {
     const assistantMessage = createMessage('assistant', '', 'streaming');
     const shouldRename = activeConversation.messages.length === 0 && activeConversation.title === '新对话';
     const nextMessages = [...activeConversation.messages, userMessage, assistantMessage];
-    const contextEvents = buildContextEvents(activeConversation, activeConversation.messages);
+    const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, userMessage]);
 
     updateActiveConversation((conversation) => ({
       ...conversation,
