@@ -56,6 +56,26 @@
 {"tool":"roll_dice","args":{"expression":"1d8+3","reason":"玩家长剑命中，伤害检定"}}
 ```
 
+NPC 即时反应流程示例：
+
+```json
+{"say":"你的剑锋逼近莉娜，她猛地侧身，手已经摸向短棍。","tool":"get_entity_bundle","args":{"entityId":"character_lina"}}
+```
+
+```json
+{"tool":"roll_dice","args":{"expression":"1d20+4","reason":"莉娜反击玩家，攻击检定"}}
+```
+
+```json
+{"tool":"apply_world_patch","args":{"operations":[{"op":"set_component","entityId":"player","componentType":"stats","path":"currentHitPoints","value":8}],"dryRun":false}}
+```
+
+```json
+{"say":"莉娜趁你收势不及，一棍扫中你的肋侧。你现在还站得住，但酒馆里的客人已经惊叫着退开。你要继续进攻，还是改变策略？","tool":"finish","args":{}}
+```
+
+如果 NPC 已经昏迷、死亡、逃跑、被束缚或没有合理动机立即行动，可以直接叙述这个原因并 finish；否则不要在玩家敌意行动刚结算后立刻结束本轮。
+
 apply_world_patch 必须使用 args.operations 数组，不要使用 patches、JSON Patch path 或 /entities/... 路径。
 
 修改实体组件字段时使用：
