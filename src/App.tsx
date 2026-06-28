@@ -933,7 +933,7 @@ function getStepResultScene(step: AgentStep): { id?: string; name?: string } | n
   const sceneState = step.result?.scene;
   if (!sceneState || typeof sceneState !== 'object') return null;
 
-  const scene = (sceneState as { scene?: unknown }).scene;
+  const scene = 'id' in sceneState || 'name' in sceneState ? sceneState : (sceneState as { scene?: unknown }).scene;
   if (!scene || typeof scene !== 'object') return null;
 
   return scene as { id?: string; name?: string };

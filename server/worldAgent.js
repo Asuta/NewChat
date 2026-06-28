@@ -62,6 +62,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
       if (decision.say) {
         const args = { text: decision.say };
         const result = executeWorldTool('speak', args, prompt);
+        const speechText = result.ok === false ? '' : decision.say;
         const step = recordAgentStep({
           runId,
           stepIndex,
@@ -73,7 +74,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
         });
         stepIndex += 1;
 
-        const delta = createSpeechDelta(visibleAnswer, result.text);
+        const delta = createSpeechDelta(visibleAnswer, speechText);
         if (delta) {
           visibleAnswer = appendVisibleAnswer(visibleAnswer, delta);
           handlers.onSpeechStart?.({ runId, stepIndex: step.index });
@@ -148,17 +149,63 @@ async function runWorldAgentTaskInternal(input, handlers) {
 }
 
 function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers }) {
-  const step = { index: stepIndex, tool, args, result };
+  const stepResult = compactToolResultForAgentStep(tool, result);
+  const step = { index: stepIndex, tool, args, result: stepResult };
   steps.push(step);
-  addAgentStep(runId, stepIndex, tool, args, result);
+  addAgentStep(runId, stepIndex, tool, args, stepResult);
   addEvent('agent.tool', null, null, {
-    summary: formatToolSummary(tool, result),
+    summary: formatToolSummary(tool, stepResult),
     tool,
     args,
-    result,
+    result: stepResult,
   });
   handlers.onStep?.({ step, steps: [...steps], runId });
   return step;
+}
+
+function compactToolResultForAgentStep(tool, result) {
+  if (!isRecord(result) || result.ok === false) return result;
+
+  if (tool === 'speak') {
+    return {
+      ok: true,
+      summary: '说话成功。',
+    };
+  }
+
+  if (tool === 'enter_scene') {
+    const scene = result.scene?.scene;
+    const sceneId = typeof scene?.id === 'string' ? scene.id : '';
+    const sceneName = typeof scene?.name === 'string' ? scene.name : sceneId;
+    return {
+      ok: true,
+      scene: {
+        id: sceneId,
+        name: sceneName,
+      },
+      summary: '场景切换成功。',
+    };
+  }
+
+  if (tool === 'apply_world_patch') {
+    const patch = isRecord(result.patch) ? result.patch : {};
+    const applied = Array.isArray(patch.applied) ? patch.applied : [];
+    const dryRun = patch.dryRun === true;
+    return {
+      ok: true,
+      dryRun,
+      operationCount: applied.length,
+      applied: applied.map((operation) => {
+        if (!isRecord(operation)) return String(operation);
+        return typeof operation.summary === 'string' && operation.summary.trim()
+          ? operation.summary.trim()
+          : String(operation.op || 'world_patch');
+      }),
+      summary: dryRun ? '变更预览成功。' : '修改成功。',
+    };
+  }
+
+  return result;
 }
 
 async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, requestLog, handlers, signal }) {

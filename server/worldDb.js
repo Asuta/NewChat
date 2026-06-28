@@ -818,8 +818,26 @@ export function getEntityBundle(entityId) {
     aliases: listAliases(entity.id),
     components: Object.fromEntries(listComponents(entity.id).map((component) => [component.type, component.data])),
     relationships: listRelationships({ entityId: entity.id }),
-    events: listEvents(12, entity.id),
+    events: listEntityWorldEvents(entity.id, 12),
   };
+}
+
+function listEntityWorldEvents(entityId, limit = 12) {
+  const safeLimit = Math.max(1, Number(limit) || 12);
+  const rows = db.prepare(`
+      SELECT id, type, actor_id as actorId, target_id as targetId, payload_json as payloadJson, created_at as createdAt
+      FROM events
+      WHERE (actor_id = ? OR target_id = ?) AND type NOT LIKE 'agent.%'
+      ORDER BY id DESC LIMIT ?
+    `).all(entityId, entityId, safeLimit);
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    actorId: row.actorId,
+    targetId: row.targetId,
+    payload: JSON.parse(row.payloadJson),
+    createdAt: row.createdAt,
+  })).reverse();
 }
 
 export function getCurrentLocationId(entityId) {
