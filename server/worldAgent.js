@@ -59,8 +59,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
         signal: input.signal,
       });
 
-      const canSayNow = decision.tool === 'finish' || steps.length > 0;
-      if (decision.say && canSayNow) {
+      if (decision.say) {
         const args = { text: decision.say };
         const result = executeWorldTool('speak', args, prompt);
         const step = recordAgentStep({
