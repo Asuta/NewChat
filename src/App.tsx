@@ -178,6 +178,14 @@ export default function App() {
     setIsStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    let runId: number | undefined;
+    let streamedAnswer = '';
+    let streamedSteps: AgentStep[] = [];
+    let activeAssistantMessageId = assistantMessageId;
+    let activeAssistantContent = '';
+    let hasVisibleAssistantContent = false;
+    const runAssistantMessageIds = [assistantMessageId];
+    let didFinish = false;
 
     try {
       setAgentSteps([]);
@@ -200,11 +208,6 @@ export default function App() {
         throw new Error('世界 Agent 没有返回流式响应。');
       }
 
-      let runId: number | undefined;
-      let streamedAnswer = '';
-      let streamedSteps: AgentStep[] = [];
-      let didFinish = false;
-
       await readWorldAgentStream(response.body, (event) => {
         if (event.type === 'start') {
           runId = event.runId;
@@ -226,11 +229,29 @@ export default function App() {
           return;
         }
 
+        if (event.type === 'speech_start') {
+          if (hasVisibleAssistantContent || activeAssistantContent) {
+            const nextMessage = {
+              ...createMessage('assistant', '', 'streaming'),
+              agentRunId: runId,
+            };
+            activeAssistantMessageId = nextMessage.id;
+            activeAssistantContent = '';
+            runAssistantMessageIds.push(nextMessage.id);
+            appendAssistantMessage(conversationId, nextMessage);
+          } else {
+            activeAssistantMessageId = assistantMessageId;
+            activeAssistantContent = '';
+          }
+          return;
+        }
+
         if (event.type === 'answer_delta' || event.type === 'speech_delta') {
           streamedAnswer += event.delta;
-          updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer, 'streaming', {
+          activeAssistantContent += event.delta;
+          hasVisibleAssistantContent = true;
+          updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
             agentRunId: runId,
-            agentSteps: streamedSteps,
           });
           return;
         }
@@ -244,10 +265,18 @@ export default function App() {
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
           setWorld(event.world);
-          updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
-            agentRunId: runId,
-            agentSteps: streamedSteps,
-          });
+          if (!hasVisibleAssistantContent) {
+            updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
+              agentRunId: runId,
+              agentSteps: streamedSteps,
+            });
+          } else {
+            markAssistantMessagesDone(conversationId, runAssistantMessageIds, {
+              agentRunId: runId,
+              agentSteps: streamedSteps,
+              primaryMessageId: assistantMessageId,
+            });
+          }
           if (completedSceneTransition) {
             appendSceneTransitionMessage(conversationId, completedSceneTransition);
           }
@@ -264,11 +293,23 @@ export default function App() {
       }
     } catch (caught) {
       if (controller.signal.aborted) {
-        updateAssistantMessage(conversationId, assistantMessageId, '已停止生成。', 'error');
+        markAssistantMessagesInterrupted(conversationId, runAssistantMessageIds, {
+          activeMessageId: activeAssistantMessageId,
+          fallbackContent: '已停止生成。',
+          agentRunId: runId,
+          agentSteps: streamedSteps,
+          primaryMessageId: assistantMessageId,
+        });
       } else {
         const message = caught instanceof Error ? caught.message : '未知错误';
         setError(message);
-        updateAssistantMessage(conversationId, assistantMessageId, message, 'error');
+        markAssistantMessagesInterrupted(conversationId, runAssistantMessageIds, {
+          activeMessageId: activeAssistantMessageId,
+          fallbackContent: message,
+          agentRunId: runId,
+          agentSteps: streamedSteps,
+          primaryMessageId: assistantMessageId,
+        });
       }
     } finally {
       if (abortRef.current === controller) {
@@ -276,6 +317,14 @@ export default function App() {
         abortRef.current = null;
       }
     }
+  }
+
+  function appendAssistantMessage(conversationId: string, message: ChatMessage) {
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      updatedAt: Date.now(),
+      messages: [...conversation.messages, message],
+    }));
   }
 
   function updateAssistantMessage(
@@ -298,6 +347,55 @@ export default function App() {
             }
           : message,
       ),
+    }));
+  }
+
+  function markAssistantMessagesDone(
+    conversationId: string,
+    messageIds: string[],
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> & { primaryMessageId: string },
+  ) {
+    const ids = new Set(messageIds);
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      updatedAt: Date.now(),
+      messages: conversation.messages.map((message) => {
+        if (!ids.has(message.id)) return message;
+        return {
+          ...message,
+          status: 'done',
+          agentRunId: metadata.agentRunId,
+          ...(message.id === metadata.primaryMessageId ? { agentSteps: metadata.agentSteps } : {}),
+        };
+      }),
+    }));
+  }
+
+  function markAssistantMessagesInterrupted(
+    conversationId: string,
+    messageIds: string[],
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> & {
+      activeMessageId: string;
+      fallbackContent: string;
+      primaryMessageId: string;
+    },
+  ) {
+    const ids = new Set(messageIds);
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      updatedAt: Date.now(),
+      messages: conversation.messages.map((message) => {
+        if (!ids.has(message.id)) return message;
+        const isActive = message.id === metadata.activeMessageId;
+        const isPrimary = message.id === metadata.primaryMessageId;
+        return {
+          ...message,
+          content: isActive && !message.content.trim() ? metadata.fallbackContent : message.content,
+          status: isActive ? 'error' : 'done',
+          agentRunId: metadata.agentRunId,
+          ...(isPrimary ? { agentSteps: metadata.agentSteps } : {}),
+        };
+      }),
     }));
   }
 
@@ -778,6 +876,13 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
   if (eventType === 'step') {
     return { type: 'step', step: payload.step as AgentStep };
+  }
+  if (eventType === 'speech_start') {
+    return {
+      type: 'speech_start',
+      runId: typeof payload.runId === 'number' ? payload.runId : undefined,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+    };
   }
   if (eventType === 'answer_delta') {
     return { type: 'answer_delta', delta: String(payload.delta || '') };

@@ -241,6 +241,11 @@ export type WorldAgentStreamEvent =
       step: AgentStep;
     }
   | {
+      type: 'speech_start';
+      runId?: number;
+      stepIndex?: number;
+    }
+  | {
       type: 'answer_delta';
       delta: string;
     }

@@ -75,7 +75,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
         const delta = createSpeechDelta(visibleAnswer, result.text);
         if (delta) {
-          visibleAnswer += delta;
+          visibleAnswer = appendVisibleAnswer(visibleAnswer, delta);
+          handlers.onSpeechStart?.({ runId, stepIndex: step.index });
           await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
         }
         if (step.result?.ok === false) {
@@ -167,8 +168,10 @@ async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, re
   if (finalText && finalText !== answer) {
     if (answer) {
       const delta = createSpeechDelta(answer, finalText);
-      answer += delta;
-      await streamTextDeltas(delta, handlers.onFinalAnswerDelta, signal);
+      if (delta) {
+        answer = appendVisibleAnswer(answer, delta);
+        await streamTextDeltas(delta, handlers.onFinalAnswerDelta, signal);
+      }
     } else {
       answer = await streamFallbackAnswer(finalText, handlers.onFinalAnswerDelta, signal);
     }
@@ -569,9 +572,21 @@ function splitAnswerChunks(answer) {
 function createSpeechDelta(currentAnswer, text) {
   const normalized = String(text || '').trim();
   if (!normalized) return '';
-  const lastVisibleSegment = String(currentAnswer || '').split(/\n{2,}/).pop()?.trim();
+  const current = String(currentAnswer || '').trim();
+  if (current && normalized === current) return '';
+  if (current && normalized.startsWith(current)) {
+    return normalized.slice(current.length).trim();
+  }
+  const lastVisibleSegment = current.split(/\n{2,}/).pop()?.trim();
   if (lastVisibleSegment === normalized) return '';
-  return currentAnswer ? `\n\n${normalized}` : normalized;
+  return normalized;
+}
+
+function appendVisibleAnswer(currentAnswer, delta) {
+  const current = String(currentAnswer || '').trim();
+  const next = String(delta || '').trim();
+  if (!next) return current;
+  return current ? `${current}\n\n${next}` : next;
 }
 
 function fallbackToolCall(prompt, steps) {
