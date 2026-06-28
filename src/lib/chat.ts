@@ -289,7 +289,7 @@ function createAgentStepContextEvents(steps: AgentStep[], runId?: number): Agent
       ...(Number.isFinite(stepIndex) ? { stepIndex } : {}),
       tool: step.tool,
       args: isRecord(step.args) ? step.args : {},
-      result: shrinkAgentResult(isRecord(step.result) ? step.result : {}),
+      result: isRecord(step.result) ? step.result : {},
     };
   });
 }
@@ -314,43 +314,6 @@ export function formatAgentStepsForContext(steps: AgentStep[], runId?: number): 
 
 function formatJson(value: unknown) {
   return JSON.stringify(value ?? null, null, 2);
-}
-
-function shrinkAgentResult(result: Record<string, unknown>): Record<string, unknown> {
-  const text = JSON.stringify(result);
-  if (text.length <= 2200) return result;
-
-  const scene = isRecord(result.scene) ? result.scene : null;
-  const bundle = isRecord(result.bundle) ? result.bundle : null;
-  const bundleComponents: Record<string, unknown> = isRecord(bundle?.components) ? bundle.components : {};
-
-  return {
-    ok: result.ok,
-    summary: result.summary,
-    error: result.error,
-    entities: Array.isArray(result.entities) ? result.entities.slice(0, 8) : undefined,
-    scene: scene
-      ? {
-          scene: scene.scene,
-          residents: scene.residents,
-          items: scene.items,
-          exits: Array.isArray(scene.exits) ? scene.exits.map((exit) => (isRecord(exit) ? exit.scene : undefined)) : undefined,
-        }
-      : undefined,
-    bundle: bundle
-      ? {
-          entity: bundle.entity,
-          aliases: bundle.aliases,
-          components: {
-            identity: bundleComponents.identity,
-            scene: bundleComponents.scene,
-            status: bundleComponents.status,
-            quest: bundleComponents.quest,
-          },
-          relationships: Array.isArray(bundle.relationships) ? bundle.relationships.slice(0, 12) : undefined,
-        }
-      : undefined,
-  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
