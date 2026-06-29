@@ -193,8 +193,10 @@ function buildDynamicModelMessages(
   summary: Conversation['contextSummary'],
   contextMode: ContextMode,
 ): ModelMessage[] {
+  const agentStepLedger = buildAgentStepLedger(cleanMessages);
+
   if (!summary || contextMode === 'full-history') {
-    return toModelMessages(cleanMessages);
+    return toModelMessages(cleanMessages, agentStepLedger);
   }
 
   const summaryMessage: ModelMessage = {
@@ -203,16 +205,16 @@ function buildDynamicModelMessages(
   };
   const summaryEndIndex = cleanMessages.findIndex((message) => message.id === summary.lastMessageId);
   if (summaryEndIndex < 0) {
-    return [summaryMessage, ...toModelMessages(cleanMessages)];
+    return [summaryMessage, ...toModelMessages(cleanMessages, agentStepLedger)];
   }
 
   const messagesAfterSummary = cleanMessages.slice(summaryEndIndex + 1);
   if (contextMode === 'summary-only') {
-    return [summaryMessage, ...toModelMessages(messagesAfterSummary)];
+    return [summaryMessage, ...toModelMessages(messagesAfterSummary, agentStepLedger)];
   }
 
   const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
-  return [summaryMessage, ...toModelMessages(recentCoveredMessages), ...toModelMessages(messagesAfterSummary)];
+  return [summaryMessage, ...toModelMessages([...recentCoveredMessages, ...messagesAfterSummary], agentStepLedger)];
 }
 
 function buildDynamicContextEvents(
@@ -220,8 +222,10 @@ function buildDynamicContextEvents(
   summary: Conversation['contextSummary'],
   contextMode: ContextMode,
 ): AgentContextEvent[] {
+  const agentStepLedger = buildAgentStepLedger(cleanMessages);
+
   if (!summary || contextMode === 'full-history') {
-    return toContextEvents(cleanMessages);
+    return toContextEvents(cleanMessages, agentStepLedger);
   }
 
   const summaryEvent: AgentContextEvent = {
@@ -230,16 +234,16 @@ function buildDynamicContextEvents(
   };
   const summaryEndIndex = cleanMessages.findIndex((message) => message.id === summary.lastMessageId);
   if (summaryEndIndex < 0) {
-    return [summaryEvent, ...toContextEvents(cleanMessages)];
+    return [summaryEvent, ...toContextEvents(cleanMessages, agentStepLedger)];
   }
 
   const messagesAfterSummary = cleanMessages.slice(summaryEndIndex + 1);
   if (contextMode === 'summary-only') {
-    return [summaryEvent, ...toContextEvents(messagesAfterSummary)];
+    return [summaryEvent, ...toContextEvents(messagesAfterSummary, agentStepLedger)];
   }
 
   const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
-  return [summaryEvent, ...toContextEvents(recentCoveredMessages), ...toContextEvents(messagesAfterSummary)];
+  return [summaryEvent, ...toContextEvents([...recentCoveredMessages, ...messagesAfterSummary], agentStepLedger)];
 }
 
 function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null {
@@ -262,10 +266,26 @@ export function getCompactableMessages(conversation: Conversation): ChatMessage[
 }
 
 export function buildCompactMessages(conversation: Conversation): ModelMessage[] {
-  return toModelMessages(getCompactableMessages(conversation));
+  const compactableMessages = getCompactableMessages(conversation);
+  return toModelMessages(compactableMessages, buildAgentStepLedger(compactableMessages));
 }
 
-function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
+type AgentStepLedger = Map<number, AgentStep[]>;
+
+function buildAgentStepLedger(messages: ChatMessage[]): AgentStepLedger {
+  const ledger: AgentStepLedger = new Map();
+  for (const message of messages) {
+    const runId = getAgentRunId(message);
+    if (message.role !== 'assistant' || runId === null || !message.agentSteps?.length || ledger.has(runId)) {
+      continue;
+    }
+    ledger.set(runId, message.agentSteps);
+  }
+  return ledger;
+}
+
+function toModelMessages(messages: ChatMessage[], agentStepLedger: AgentStepLedger): ModelMessage[] {
+  const emittedRunIds = new Set<number>();
   return messages.flatMap((message) => {
     const output: ModelMessage[] = [];
     if (message.kind === 'scene-transition') {
@@ -282,6 +302,20 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
       });
       return output;
     }
+
+    const runId = getAgentRunId(message);
+    const ledgerSteps = runId === null ? null : agentStepLedger.get(runId);
+    if (message.role === 'assistant' && runId !== null && ledgerSteps?.length) {
+      if (!emittedRunIds.has(runId)) {
+        output.push({
+          role: 'system',
+          content: formatAgentStepsForContext(ledgerSteps, runId),
+        });
+        emittedRunIds.add(runId);
+      }
+      return output;
+    }
+
     if (message.role === 'assistant' && message.agentSteps?.length) {
       output.push({
         role: 'system',
@@ -296,7 +330,8 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
   });
 }
 
-function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
+function toContextEvents(messages: ChatMessage[], agentStepLedger: AgentStepLedger): AgentContextEvent[] {
+  const emittedRunIds = new Set<number>();
   return messages.flatMap((message) => {
     if (message.kind === 'scene-transition') {
       return [createSceneTransitionContextEvent(message)];
@@ -306,6 +341,17 @@ function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
     }
 
     const output: AgentContextEvent[] = [];
+
+    const runId = getAgentRunId(message);
+    const ledgerSteps = runId === null ? null : agentStepLedger.get(runId);
+    if (message.role === 'assistant' && runId !== null && ledgerSteps?.length) {
+      if (!emittedRunIds.has(runId)) {
+        output.push(...createAgentStepContextEvents(ledgerSteps, runId));
+        emittedRunIds.add(runId);
+      }
+      return output;
+    }
+
     if (message.role === 'assistant' && message.agentSteps?.length) {
       output.push(...createAgentStepContextEvents(message.agentSteps, message.agentRunId));
     }
@@ -319,6 +365,10 @@ function toContextEvents(messages: ChatMessage[]): AgentContextEvent[] {
     });
     return output;
   });
+}
+
+function getAgentRunId(message: ChatMessage): number | null {
+  return typeof message.agentRunId === 'number' && Number.isFinite(message.agentRunId) ? message.agentRunId : null;
 }
 
 function createSceneTransitionContextEvent(message: ChatMessage): AgentContextEvent {

@@ -118,11 +118,39 @@ export function validateComponentData(type, data) {
   if (!isComponentType(type)) {
     return { ok: false, error: `未知 ComponentType：${type}` };
   }
-  const result = componentSchemas[type].safeParse(data ?? {});
+  const result = componentSchemas[type].safeParse(normalizeComponentData(type, data));
   if (!result.success) {
     return { ok: false, error: z.prettifyError(result.error) };
   }
   return { ok: true, data: result.data };
+}
+
+function normalizeComponentData(type, data) {
+  if (type !== 'status') return data ?? {};
+  if (!isRecord(data)) return data ?? {};
+
+  const next = { ...data };
+  const conditions = Array.isArray(next.conditions) ? next.conditions.map((condition) => String(condition)) : [];
+  const alive = next.alive !== false && next.state !== 'dead';
+  const conscious = next.conscious !== false && next.state !== 'unconscious';
+  const cannotActByCondition = conditions.some((condition) =>
+    ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious', '昏迷', '失能', '麻痹', '石化', '震慑'].includes(condition),
+  );
+
+  if (typeof next.state !== 'string') {
+    next.state = !alive ? 'dead' : !conscious ? 'unconscious' : 'active';
+  }
+  if (typeof next.label !== 'string') {
+    next.label = !alive ? '死亡' : !conscious ? '昏迷' : '正常';
+  }
+  if (typeof next.description !== 'string') {
+    next.description = !alive ? '该角色已经死亡。' : !conscious ? '该角色失去意识，暂时无法行动。' : '该角色状态正常，可以行动。';
+  }
+  if (typeof next.canAct !== 'boolean') {
+    next.canAct = alive && conscious && !cannotActByCondition;
+  }
+
+  return next;
 }
 
 export function validateRelationshipInput(type, value, data) {
@@ -145,4 +173,8 @@ export function listWorldSchemas() {
     componentTypes: COMPONENT_TYPES,
     relationshipTypes: RELATIONSHIP_TYPES,
   };
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
