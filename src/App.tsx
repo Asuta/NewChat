@@ -1056,7 +1056,7 @@ function getInitialThinkingMode(): ThinkingMode {
 
 function getInitialModelId(): ModelId {
   const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
-  return isModelId(stored) ? stored : 'deepseek-v4-flash';
+  return isModelId(stored) ? stored : 'deepseek-v4-pro';
 }
 
 function isThinkingMode(value: unknown): value is ThinkingMode {

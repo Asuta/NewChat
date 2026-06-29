@@ -22,7 +22,7 @@ pnpm dev
 
 ```bash
 LLM_API_KEY=你的 API Key
-LLM_MODEL=deepseek-v4-flash
+LLM_MODEL=deepseek-v4-pro
 LLM_BASE_URL=https://api.deepseek.com
 PORT=8787
 LLM_THINKING=disabled
