@@ -171,10 +171,20 @@ export function ConversationSettingsPanel({
                 </summary>
                 <div className="model-request-messages">
                   <ModelUsageSummary usage={entry.usage} />
+                  <ModelRequestNativeSummary entry={entry} />
                   {entry.messages.map((message, index) => (
                     <article className="model-request-message" key={`${message.role}-${index}`}>
-                      <strong>{message.role}</strong>
+                      <strong>
+                        {message.role}
+                        {message.toolCallId ? ` · ${message.toolCallId}` : ''}
+                        {typeof message.reasoningContentLength === 'number' && message.reasoningContentLength > 0
+                          ? ` · reasoning ${message.reasoningContentLength} chars`
+                          : ''}
+                      </strong>
                       <pre>{message.content}</pre>
+                      {message.toolCalls?.length ? (
+                        <pre>{JSON.stringify({ toolCalls: message.toolCalls }, null, 2)}</pre>
+                      ) : null}
                     </article>
                   ))}
                 </div>
@@ -197,6 +207,34 @@ export function ConversationSettingsPanel({
         </button>
       </div>
     </div>
+  );
+}
+
+function ModelRequestNativeSummary({ entry }: { entry: ModelRequestLogEntry }) {
+  const hasNativeFields = entry.mode === 'native-tools'
+    || Boolean(entry.nativeTools?.length)
+    || Boolean(entry.toolCalls?.length)
+    || Boolean(entry.toolResults?.length)
+    || Boolean(entry.reasoningContentLength);
+  if (!hasNativeFields) return null;
+
+  return (
+    <article className="model-request-message">
+      <strong>native tools</strong>
+      <pre>
+        {JSON.stringify(
+          {
+            mode: entry.mode,
+            tools: entry.nativeTools,
+            reasoningContentLength: entry.reasoningContentLength,
+            toolCalls: entry.toolCalls,
+            toolResults: entry.toolResults,
+          },
+          null,
+          2,
+        )}
+      </pre>
+    </article>
   );
 }
 

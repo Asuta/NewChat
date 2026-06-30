@@ -36,7 +36,7 @@ LLM_THINKING=disabled
 
 后端会读取当前存档 `data/save/context/` 中带数字前缀的 `.md` 文件，例如 `001-user-fixed-context.md`、`010-world-agent-role.md`、`020-world-agent-tools.md`，按数字从小到大拼接后发送给模型。没有数字前缀的 `.md` 不会加载，避免顺序不明确。
 
-页面右上角“更多”设置里可以编辑 `data/save/context/001-user-fixed-context.md`。`001-user-fixed-context.md` 适合写当前玩家存档里的长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改、输出什么 JSON 格式。
+页面右上角“更多”设置里可以编辑 `data/save/context/001-user-fixed-context.md`。`001-user-fixed-context.md` 适合写当前玩家存档里的长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改，以及如何通过后端工具调用推进游戏。
 
 `025-world-schema.generated.md` 由后端根据 `server/worldSchemas.js` 自动生成，用来把实体类型、组件类型和关系类型放进固定上下文包。这样模型仍能看到真实 schema，但每次动态请求里不再重复携带 `schemas` 字段。
 
@@ -104,7 +104,9 @@ Agent 可用规则工具：
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
 - `finish`：结束本轮 Agent 任务，不输出可见文字。
 
-Agent 每次规划只调用一个工具。读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。发言工具不会自动结束本轮，模型需要在完成后显式调用 `finish`。
+开启 DeepSeek 思考模式时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链，并在同一轮工具循环内回传 `reasoning_content`。未开启思考模式或兼容回退时，后端仍可使用旧 JSON planner。
+
+读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。发言工具不会自动结束本轮，模型需要在完成后显式调用 `finish`。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 
