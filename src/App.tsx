@@ -17,6 +17,7 @@ import {
   getConversationContextMode,
   getInitialConversations,
   saveConversations,
+  stripReasoningFromConversations,
   titleFromMessage,
 } from './lib/chat';
 import type {
@@ -659,7 +660,7 @@ export default function App() {
       if (mode === 'full') {
         bundle.save = {
           ...(bundle.save || {}),
-          conversations,
+          conversations: stripReasoningFromConversations(conversations),
         };
       }
 
