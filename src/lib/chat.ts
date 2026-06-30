@@ -120,7 +120,7 @@ export function getInitialConversations(): Conversation[] {
     try {
       const parsed = JSON.parse(stored) as Conversation[];
       if (Array.isArray(parsed) && parsed.length) {
-        return parsed;
+        return stripReasoningFromConversations(parsed);
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -149,7 +149,29 @@ export function getInitialConversations(): Conversation[] {
 }
 
 export function saveConversations(conversations: Conversation[]) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stripReasoningFromConversations(conversations)));
+}
+
+export function stripReasoningFromConversations(conversations: Conversation[]): Conversation[] {
+  return conversations.map((conversation) => ({
+    ...conversation,
+    messages: conversation.messages.map(stripReasoningFromMessage),
+  }));
+}
+
+function stripReasoningFromMessage(message: ChatMessage): ChatMessage {
+  if (!message.modelTranscript?.length) return message;
+  return {
+    ...message,
+    modelTranscript: message.modelTranscript.map(stripReasoningFromTranscriptMessage),
+  };
+}
+
+function stripReasoningFromTranscriptMessage({
+  reasoning_content: _reasoningContent,
+  ...transcriptMessage
+}: NonNullable<ChatMessage['modelTranscript']>[number]) {
+  return transcriptMessage;
 }
 
 export function titleFromMessage(content: string) {

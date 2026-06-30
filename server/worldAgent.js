@@ -243,6 +243,7 @@ async function runNativeToolPlanningLoop({
     prompt,
     contextEvents: baseContextEvents,
     modeInstruction: WORLD_AGENT_NATIVE_TOOL_INSTRUCTION,
+    useNativeModelMessages: true,
   });
 
   while (state.stepIndex <= WORLD_AGENT_MAX_STEPS) {
@@ -894,7 +895,7 @@ export function getAgentHistory() {
   }));
 }
 
-function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction }) {
+function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction, useNativeModelMessages = false }) {
   const fixedContext = readFixedContextBundle().content;
   const events = Array.isArray(contextEvents) ? contextEvents : [];
   const messages = [
@@ -906,7 +907,7 @@ function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction 
       role: 'system',
       content: modeInstruction,
     },
-    ...contextEventsToModelMessages(events),
+    ...contextEventsToModelMessages(events, { useNativeModelMessages }),
   ];
   if (!hasPromptMessageEvent(events, prompt)) {
     messages.push({
@@ -917,12 +918,16 @@ function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction 
   return messages;
 }
 
-function contextEventsToModelMessages(contextEvents) {
+function contextEventsToModelMessages(contextEvents, { useNativeModelMessages = false } = {}) {
   if (!Array.isArray(contextEvents)) return [];
   return contextEvents.flatMap((event) => {
     if (!isRecord(event)) return [];
 
     if (event.type === 'model_message') {
+      if (!useNativeModelMessages) {
+        const fallbackMessage = formatModelMessageEventForJsonPlanner(event.message);
+        return fallbackMessage ? [fallbackMessage] : [];
+      }
       const message = normalizeContextModelMessage(event.message);
       return message ? [message] : [];
     }
@@ -965,6 +970,33 @@ function contextEventsToModelMessages(contextEvents) {
 
     return [];
   });
+}
+
+function formatModelMessageEventForJsonPlanner(message) {
+  if (!isRecord(message)) return null;
+
+  if (message.role === 'tool') {
+    const toolCallId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+    return {
+      role: 'system',
+      content: [
+        '以下是上一轮原生工具返回记录。它是旧历史的兼容上下文，不是玩家发言。',
+        toolCallId ? `tool_call_id：${toolCallId}` : '',
+        `返回：${typeof message.content === 'string' ? message.content : ''}`,
+      ].filter(Boolean).join('\n'),
+    };
+  }
+
+  if (message.role !== 'assistant') return null;
+  const toolCalls = normalizeContextToolCalls(message.tool_calls);
+  return {
+    role: 'system',
+    content: [
+      '以下是上一轮 Agent 原生工具调用记录。它是旧历史的兼容上下文，不是玩家发言。',
+      typeof message.content === 'string' && message.content ? `助手内容：${message.content}` : '',
+      toolCalls.length ? `工具调用：${JSON.stringify(summarizeNativeToolCalls(toolCalls))}` : '',
+    ].filter(Boolean).join('\n'),
+  };
 }
 
 function normalizeContextModelMessage(message) {
