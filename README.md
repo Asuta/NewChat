@@ -90,7 +90,7 @@ Agent 可用规则工具：
 
 ## 世界 Agent
 
-聊天发送后会进入后端 `/api/world/agent`。后端读取 `data/save/context/*.md` 固定上下文包、当前会话摘要/最近消息、当前场景概览，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写当前玩家存档。
+聊天发送后会进入后端 `/api/world/agent`。后端读取 `data/save/context/*.md` 固定上下文包和当前会话上下文，再让模型通过受控工具循环处理任务。AI 不直接执行 SQL，只能使用后端工具读写当前玩家存档；需要世界事实时必须显式调用读取工具。
 
 第一版工具包括：
 
@@ -98,11 +98,13 @@ Agent 可用规则工具：
 - `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
 - `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
+- `dm_speak`：让 AI DM 输出普通叙事、规则结果、环境描写或说明。
+- `npc_speak`：让 NPC 以独立对话气泡发言。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
-- `finish`：结束本轮 Agent 任务。
+- `finish`：结束本轮 Agent 任务，不输出可见文字。
 
-Agent 规划 JSON 可以额外带 `say` 字段向玩家输出可见文字；`say` 不是工具，可以和任意工具或 `finish` 在同一个 JSON 中出现。
+Agent 每次规划只调用一个工具。读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 

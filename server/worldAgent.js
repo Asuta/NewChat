@@ -60,55 +60,23 @@ async function runWorldAgentTaskInternal(input, handlers) {
         signal: input.signal,
       });
 
-      if (decision.say) {
-        const args = { text: decision.say };
-        const result = executeWorldTool('speak', args, prompt);
-        const speechText = result.ok === false ? '' : decision.say;
-        const step = recordAgentStep({
-          runId,
-          stepIndex,
-          tool: 'speak',
-          args,
-          result,
-          steps,
-          handlers,
-        });
-        stepIndex += 1;
-
-        const delta = createSpeechDelta(visibleAnswer, speechText);
-        if (delta) {
-          visibleAnswer = appendVisibleAnswer(visibleAnswer, delta);
-          handlers.onSpeechStart?.({ runId, stepIndex: step.index });
-          await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
-        }
-        if (step.result?.ok === false) {
-          return await finishSuccessfulRun({
-            runId,
-            steps,
-            seedAnswer: step.result.error || '发言失败。',
-            visibleAnswer,
-            requestLog,
-            handlers,
-            signal: input.signal,
-          });
-        }
-      }
-
       if (decision.tool === 'finish') {
         return await finishSuccessfulRun({
           runId,
           steps,
-          seedAnswer: String(decision.args?.answer || (visibleAnswer ? '' : summarizeAgentResult(prompt, steps))),
+          seedAnswer: '',
           visibleAnswer,
           requestLog,
           handlers,
           signal: input.signal,
+          allowEmptyAnswer: true,
         });
       }
 
       const args = isRecord(decision.args) ? decision.args : {};
       const result = executeWorldTool(decision.tool, args, prompt);
       const npcSpeech = createNpcSpeechEvent(decision.tool, args, result);
+      const dmSpeech = createDmSpeechText(decision.tool, args, result);
       const step = recordAgentStep({
         runId,
         stepIndex,
@@ -120,7 +88,25 @@ async function runWorldAgentTaskInternal(input, handlers) {
       });
       stepIndex += 1;
 
-      if (isRepeatedSuccessfulNpcSpeech(steps)) {
+      if ((decision.tool === 'dm_speak' || decision.tool === 'npc_speak') && result.ok === false) {
+        return await finishSuccessfulRun({
+          runId,
+          steps,
+          seedAnswer: result.error || '发言失败。',
+          visibleAnswer,
+          requestLog,
+          handlers,
+          signal: input.signal,
+        });
+      }
+
+      if (dmSpeech) {
+        const delta = createSpeechDelta(visibleAnswer, dmSpeech);
+        if (delta) {
+          visibleAnswer = appendVisibleAnswer(visibleAnswer, delta);
+          handlers.onSpeechStart?.({ runId, stepIndex: step.index });
+          await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
+        }
         return await finishSuccessfulRun({
           runId,
           steps,
@@ -133,13 +119,35 @@ async function runWorldAgentTaskInternal(input, handlers) {
       }
 
       if (npcSpeech) {
-        visibleAnswer = appendVisibleAnswer(visibleAnswer, npcSpeech.content);
         handlers.onNpcSpeech?.({
           runId,
           stepIndex: step.index,
           npcEntityId: npcSpeech.npcEntityId,
           npcName: npcSpeech.npcName,
           content: npcSpeech.content,
+        });
+        return await finishSuccessfulRun({
+          runId,
+          steps,
+          seedAnswer: '',
+          visibleAnswer: npcSpeech.content,
+          requestLog,
+          handlers,
+          signal: input.signal,
+          allowEmptyAnswer: true,
+          persistAssistantConversation: false,
+        });
+      }
+
+      if (isRepeatedSuccessfulNpcSpeech(steps)) {
+        return await finishSuccessfulRun({
+          runId,
+          steps,
+          seedAnswer: '',
+          visibleAnswer,
+          requestLog,
+          handlers,
+          signal: input.signal,
         });
       }
 
@@ -191,10 +199,10 @@ function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers
 function compactToolResultForAgentStep(tool, result) {
   if (!isRecord(result) || result.ok === false) return result;
 
-  if (tool === 'speak') {
+  if (tool === 'dm_speak' || tool === 'speak') {
     return {
       ok: true,
-      summary: '说话成功。',
+      summary: 'OK',
     };
   }
 
@@ -252,7 +260,22 @@ function createNpcSpeechEvent(tool, args, result) {
   };
 }
 
-async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, requestLog, handlers, signal }) {
+function createDmSpeechText(tool, args, result) {
+  if (tool !== 'dm_speak' || !isRecord(result) || result.ok === false) return '';
+  return String(result.answer || result.content || args.content || args.text || args.message || '').trim();
+}
+
+async function finishSuccessfulRun({
+  runId,
+  steps,
+  seedAnswer,
+  visibleAnswer,
+  requestLog,
+  handlers,
+  signal,
+  allowEmptyAnswer = false,
+  persistAssistantConversation = true,
+}) {
   let answer = String(visibleAnswer || '').trim();
   const finalText = String(seedAnswer || '').trim();
 
@@ -268,11 +291,13 @@ async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, re
     }
   }
 
-  if (!answer) {
+  if (!answer && !allowEmptyAnswer) {
     answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onFinalAnswerDelta, signal);
   }
 
-  addConversation('assistant', null, '世界 Agent', answer);
+  if (persistAssistantConversation && answer) {
+    addConversation('assistant', null, '世界 Agent', answer);
+  }
   finishAgentRun(runId, 'completed', answer, null);
   addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
   const result = {
@@ -368,18 +393,18 @@ export function executeWorldTool(tool, args, prompt = '') {
     });
   }
 
-  if (tool === 'speak') {
-    const text = String(args.text || args.message || args.answer || '').trim();
-    return text
+  if (tool === 'dm_speak' || tool === 'speak') {
+    const content = String(args.content || args.text || args.message || args.answer || '').trim();
+    return content
       ? {
           ok: true,
-          text,
-          answer: text,
-          summary: 'Agent 对玩家发言。',
+          content,
+          answer: content,
+          summary: 'DM 发言成功。',
         }
       : {
           ok: false,
-          error: 'speak.text 不能为空。',
+          error: 'dm_speak.content 不能为空。',
         };
   }
 
@@ -646,9 +671,8 @@ function createParseRepairMessage({ previousContent, parseError }) {
         parseError,
         previousOutput: truncateForRepairPrompt(previousContent),
         requiredShape: {
-          say: '可选。要展示给玩家的话；如果还需要先调用工具，可以省略或留空。',
-          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、npc_speak、roll_dice、apply_world_patch、finish。',
-          args: '必须是对象。finish 时可以为空对象。',
+          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、dm_speak、npc_speak、roll_dice、apply_world_patch、finish。',
+          args: '必须是对象。DM 叙事使用 dm_speak.args.content；NPC 对白使用 npc_speak.args.content；finish 时可以为空对象。',
         },
       },
       null,
@@ -738,13 +762,13 @@ function fallbackToolCall(prompt, steps) {
     return { tool: 'get_rule_section', args: { id: last.result.results[0].id } };
   }
 
-  return { tool: 'finish', args: { answer: summarizeAgentResult(prompt, steps) } };
+  return { tool: 'dm_speak', args: { content: summarizeAgentResult(prompt, steps) } };
 }
 
 function normalizeToolCall(raw) {
   const action = isRecord(raw.action) ? raw.action : null;
   const args = isRecord(action?.args) ? action.args : isRecord(raw.args) ? raw.args : {};
-  const say = normalizeSay(raw.say ?? raw.speech ?? raw.message ?? raw.visibleText);
+  const legacySay = normalizeToolContent(raw.say ?? raw.speech ?? raw.message ?? raw.visibleText);
   const tool = typeof action?.tool === 'string'
     ? action.tool
     : typeof raw.tool === 'string'
@@ -753,19 +777,34 @@ function normalizeToolCall(raw) {
         ? raw.name
         : 'finish';
 
-  if (tool === 'speak') {
+  if (legacySay) {
     return {
-      say: normalizeSay(args.text ?? args.message ?? args.answer),
-      tool: 'finish',
-      args: {},
+      tool: 'dm_speak',
+      args: { content: legacySay },
     };
   }
 
-  if (tool === 'finish' && !args.answer && !say && (typeof args.text === 'string' || typeof args.message === 'string')) {
+  if (tool === 'speak') {
     return {
-      say: normalizeSay(args.text ?? args.message),
-      tool: 'finish',
-      args: {},
+      tool: 'dm_speak',
+      args: { content: normalizeToolContent(args.content ?? args.text ?? args.message ?? args.answer) },
+    };
+  }
+
+  if (tool === 'finish' && (typeof args.answer === 'string' || typeof args.text === 'string' || typeof args.message === 'string')) {
+    const content = normalizeToolContent(args.answer ?? args.text ?? args.message);
+    if (content) {
+      return {
+        tool: 'dm_speak',
+        args: { content },
+      };
+    }
+  }
+
+  if (tool === 'dm_speak') {
+    return {
+      tool: 'dm_speak',
+      args: { content: normalizeToolContent(args.content ?? args.text ?? args.message ?? args.answer) },
     };
   }
 
@@ -779,19 +818,19 @@ function normalizeToolCall(raw) {
     'search_rules',
     'get_rule_section',
     'roll_dice',
+    'dm_speak',
     'npc_speak',
     'enter_scene',
     'apply_world_patch',
     'finish',
   ]);
   return {
-    say,
     tool: valid.has(tool) ? tool : 'finish',
     args,
   };
 }
 
-function normalizeSay(value) {
+function normalizeToolContent(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
