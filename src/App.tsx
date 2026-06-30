@@ -38,6 +38,7 @@ import type {
   WorldAgentStreamEvent,
   WorldAction,
   WorldEntity,
+  WorldMapState,
   WorldOverview,
 } from './types';
 import type { ThinkingMode } from './types';
@@ -69,6 +70,7 @@ export default function App() {
   const [fixedContext, setFixedContext] = useState<FixedContext>(EMPTY_FIXED_CONTEXT);
   const [lastRequestLog, setLastRequestLog] = useState<ModelRequestLog | null>(null);
   const [world, setWorld] = useState<WorldOverview | null>(null);
+  const [worldMap, setWorldMap] = useState<WorldMapState | null>(null);
   const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
   const [stageSpeechByConversation, setStageSpeechByConversation] = useState<Record<string, StageSpeech>>({});
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
@@ -76,6 +78,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isWorldLoading, setIsWorldLoading] = useState(false);
+  const [isWorldMapLoading, setIsWorldMapLoading] = useState(false);
   const [isPresentationLoading, setIsPresentationLoading] = useState(false);
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
@@ -130,6 +133,7 @@ export default function App() {
   useEffect(() => {
     if (!world) return;
     void refreshPresentationStage();
+    void refreshWorldMap();
   }, [world]);
 
   function createNewChat() {
@@ -721,6 +725,19 @@ export default function App() {
     }
   }
 
+  async function refreshWorldMap() {
+    setIsWorldMapLoading(true);
+    try {
+      const response = await fetch('/api/world/map');
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setWorldMap((await response.json()) as WorldMapState);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '世界地图读取失败。');
+    } finally {
+      setIsWorldMapLoading(false);
+    }
+  }
+
   async function selectWorldEntity(entityId: string) {
     setIsWorldLoading(true);
     try {
@@ -880,11 +897,15 @@ export default function App() {
         {displayMode === 'game' ? (
           <GameView
             stage={presentationStage}
+            worldMap={worldMap}
             activeStageSpeech={activeStageSpeech}
             isLoading={isPresentationLoading}
+            isWorldMapLoading={isWorldMapLoading}
+            isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
             conversation={activeConversation}
             error={error}
             fixedContext={fixedContext}
+            onEnterScene={enterWorldScene}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         ) : (

@@ -151,6 +151,24 @@ export interface StageSpeech {
   createdAt: number;
 }
 
+export interface WorldMapScene {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+}
+
+export interface WorldMapLink {
+  sourceSceneId: string;
+  targetSceneId: string;
+}
+
+export interface WorldMapState {
+  currentSceneId: string;
+  scenes: WorldMapScene[];
+  links: WorldMapLink[];
+}
+
 export interface WorldAction {
   id: string;
   kind: 'attack.weapon';

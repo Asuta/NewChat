@@ -1,7 +1,8 @@
 import { ImageOff, Loader2, MapPinned, UserRound } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageSpeech } from '../types';
+import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageSpeech, WorldMapState } from '../types';
 import { ChatThread } from './ChatThread';
+import { SceneMiniMap } from './SceneMiniMap';
 
 const STAGE_SPEECH_MAX_LENGTH = 100;
 const STAGE_SLOTS = {
@@ -12,21 +13,29 @@ const STAGE_SLOTS = {
 
 interface GameViewProps {
   stage: PresentationStage | null;
+  worldMap: WorldMapState | null;
   activeStageSpeech: StageSpeech | null;
   isLoading: boolean;
+  isWorldMapLoading: boolean;
+  isNavigationDisabled: boolean;
   conversation: Conversation;
   error: string | null;
   fixedContext: FixedContext;
+  onEnterScene: (sceneId: string) => void;
   onOpenSettings: () => void;
 }
 
 export function GameView({
   stage,
+  worldMap,
   activeStageSpeech,
   isLoading,
+  isWorldMapLoading,
+  isNavigationDisabled,
   conversation,
   error,
   fixedContext,
+  onEnterScene,
   onOpenSettings,
 }: GameViewProps) {
   const sceneName = stage?.scene?.name || '未知场景';
@@ -59,6 +68,13 @@ export function GameView({
             </span>
           ) : null}
         </header>
+
+        <SceneMiniMap
+          worldMap={worldMap}
+          isLoading={isWorldMapLoading}
+          isNavigationDisabled={isNavigationDisabled}
+          onEnterScene={onEnterScene}
+        />
 
         <div className="game-character-layer" aria-label="当前场景人物">
           {visibleCharacters.map((character) => (

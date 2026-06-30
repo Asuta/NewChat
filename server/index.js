@@ -8,6 +8,7 @@ import {
   enterScene,
   getCurrentScene,
   getEntityBundle,
+  getWorldMap,
   getWorldOverview,
   ensurePlayableCharacterStats,
   listRelationships,
@@ -141,6 +142,10 @@ app.get('/api/world/schemas', (_req, res) => {
 
 app.get('/api/world/current-scene', (_req, res) => {
   res.json(getCurrentScene());
+});
+
+app.get('/api/world/map', (_req, res) => {
+  res.json(getWorldMap());
 });
 
 app.get('/api/presentation/catalog', (_req, res) => {

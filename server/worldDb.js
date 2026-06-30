@@ -884,6 +884,32 @@ export function getCurrentScene() {
   };
 }
 
+export function getWorldMap() {
+  const currentScene = getCurrentScene();
+  const scenes = listEntities({ kind: 'scene' }).map((scene) => {
+    const sceneComponent = getComponent(scene.id, 'scene') || {};
+    return {
+      id: scene.id,
+      name: scene.name,
+      description: typeof sceneComponent.description === 'string' ? sceneComponent.description : '',
+      tags: Array.isArray(sceneComponent.tags) ? sceneComponent.tags.filter((tag) => typeof tag === 'string') : [],
+    };
+  });
+  const sceneIds = new Set(scenes.map((scene) => scene.id));
+  const links = listRelationships({ type: 'exit_to' })
+    .filter((relationship) => sceneIds.has(relationship.sourceEntityId) && sceneIds.has(relationship.targetEntityId))
+    .map((relationship) => ({
+      sourceSceneId: relationship.sourceEntityId,
+      targetSceneId: relationship.targetEntityId,
+    }));
+
+  return {
+    currentSceneId: currentScene.scene?.id || '',
+    scenes,
+    links,
+  };
+}
+
 export function enterScene(sceneId) {
   const playerId = getMeta('playerId', 'player');
   const currentSceneId = getCurrentLocationId(playerId);
