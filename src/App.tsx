@@ -85,6 +85,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const conversationsRef = useRef(conversations);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
@@ -95,6 +96,14 @@ export default function App() {
   useEffect(() => {
     saveConversations(conversations);
   }, [conversations]);
+
+  function setConversationsState(update: Conversation[] | ((current: Conversation[]) => Conversation[])) {
+    setConversations((current) => {
+      const next = typeof update === 'function' ? update(current) : update;
+      conversationsRef.current = next;
+      return next;
+    });
+  }
 
   useEffect(() => {
     window.localStorage.setItem(THINKING_MODE_STORAGE_KEY, thinkingMode);
@@ -140,7 +149,7 @@ export default function App() {
     if (isCompressing) return;
     stopStreaming();
     const { conversation, assistantMessage } = createOpeningConversation();
-    setConversations((current) => [conversation, ...current]);
+    setConversationsState((current) => [conversation, ...current]);
     setActiveId(conversation.id);
     setError(null);
     void streamAgentResponse({
@@ -152,7 +161,9 @@ export default function App() {
   }
 
   function updateConversation(conversationId: string, updater: (conversation: Conversation) => Conversation) {
-    setConversations((current) => current.map((conversation) => (conversation.id === conversationId ? updater(conversation) : conversation)));
+    setConversationsState((current) =>
+      current.map((conversation) => (conversation.id === conversationId ? updater(conversation) : conversation)),
+    );
   }
 
   function updateActiveConversation(updater: (conversation: Conversation) => Conversation) {
@@ -160,15 +171,17 @@ export default function App() {
   }
 
   async function sendMessage(content: string, options: SendMessageOptions = {}) {
-    if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving) return;
+    const latestActiveConversation =
+      conversationsRef.current.find((conversation) => conversation.id === activeId) || conversationsRef.current[0];
+    if (!latestActiveConversation || isStreaming || isCompressing || isFixedContextSaving) return;
 
     const userMessage = createMessage('user', content);
     const assistantMessage = createMessage('assistant', '', 'streaming');
-    const shouldRename = activeConversation.messages.length === 0 && activeConversation.title === '新对话';
-    const nextMessages = [...activeConversation.messages, userMessage, assistantMessage];
-    const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, userMessage]);
+    const shouldRename = latestActiveConversation.messages.length === 0 && latestActiveConversation.title === '新对话';
+    const nextMessages = [...latestActiveConversation.messages, userMessage, assistantMessage];
+    const contextEvents = buildContextEvents(latestActiveConversation, [...latestActiveConversation.messages, userMessage]);
 
-    updateActiveConversation((conversation) => ({
+    updateConversation(latestActiveConversation.id, (conversation) => ({
       ...conversation,
       title: shouldRename ? titleFromMessage(content) : conversation.title,
       updatedAt: Date.now(),
@@ -176,7 +189,7 @@ export default function App() {
     }));
 
     await streamAgentResponse({
-      conversationId: activeConversation.id,
+      conversationId: latestActiveConversation.id,
       assistantMessageId: assistantMessage.id,
       prompt: content,
       contextEvents,
@@ -334,6 +347,7 @@ export default function App() {
           runId = event.runId;
           streamedAnswer = event.answer || streamedAnswer;
           streamedSteps = event.steps || streamedSteps;
+          const modelTranscript = event.modelTranscript || [];
           const completedSceneTransition = getCompletedSceneTransition(streamedSteps, pendingSceneTransition);
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
@@ -342,11 +356,13 @@ export default function App() {
             updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
               agentRunId: runId,
               agentSteps: streamedSteps,
+              modelTranscript,
             });
           } else {
             markAssistantMessagesDone(conversationId, runAssistantMessageIds, {
               agentRunId: runId,
               agentSteps: streamedSteps,
+              modelTranscript,
               primaryMessageId: assistantMessageId,
             });
           }
@@ -405,7 +421,7 @@ export default function App() {
     messageId: string,
     content: string,
     status: ChatMessage['status'],
-    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> = {},
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps' | 'modelTranscript'> = {},
   ) {
     updateConversation(conversationId, (conversation) => ({
       ...conversation,
@@ -426,7 +442,7 @@ export default function App() {
   function markAssistantMessagesDone(
     conversationId: string,
     messageIds: string[],
-    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> & { primaryMessageId: string },
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps' | 'modelTranscript'> & { primaryMessageId: string },
   ) {
     const ids = new Set(messageIds);
     updateConversation(conversationId, (conversation) => ({
@@ -438,7 +454,9 @@ export default function App() {
           ...message,
           status: 'done',
           agentRunId: metadata.agentRunId,
-          ...(message.id === metadata.primaryMessageId ? { agentSteps: metadata.agentSteps } : {}),
+          ...(message.id === metadata.primaryMessageId
+            ? { agentSteps: metadata.agentSteps, modelTranscript: metadata.modelTranscript }
+            : {}),
         };
       }),
     }));
@@ -525,7 +543,7 @@ export default function App() {
         throw new Error('模型没有返回可用摘要。');
       }
 
-      setConversations((current) =>
+      setConversationsState((current) =>
         current.map((conversation) =>
           conversation.id === conversationId
             ? {
@@ -689,13 +707,13 @@ export default function App() {
 
     if (options.resetConversations) {
       const next = options.openingConversation || createConversation();
-      setConversations([next]);
+      setConversationsState([next]);
       setActiveId(next.id);
       return;
     }
 
     const nextConversations = normalizeImportedConversations(state.conversations);
-    setConversations(nextConversations);
+    setConversationsState(nextConversations);
     setActiveId(nextConversations[0]?.id || '');
   }
 
@@ -1084,6 +1102,7 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       answer: String(payload.answer || ''),
       runId: Number(payload.runId),
       steps: Array.isArray(payload.steps) ? (payload.steps as AgentStep[]) : [],
+      modelTranscript: Array.isArray(payload.modelTranscript) ? payload.modelTranscript : [],
       world: payload.world as WorldOverview,
       requestLog: payload.requestLog as ModelRequestLog | undefined,
     };

@@ -13,6 +13,7 @@ export interface ChatMessage {
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
+  modelTranscript?: AgentModelTranscriptMessage[];
   npcSpeech?: {
     entityId: string;
     name: string;
@@ -220,6 +221,21 @@ export interface AgentStep {
   result: Record<string, unknown>;
 }
 
+export interface AgentModelTranscriptMessage {
+  role: 'assistant' | 'tool';
+  content: string;
+  reasoning_content?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id?: string;
+    type?: string;
+    function?: {
+      name?: string;
+      arguments?: string;
+    };
+  }>;
+}
+
 export type AgentContextEvent =
   | {
       type: 'summary';
@@ -250,6 +266,10 @@ export type AgentContextEvent =
       tool: string;
       args: Record<string, unknown>;
       result: Record<string, unknown>;
+    }
+  | {
+      type: 'model_message';
+      message: AgentModelTranscriptMessage;
     };
 
 export interface AgentRun {
@@ -327,6 +347,7 @@ export interface WorldAgentResponse {
   answer: string;
   runId: number;
   steps: AgentStep[];
+  modelTranscript?: AgentModelTranscriptMessage[];
   world: WorldOverview;
   requestLog?: ModelRequestLog;
 }
@@ -374,6 +395,7 @@ export type WorldAgentStreamEvent =
       answer: string;
       runId: number;
       steps: AgentStep[];
+      modelTranscript?: AgentModelTranscriptMessage[];
       world: WorldOverview;
       requestLog?: ModelRequestLog;
     }

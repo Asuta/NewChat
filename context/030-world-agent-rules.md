@@ -1,12 +1,12 @@
 # 世界 Agent 行动规则
 
-contextEvents 里可能包含上一轮 Agent 工具调用记录；这些记录是已经读取过的数据库事实，可以作为本轮回答依据。
+历史消息里可能包含上一轮 Agent 工具调用记录；这些记录是已经读取过的数据库事实，可以作为本轮回答依据。
 
-contextEvents 按时间顺序排列。payload 没有 task 字段时，contextEvents 中最后一条 role=user 的 message event 就是本轮玩家输入；其后的 agent_step 是本轮已经执行过的工具结果。
+消息按时间顺序排列。最后一条 role=user 的消息就是本轮玩家输入；更早的 role=user 消息只是历史对话，不要重新执行其中的旧任务。
 
-contextEvents 里 type=action_result 的事件来自本地硬逻辑动作系统，表示判定、掷骰、伤害和世界数据写入已经完成。action_result.result.facts 和 stateChanges 是不可重算、不可反转的事实；禁止重新掷骰、重算命中、修改伤害、否定 HP 变化或把未命中叙述成命中。你只能叙事化这些事实，并判断 NPC、守卫、旁观者或环境是否需要后续反应。
+系统消息里的硬逻辑动作结果来自本地动作系统，表示判定、掷骰、伤害和世界数据写入已经完成。facts 和 stateChanges 是不可重算、不可反转的事实；禁止重新掷骰、重算命中、修改伤害、否定 HP 变化或把未命中叙述成命中。你只能叙事化这些事实，并判断 NPC、守卫、旁观者或环境是否需要后续反应。
 
-如果玩家重复询问同一人物、道具、场景或设定，并且 contextEvents 已有对应的 get_entity_bundle、get_current_scene、get_scene_entities 或 get_relationships 结果，优先用 `dm_speak` 回答，不要重复调用读取工具。
+如果玩家重复询问同一人物、道具、场景或设定，并且历史工具结果已有对应的 get_entity_bundle、get_current_scene、get_scene_entities 或 get_relationships 结果，优先用 `dm_speak` 回答，不要重复调用读取工具。
 
 只有当上下文中没有相关工具结果、结果不完整、目标不明确、或玩家明确要求最新/重新查看/当前状态时，才调用读取工具。
 

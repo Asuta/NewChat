@@ -631,7 +631,53 @@ function sanitizeContextEvent(event) {
     };
   }
 
+  if (type === 'model_message') {
+    const message = sanitizeModelTranscriptMessage(event.message);
+    return message ? { type: 'model_message', message } : null;
+  }
+
   return null;
+}
+
+function sanitizeModelTranscriptMessage(input) {
+  if (!isRecord(input)) return null;
+
+  if (input.role === 'tool') {
+    const toolCallId = String(input.tool_call_id || '').trim();
+    if (!toolCallId) return null;
+    return {
+      role: 'tool',
+      tool_call_id: toolCallId.slice(0, 400),
+      content: String(input.content || '').slice(0, 16000),
+    };
+  }
+
+  if (input.role !== 'assistant') return null;
+  return {
+    role: 'assistant',
+    content: String(input.content || '').slice(0, 16000),
+    ...(typeof input.reasoning_content === 'string'
+      ? { reasoning_content: input.reasoning_content.slice(0, 64000) }
+      : {}),
+    ...(Array.isArray(input.tool_calls)
+      ? { tool_calls: input.tool_calls.map(sanitizeModelToolCall).filter(Boolean) }
+      : {}),
+  };
+}
+
+function sanitizeModelToolCall(input, index) {
+  if (!isRecord(input)) return null;
+  const fn = isRecord(input.function) ? input.function : {};
+  const name = String(fn.name || '').trim();
+  if (!name) return null;
+  return {
+    id: String(input.id || `tool_call_${index + 1}`).slice(0, 400),
+    type: String(input.type || 'function').slice(0, 80),
+    function: {
+      name: name.slice(0, 200),
+      arguments: String(fn.arguments || '').slice(0, 64000),
+    },
+  };
 }
 
 function sanitizeOptionalString(value, limit) {

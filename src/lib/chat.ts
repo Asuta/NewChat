@@ -1,4 +1,13 @@
-import type { AgentContextEvent, AgentStep, ChatMessage, ContextMode, Conversation, FixedContext, Role } from '../types';
+import type {
+  AgentContextEvent,
+  AgentModelTranscriptMessage,
+  AgentStep,
+  ChatMessage,
+  ContextMode,
+  Conversation,
+  FixedContext,
+  Role,
+} from '../types';
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
@@ -163,7 +172,7 @@ export function buildModelMessages(
       message.id !== excludedMessageId &&
       (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
-      message.content.trim(),
+      (message.content.trim() || message.modelTranscript?.length),
   );
   const contextMode = getConversationContextMode(conversation);
   const summary = conversation.contextSummary;
@@ -183,7 +192,7 @@ export function buildContextEvents(
       message.id !== excludedMessageId &&
       (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
-      message.content.trim(),
+      (message.content.trim() || message.modelTranscript?.length),
   );
   return buildDynamicContextEvents(cleanMessages, conversation.contextSummary, getConversationContextMode(conversation));
 }
@@ -223,9 +232,10 @@ function buildDynamicContextEvents(
   contextMode: ContextMode,
 ): AgentContextEvent[] {
   const agentStepLedger = buildAgentStepLedger(cleanMessages);
+  const modelTranscriptLedger = buildModelTranscriptLedger(cleanMessages);
 
   if (!summary || contextMode === 'full-history') {
-    return toContextEvents(cleanMessages, agentStepLedger);
+    return toContextEvents(cleanMessages, agentStepLedger, modelTranscriptLedger);
   }
 
   const summaryEvent: AgentContextEvent = {
@@ -234,16 +244,16 @@ function buildDynamicContextEvents(
   };
   const summaryEndIndex = cleanMessages.findIndex((message) => message.id === summary.lastMessageId);
   if (summaryEndIndex < 0) {
-    return [summaryEvent, ...toContextEvents(cleanMessages, agentStepLedger)];
+    return [summaryEvent, ...toContextEvents(cleanMessages, agentStepLedger, modelTranscriptLedger)];
   }
 
   const messagesAfterSummary = cleanMessages.slice(summaryEndIndex + 1);
   if (contextMode === 'summary-only') {
-    return [summaryEvent, ...toContextEvents(messagesAfterSummary, agentStepLedger)];
+    return [summaryEvent, ...toContextEvents(messagesAfterSummary, agentStepLedger, modelTranscriptLedger)];
   }
 
   const recentCoveredMessages = cleanMessages.slice(0, summaryEndIndex + 1).slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
-  return [summaryEvent, ...toContextEvents([...recentCoveredMessages, ...messagesAfterSummary], agentStepLedger)];
+  return [summaryEvent, ...toContextEvents([...recentCoveredMessages, ...messagesAfterSummary], agentStepLedger, modelTranscriptLedger)];
 }
 
 function getFixedContextMessage(fixedContext: FixedContext): ModelMessage | null {
@@ -271,6 +281,7 @@ export function buildCompactMessages(conversation: Conversation): ModelMessage[]
 }
 
 type AgentStepLedger = Map<number, AgentStep[]>;
+type ModelTranscriptLedger = Map<number, AgentModelTranscriptMessage[]>;
 
 function buildAgentStepLedger(messages: ChatMessage[]): AgentStepLedger {
   const ledger: AgentStepLedger = new Map();
@@ -280,6 +291,18 @@ function buildAgentStepLedger(messages: ChatMessage[]): AgentStepLedger {
       continue;
     }
     ledger.set(runId, message.agentSteps);
+  }
+  return ledger;
+}
+
+function buildModelTranscriptLedger(messages: ChatMessage[]): ModelTranscriptLedger {
+  const ledger: ModelTranscriptLedger = new Map();
+  for (const message of messages) {
+    const runId = getAgentRunId(message);
+    if (message.role !== 'assistant' || runId === null || !message.modelTranscript?.length || ledger.has(runId)) {
+      continue;
+    }
+    ledger.set(runId, message.modelTranscript);
   }
   return ledger;
 }
@@ -330,7 +353,11 @@ function toModelMessages(messages: ChatMessage[], agentStepLedger: AgentStepLedg
   });
 }
 
-function toContextEvents(messages: ChatMessage[], agentStepLedger: AgentStepLedger): AgentContextEvent[] {
+function toContextEvents(
+  messages: ChatMessage[],
+  agentStepLedger: AgentStepLedger,
+  modelTranscriptLedger: ModelTranscriptLedger,
+): AgentContextEvent[] {
   const emittedRunIds = new Set<number>();
   return messages.flatMap((message) => {
     if (message.kind === 'scene-transition') {
@@ -343,6 +370,15 @@ function toContextEvents(messages: ChatMessage[], agentStepLedger: AgentStepLedg
     const output: AgentContextEvent[] = [];
 
     const runId = getAgentRunId(message);
+    const modelTranscript = runId === null ? null : modelTranscriptLedger.get(runId);
+    if (message.role === 'assistant' && runId !== null && modelTranscript?.length) {
+      if (!emittedRunIds.has(runId)) {
+        output.push(...createModelMessageContextEvents(modelTranscript));
+        emittedRunIds.add(runId);
+      }
+      return output;
+    }
+
     const ledgerSteps = runId === null ? null : agentStepLedger.get(runId);
     if (message.role === 'assistant' && runId !== null && ledgerSteps?.length) {
       if (!emittedRunIds.has(runId)) {
@@ -399,6 +435,13 @@ function createAgentStepContextEvents(steps: AgentStep[], runId?: number): Agent
       result: isRecord(step.result) ? step.result : {},
     };
   });
+}
+
+function createModelMessageContextEvents(messages: AgentModelTranscriptMessage[]): AgentContextEvent[] {
+  return messages.map((message) => ({
+    type: 'model_message',
+    message,
+  }));
 }
 
 function createActionResultContextEvent(message: ChatMessage): AgentContextEvent {
