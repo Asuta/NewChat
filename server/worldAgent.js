@@ -29,6 +29,7 @@ const WORLD_AGENT_JSON_MODE_INSTRUCTION = [
 const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '当前后端使用 API 原生工具调用模式。',
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
+  '只处理最后一条 role=user 的当前任务；更早的 user/assistant/tool 消息只是历史上下文。',
   '读取、搜索、掷骰、写库、切换场景默认静默；需要玩家看见内容时调用 dm_speak 或 npc_speak。',
   'dm_speak 和 npc_speak 是普通工具，不会自动结束本轮；完成全部行动后调用 finish。',
 ].join('\n');
@@ -143,6 +144,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
       visibleAnswer,
       assistantConversationAnswer,
       stepIndex: 1,
+      modelTranscript: [],
     };
 
     if (shouldUseNativeToolPlanner(input)) {
@@ -312,6 +314,12 @@ async function runNativeToolPlanningLoop({
         continue;
       }
 
+      if (finalContent || assistantMessage.reasoning_content) {
+        const finalTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
+        messages.push(finalTranscript);
+        state.modelTranscript.push(finalTranscript);
+      }
+
       return await finishSuccessfulRun({
         runId,
         steps,
@@ -319,13 +327,16 @@ async function runNativeToolPlanningLoop({
         visibleAnswer: state.visibleAnswer,
         conversationAnswer: createFinalConversationAnswer(state.assistantConversationAnswer, finalContent),
         requestLog,
+        modelTranscript: state.modelTranscript,
         handlers,
         signal: input.signal,
         allowEmptyAnswer: Boolean(state.visibleAnswer),
       });
     }
 
-    messages.push(createNativeAssistantTranscriptMessage(assistantMessage));
+    const assistantTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
+    messages.push(assistantTranscript);
+    state.modelTranscript.push(assistantTranscript);
 
     for (const toolCall of assistantMessage.tool_calls) {
       const parsed = parseNativeToolCall(toolCall);
@@ -335,7 +346,9 @@ async function runNativeToolPlanningLoop({
         : { ok: false, error: parsed.error };
 
       const toolResultForModel = compactToolResultForAgentStep(decision.tool, result);
-      messages.push(createNativeToolResultMessage(toolCall, toolResultForModel));
+      const toolResultMessage = createNativeToolResultMessage(toolCall, toolResultForModel);
+      messages.push(toolResultMessage);
+      state.modelTranscript.push(toolResultMessage);
       logEntry.toolResults = [
         ...(Array.isArray(logEntry.toolResults) ? logEntry.toolResults : []),
         {
@@ -364,6 +377,7 @@ async function runNativeToolPlanningLoop({
           visibleAnswer: state.visibleAnswer,
           conversationAnswer: state.assistantConversationAnswer,
           requestLog,
+          modelTranscript: state.modelTranscript,
           handlers,
           signal: input.signal,
           allowEmptyAnswer: true,
@@ -392,6 +406,7 @@ async function runNativeToolPlanningLoop({
     visibleAnswer: state.visibleAnswer,
     conversationAnswer: state.assistantConversationAnswer,
     requestLog,
+    modelTranscript: state.modelTranscript,
     handlers,
     signal: input.signal,
   });
@@ -430,6 +445,7 @@ async function applyAgentDecision({
         visibleAnswer: state.visibleAnswer,
         conversationAnswer: state.assistantConversationAnswer,
         requestLog,
+        modelTranscript: state.modelTranscript,
         handlers,
         signal: input.signal,
         allowEmptyAnswer: true,
@@ -474,6 +490,7 @@ async function applyExecutedAgentTool({
         visibleAnswer: state.visibleAnswer,
         conversationAnswer: state.assistantConversationAnswer,
         requestLog,
+        modelTranscript: state.modelTranscript,
         handlers,
         signal: input.signal,
       }),
@@ -513,6 +530,7 @@ async function applyExecutedAgentTool({
         visibleAnswer: state.visibleAnswer,
         conversationAnswer: state.assistantConversationAnswer,
         requestLog,
+        modelTranscript: state.modelTranscript,
         handlers,
         signal: input.signal,
       }),
@@ -613,6 +631,7 @@ async function finishSuccessfulRun({
   visibleAnswer,
   conversationAnswer,
   requestLog,
+  modelTranscript = [],
   handlers,
   signal,
   allowEmptyAnswer = false,
@@ -647,6 +666,7 @@ async function finishSuccessfulRun({
     answer,
     runId,
     steps,
+    modelTranscript,
     world: getWorldOverview(),
     requestLog,
   };
@@ -876,11 +896,8 @@ export function getAgentHistory() {
 
 function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction }) {
   const fixedContext = readFixedContextBundle().content;
-  const payload = {
-    contextEvents: Array.isArray(contextEvents) ? contextEvents : [],
-    ...(!hasPromptMessageEvent(contextEvents, prompt) ? { task: prompt } : {}),
-  };
-  return [
+  const events = Array.isArray(contextEvents) ? contextEvents : [];
+  const messages = [
     {
       role: 'system',
       content: fixedContext,
@@ -889,15 +906,113 @@ function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction 
       role: 'system',
       content: modeInstruction,
     },
-    {
-      role: 'user',
-      content: JSON.stringify(
-        payload,
-        null,
-        2,
-      ),
-    },
+    ...contextEventsToModelMessages(events),
   ];
+  if (!hasPromptMessageEvent(events, prompt)) {
+    messages.push({
+      role: 'user',
+      content: prompt,
+    });
+  }
+  return messages;
+}
+
+function contextEventsToModelMessages(contextEvents) {
+  if (!Array.isArray(contextEvents)) return [];
+  return contextEvents.flatMap((event) => {
+    if (!isRecord(event)) return [];
+
+    if (event.type === 'model_message') {
+      const message = normalizeContextModelMessage(event.message);
+      return message ? [message] : [];
+    }
+
+    if (event.type === 'message') {
+      if (!['system', 'user', 'assistant'].includes(event.role) || typeof event.content !== 'string') return [];
+      return [{ role: event.role, content: event.content }];
+    }
+
+    if (event.type === 'summary') {
+      return [{ role: 'system', content: `对话摘要：\n${String(event.content || '')}` }];
+    }
+
+    if (event.type === 'scene_transition') {
+      return [{ role: 'system', content: String(event.content || '') }];
+    }
+
+    if (event.type === 'action_result') {
+      return [{
+        role: 'system',
+        content: [
+          '以下是本地硬逻辑已经执行并写入世界数据的动作结果。它不是玩家发言。',
+          `摘要：${String(event.summary || '')}`,
+          `结果：${JSON.stringify(isRecord(event.result) ? event.result : {})}`,
+        ].join('\n'),
+      }];
+    }
+
+    if (event.type === 'agent_step') {
+      return [{
+        role: 'system',
+        content: [
+          '以下是上一轮 Agent 工具调用记录。它是旧历史的兼容上下文，不是玩家发言。',
+          `工具名：${String(event.tool || '')}`,
+          `参数：${JSON.stringify(isRecord(event.args) ? event.args : {})}`,
+          `返回：${JSON.stringify(isRecord(event.result) ? event.result : {})}`,
+        ].join('\n'),
+      }];
+    }
+
+    return [];
+  });
+}
+
+function normalizeContextModelMessage(message) {
+  if (!isRecord(message)) return null;
+  if (message.role === 'tool') {
+    const toolCallId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+    if (!toolCallId) return null;
+    return {
+      role: 'tool',
+      tool_call_id: toolCallId,
+      content: typeof message.content === 'string' ? message.content : '',
+    };
+  }
+
+  if (message.role !== 'assistant') return null;
+  const transcript = {
+    role: 'assistant',
+    content: typeof message.content === 'string' ? message.content : '',
+  };
+  const toolCalls = normalizeContextToolCalls(message.tool_calls);
+  if (toolCalls.length) {
+    transcript.tool_calls = toolCalls;
+  }
+  if (typeof message.reasoning_content === 'string') {
+    transcript.reasoning_content = message.reasoning_content;
+  }
+  return transcript;
+}
+
+function normalizeContextToolCalls(toolCalls) {
+  if (!Array.isArray(toolCalls)) return [];
+  return toolCalls
+    .map((toolCall, index) => {
+      if (!isRecord(toolCall)) return null;
+      const fn = isRecord(toolCall.function) ? toolCall.function : {};
+      const name = typeof fn.name === 'string' ? fn.name.trim() : '';
+      const args = typeof fn.arguments === 'string' ? fn.arguments : '';
+      if (!name) return null;
+      return {
+        id: typeof toolCall.id === 'string' && toolCall.id.trim() ? toolCall.id : `tool_call_${index + 1}`,
+        type: typeof toolCall.type === 'string' && toolCall.type.trim() ? toolCall.type : 'function',
+        function: {
+          name,
+          arguments: args,
+        },
+      };
+    })
+    .filter(Boolean);
 }
 
 async function planNextToolCall({ prompt, steps, model, thinking, contextEvents, runId, stepIndex, requestLog, signal }) {
