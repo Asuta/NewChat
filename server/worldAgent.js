@@ -37,6 +37,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
   const runId = createAgentRun(prompt);
   const steps = [];
   let visibleAnswer = '';
+  let assistantConversationAnswer = '';
   const requestLog = { entries: [] };
   const baseContextEvents = Array.isArray(input.contextEvents)
     ? input.contextEvents
@@ -66,6 +67,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
           steps,
           seedAnswer: '',
           visibleAnswer,
+          conversationAnswer: assistantConversationAnswer,
           requestLog,
           handlers,
           signal: input.signal,
@@ -94,6 +96,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
           steps,
           seedAnswer: result.error || '发言失败。',
           visibleAnswer,
+          conversationAnswer: assistantConversationAnswer,
           requestLog,
           handlers,
           signal: input.signal,
@@ -104,21 +107,15 @@ async function runWorldAgentTaskInternal(input, handlers) {
         const delta = createSpeechDelta(visibleAnswer, dmSpeech);
         if (delta) {
           visibleAnswer = appendVisibleAnswer(visibleAnswer, delta);
+          assistantConversationAnswer = appendSpeechText(assistantConversationAnswer, dmSpeech);
           handlers.onSpeechStart?.({ runId, stepIndex: step.index });
           await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
         }
-        return await finishSuccessfulRun({
-          runId,
-          steps,
-          seedAnswer: '',
-          visibleAnswer,
-          requestLog,
-          handlers,
-          signal: input.signal,
-        });
+        continue;
       }
 
       if (npcSpeech) {
+        visibleAnswer = appendVisibleAnswer(visibleAnswer, npcSpeech.content);
         handlers.onNpcSpeech?.({
           runId,
           stepIndex: step.index,
@@ -126,29 +123,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
           npcName: npcSpeech.npcName,
           content: npcSpeech.content,
         });
-        return await finishSuccessfulRun({
-          runId,
-          steps,
-          seedAnswer: '',
-          visibleAnswer: npcSpeech.content,
-          requestLog,
-          handlers,
-          signal: input.signal,
-          allowEmptyAnswer: true,
-          persistAssistantConversation: false,
-        });
-      }
-
-      if (isRepeatedSuccessfulNpcSpeech(steps)) {
-        return await finishSuccessfulRun({
-          runId,
-          steps,
-          seedAnswer: '',
-          visibleAnswer,
-          requestLog,
-          handlers,
-          signal: input.signal,
-        });
+        continue;
       }
 
       if (isRepeatedToolFailure(steps)) {
@@ -157,6 +132,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
           steps,
           seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
           visibleAnswer,
+          conversationAnswer: assistantConversationAnswer,
           requestLog,
           handlers,
           signal: input.signal,
@@ -169,6 +145,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
       steps,
       seedAnswer: visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
       visibleAnswer,
+      conversationAnswer: assistantConversationAnswer,
       requestLog,
       handlers,
       signal: input.signal,
@@ -270,6 +247,7 @@ async function finishSuccessfulRun({
   steps,
   seedAnswer,
   visibleAnswer,
+  conversationAnswer,
   requestLog,
   handlers,
   signal,
@@ -295,8 +273,9 @@ async function finishSuccessfulRun({
     answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onFinalAnswerDelta, signal);
   }
 
-  if (persistAssistantConversation && answer) {
-    addConversation('assistant', null, '世界 Agent', answer);
+  const conversationText = conversationAnswer === undefined ? answer : String(conversationAnswer || '').trim();
+  if (persistAssistantConversation && conversationText) {
+    addConversation('assistant', null, '世界 Agent', conversationText);
   }
   finishAgentRun(runId, 'completed', answer, null);
   addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
@@ -739,6 +718,11 @@ function appendVisibleAnswer(currentAnswer, delta) {
   return current ? `${current}\n\n${next}` : next;
 }
 
+function appendSpeechText(currentAnswer, text) {
+  const delta = createSpeechDelta(currentAnswer, text);
+  return delta ? appendVisibleAnswer(currentAnswer, delta) : String(currentAnswer || '').trim();
+}
+
 function fallbackToolCall(prompt, steps) {
   if (steps.length === 0) {
     if (/hp|血量|生命|生命值|血|还剩|剩多少|受伤|昏迷|状态/i.test(prompt)) {
@@ -905,22 +889,6 @@ function isRepeatedToolFailure(steps) {
       JSON.stringify(step.args) === JSON.stringify(first.args)
     );
   });
-}
-
-function isRepeatedSuccessfulNpcSpeech(steps) {
-  if (steps.length < 2) return false;
-  const current = steps.at(-1);
-  const previous = steps.at(-2);
-  if (current?.tool !== 'npc_speak' || previous?.tool !== 'npc_speak') return false;
-  if (current.result?.ok === false || previous.result?.ok === false) return false;
-  return normalizeNpcSpeechSignature(current.args) === normalizeNpcSpeechSignature(previous.args);
-}
-
-function normalizeNpcSpeechSignature(args) {
-  if (!isRecord(args)) return '';
-  const entityId = String(args.npcEntityId || args.entityId || args.id || '').trim();
-  const content = String(args.content || args.text || args.message || '').trim();
-  return `${entityId}\n${content}`;
 }
 
 function normalizeWorldPatchOperations(args) {
