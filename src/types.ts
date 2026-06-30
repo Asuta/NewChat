@@ -215,8 +215,24 @@ export interface AgentRun {
 }
 
 export interface LoggedModelMessage {
-  role: Role;
+  role: Role | 'tool';
   content: string;
+  name?: string;
+  toolCallId?: string;
+  toolCalls?: LoggedToolCall[];
+  reasoningContentLength?: number;
+}
+
+export interface LoggedToolCall {
+  id?: string;
+  name?: string;
+  arguments?: unknown;
+}
+
+export interface LoggedToolResult {
+  toolCallId?: string;
+  tool?: string;
+  result?: unknown;
 }
 
 export interface ModelRequestUsage {
@@ -238,12 +254,17 @@ export interface ModelRequestUsage {
 
 export interface ModelRequestLogEntry {
   kind?: 'tool-plan' | 'final-answer';
+  mode?: 'json' | 'native-tools';
   stepIndex: number;
   model: string | null;
   thinking: ThinkingMode | null;
   createdAt: number;
   messages: LoggedModelMessage[];
   content?: string;
+  nativeTools?: string[];
+  toolCalls?: LoggedToolCall[];
+  toolResults?: LoggedToolResult[];
+  reasoningContentLength?: number;
   parseError?: string;
   parseRepairAttempt?: number;
   usage?: ModelRequestUsage | null;
