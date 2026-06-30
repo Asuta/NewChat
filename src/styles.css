@@ -1229,7 +1229,8 @@ button {
 .game-stage-header,
 .game-stage-footer,
 .game-stage-empty,
-.game-stage-overflow {
+.game-stage-overflow,
+.stage-speech-bubble {
   position: absolute;
   z-index: 3;
 }
@@ -1352,6 +1353,23 @@ button {
   color: rgba(248, 250, 252, 0.86);
 }
 
+.game-character.speaking-character {
+  z-index: 3;
+}
+
+.game-character.speaking-character img,
+.game-character.speaking-character .game-character-missing {
+  filter:
+    drop-shadow(0 0 18px rgba(255, 232, 174, 0.42))
+    drop-shadow(0 24px 26px rgba(0, 0, 0, 0.36));
+}
+
+.game-character.speaking-character figcaption {
+  border-color: rgba(255, 232, 174, 0.42);
+  background: rgba(34, 25, 15, 0.72);
+  color: #fff3ce;
+}
+
 .game-stage-empty {
   left: 50%;
   top: 50%;
@@ -1380,6 +1398,81 @@ button {
   font-size: 14px;
   font-weight: 800;
   backdrop-filter: blur(10px);
+}
+
+.stage-speech-bubble {
+  z-index: 4;
+  bottom: 126px;
+  display: grid;
+  gap: 5px;
+  width: min(320px, 38vw);
+  max-height: 116px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(8, 14, 22, 0.78);
+  color: #f8fafc;
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.stage-speech-bubble::after {
+  position: absolute;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  content: "";
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 14, 22, 0.78);
+  transform: rotate(45deg);
+}
+
+.stage-speech-bubble.slot-left {
+  left: 38%;
+  transform: translateX(-16%);
+}
+
+.stage-speech-bubble.slot-left::after {
+  left: 24px;
+}
+
+.stage-speech-bubble.slot-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.stage-speech-bubble.slot-center::after {
+  left: calc(50% - 7px);
+}
+
+.stage-speech-bubble.slot-right {
+  right: 38%;
+  transform: translateX(16%);
+}
+
+.stage-speech-bubble.slot-right::after {
+  right: 24px;
+}
+
+.stage-speech-bubble strong {
+  overflow: hidden;
+  color: #ffe8ae;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.stage-speech-bubble p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(248, 250, 252, 0.94);
+  font-size: 14px;
+  line-height: 1.48;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .game-stage-footer {
@@ -2157,6 +2250,11 @@ button {
   .game-stage-overflow {
     right: 14px;
     bottom: 68px;
+  }
+
+  .stage-speech-bubble {
+    bottom: 112px;
+    width: min(300px, 72vw);
   }
 
   .context-summary-bar {

@@ -101,8 +101,6 @@ export function getCurrentPresentationStage(sceneState) {
         isFallbackPortrait,
       };
     });
-    const visibleCharacters = assignStageSlots(stageCharacters).slice(0, 3);
-
     return {
       scene: scene
         ? {
@@ -112,8 +110,8 @@ export function getCurrentPresentationStage(sceneState) {
           }
         : null,
       backgroundUrl: toAssetUrl(backgroundAsset),
-      characters: visibleCharacters,
-      hiddenCharacterCount: Math.max(0, stageCharacters.length - visibleCharacters.length),
+      characters: assignStageSlots(stageCharacters),
+      hiddenCharacterCount: Math.max(0, stageCharacters.length - 3),
     };
   } finally {
     database.close();

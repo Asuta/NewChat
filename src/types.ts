@@ -144,6 +144,13 @@ export interface PresentationStage {
   hiddenCharacterCount: number;
 }
 
+export interface StageSpeech {
+  entityId: string;
+  name: string;
+  content: string;
+  createdAt: number;
+}
+
 export interface WorldAction {
   id: string;
   kind: 'attack.weapon';

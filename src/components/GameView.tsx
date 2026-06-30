@@ -1,10 +1,18 @@
 import { ImageOff, Loader2, MapPinned, UserRound } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { Conversation, FixedContext, PresentationStage } from '../types';
+import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageSpeech } from '../types';
 import { ChatThread } from './ChatThread';
+
+const STAGE_SPEECH_MAX_LENGTH = 100;
+const STAGE_SLOTS = {
+  1: ['center'],
+  2: ['left', 'right'],
+  3: ['left', 'center', 'right'],
+} as const;
 
 interface GameViewProps {
   stage: PresentationStage | null;
+  activeStageSpeech: StageSpeech | null;
   isLoading: boolean;
   conversation: Conversation;
   error: string | null;
@@ -14,6 +22,7 @@ interface GameViewProps {
 
 export function GameView({
   stage,
+  activeStageSpeech,
   isLoading,
   conversation,
   error,
@@ -22,8 +31,10 @@ export function GameView({
 }: GameViewProps) {
   const sceneName = stage?.scene?.name || '未知场景';
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
-  const visibleCharacters = stage?.characters || [];
-  const hiddenCharacterCount = stage?.hiddenCharacterCount || 0;
+  const stageCharacters = stage?.characters || [];
+  const visibleCharacters = getVisibleCharacters(stageCharacters, activeStageSpeech);
+  const visibleSpeaker = visibleCharacters.find((character) => character.entityId === activeStageSpeech?.entityId) || null;
+  const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
 
   return (
     <div className="game-view">
@@ -52,7 +63,12 @@ export function GameView({
         <div className="game-character-layer" aria-label="当前场景人物">
           {visibleCharacters.map((character) => (
             <figure
-              className={`game-character slot-${character.slot} ${character.isFallbackPortrait ? 'fallback-character' : ''}`}
+              className={[
+                'game-character',
+                `slot-${character.slot}`,
+                character.isFallbackPortrait ? 'fallback-character' : '',
+                character.entityId === activeStageSpeech?.entityId ? 'speaking-character' : '',
+              ].filter(Boolean).join(' ')}
               key={character.entityId}
               style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
             >
@@ -75,6 +91,16 @@ export function GameView({
           </div>
         ) : null}
 
+        {activeStageSpeech && visibleSpeaker ? (
+          <aside
+            className={`stage-speech-bubble slot-${visibleSpeaker.slot}`}
+            aria-label={`${activeStageSpeech.name} 正在发言`}
+          >
+            <strong>{activeStageSpeech.name}</strong>
+            <p>{formatStageSpeech(activeStageSpeech.content)}</p>
+          </aside>
+        ) : null}
+
         <footer className="game-stage-footer">
           <UserRound size={16} />
           <span>{sceneDescription}</span>
@@ -89,4 +115,29 @@ export function GameView({
       />
     </div>
   );
+}
+
+function getVisibleCharacters(
+  characters: PresentationStageCharacter[],
+  activeStageSpeech: StageSpeech | null,
+): PresentationStageCharacter[] {
+  const speaker = activeStageSpeech
+    ? characters.find((character) => character.entityId === activeStageSpeech.entityId) || null
+    : null;
+  const firstThree = characters.slice(0, 3);
+  const selected = speaker && !firstThree.some((character) => character.entityId === speaker.entityId)
+    ? [...characters.filter((character) => character.entityId !== speaker.entityId).slice(0, 2), speaker]
+    : firstThree;
+
+  const slots = STAGE_SLOTS[Math.min(selected.length, 3) as keyof typeof STAGE_SLOTS] || STAGE_SLOTS[1];
+  return selected.map((character, index) => ({
+    ...character,
+    slot: character.position && character.position !== 'auto' ? character.position : slots[index] || 'center',
+  }));
+}
+
+function formatStageSpeech(content: string) {
+  const normalized = content.trim();
+  if (normalized.length <= STAGE_SPEECH_MAX_LENGTH) return normalized;
+  return `${normalized.slice(0, STAGE_SPEECH_MAX_LENGTH)}...`;
 }

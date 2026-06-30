@@ -34,6 +34,7 @@ import type {
   PresentationStage,
   SaveDataResponse,
   SaveExportMode,
+  StageSpeech,
   WorldAgentStreamEvent,
   WorldAction,
   WorldEntity,
@@ -69,6 +70,7 @@ export default function App() {
   const [lastRequestLog, setLastRequestLog] = useState<ModelRequestLog | null>(null);
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
+  const [stageSpeechByConversation, setStageSpeechByConversation] = useState<Record<string, StageSpeech>>({});
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -85,6 +87,7 @@ export default function App() {
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
     [activeId, conversations],
   );
+  const activeStageSpeech = activeConversation ? stageSpeechByConversation[activeConversation.id] || null : null;
 
   useEffect(() => {
     saveConversations(conversations);
@@ -283,6 +286,15 @@ export default function App() {
             content: event.content,
             status: 'streaming',
           });
+          setStageSpeechByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              entityId: event.npcEntityId,
+              name: event.npcName,
+              content: event.content,
+              createdAt: Date.now(),
+            },
+          }));
           streamedAnswer = streamedAnswer ? `${streamedAnswer}\n\n${event.content}` : event.content;
           hasVisibleAssistantContent = true;
 
@@ -569,6 +581,7 @@ export default function App() {
 
   function clearCurrentChat() {
     if (!activeConversation || isStreaming || isCompressing) return;
+    const conversationId = activeConversation.id;
     updateActiveConversation((conversation) => ({
       ...conversation,
       title: '新对话',
@@ -576,6 +589,11 @@ export default function App() {
       messages: [],
       contextSummary: undefined,
     }));
+    setStageSpeechByConversation((current) => {
+      const next = { ...current };
+      delete next[conversationId];
+      return next;
+    });
     setError(null);
   }
 
@@ -663,6 +681,7 @@ export default function App() {
     setSelectedEntity(null);
     setAgentSteps([]);
     setLastRequestLog(null);
+    setStageSpeechByConversation({});
 
     if (options.resetConversations) {
       const next = options.openingConversation || createConversation();
@@ -861,6 +880,7 @@ export default function App() {
         {displayMode === 'game' ? (
           <GameView
             stage={presentationStage}
+            activeStageSpeech={activeStageSpeech}
             isLoading={isPresentationLoading}
             conversation={activeConversation}
             error={error}
