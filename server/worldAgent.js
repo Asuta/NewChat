@@ -108,6 +108,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
       const args = isRecord(decision.args) ? decision.args : {};
       const result = executeWorldTool(decision.tool, args, prompt);
+      const npcSpeech = createNpcSpeechEvent(decision.tool, args, result);
       const step = recordAgentStep({
         runId,
         stepIndex,
@@ -131,19 +132,15 @@ async function runWorldAgentTaskInternal(input, handlers) {
         });
       }
 
-      if (decision.tool === 'npc_speak' && step.result?.ok !== false) {
-        const npcSpeechText = String(args.content || args.text || args.message || '').trim();
-        const npc = isRecord(step.result?.npc) ? step.result.npc : {};
-        if (npcSpeechText && typeof npc.id === 'string' && typeof npc.name === 'string') {
-          visibleAnswer = appendVisibleAnswer(visibleAnswer, npcSpeechText);
-          handlers.onNpcSpeech?.({
-            runId,
-            stepIndex: step.index,
-            npcEntityId: npc.id,
-            npcName: npc.name,
-            content: npcSpeechText,
-          });
-        }
+      if (npcSpeech) {
+        visibleAnswer = appendVisibleAnswer(visibleAnswer, npcSpeech.content);
+        handlers.onNpcSpeech?.({
+          runId,
+          stepIndex: step.index,
+          npcEntityId: npcSpeech.npcEntityId,
+          npcName: npcSpeech.npcName,
+          content: npcSpeech.content,
+        });
       }
 
       if (isRepeatedToolFailure(steps)) {
@@ -202,14 +199,9 @@ function compactToolResultForAgentStep(tool, result) {
   }
 
   if (tool === 'npc_speak') {
-    const npc = isRecord(result.npc) ? result.npc : {};
     return {
       ok: true,
-      npc: {
-        id: typeof npc.id === 'string' ? npc.id : '',
-        name: typeof npc.name === 'string' ? npc.name : '',
-      },
-      summary: result.summary || 'NPC 发言成功。',
+      summary: 'OK',
     };
   }
 
@@ -246,6 +238,18 @@ function compactToolResultForAgentStep(tool, result) {
   }
 
   return result;
+}
+
+function createNpcSpeechEvent(tool, args, result) {
+  if (tool !== 'npc_speak' || !isRecord(result) || result.ok === false) return null;
+  const content = String(args.content || args.text || args.message || '').trim();
+  const npc = isRecord(result.npc) ? result.npc : {};
+  if (!content || typeof npc.id !== 'string' || typeof npc.name !== 'string') return null;
+  return {
+    npcEntityId: npc.id,
+    npcName: npc.name,
+    content,
+  };
 }
 
 async function finishSuccessfulRun({ runId, steps, seedAnswer, visibleAnswer, requestLog, handlers, signal }) {
