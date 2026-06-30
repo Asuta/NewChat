@@ -10,5 +10,8 @@ dev-server*.log
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
+data/presentation/*.sqlite
+data/presentation/*.sqlite-wal
+data/presentation/*.sqlite-shm
 data/template/
 data/save/

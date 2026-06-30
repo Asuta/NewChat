@@ -1,8 +1,9 @@
-import { Archive, Brain, ChevronDown, Loader2, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
+import { Archive, Brain, ChevronDown, Gamepad2, Loader2, MessageSquare, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import type {
   ContextMode,
   Conversation,
+  DisplayMode,
   FixedContext,
   HealthState,
   ModelId,
@@ -27,6 +28,7 @@ interface TopBarProps {
   conversation: Conversation;
   health: HealthState | null;
   modelId: ModelId;
+  displayMode: DisplayMode;
   thinkingMode: ThinkingMode;
   contextMode: ContextMode;
   fixedContext: FixedContext;
@@ -38,6 +40,7 @@ interface TopBarProps {
   canCompress: boolean;
   isSettingsOpen: boolean;
   onModelChange: (model: ModelId) => void;
+  onDisplayModeChange: (mode: DisplayMode) => void;
   onThinkingModeChange: (mode: ThinkingMode) => void;
   onContextModeChange: (mode: ContextMode) => void;
   onCompress: () => void;
@@ -54,6 +57,7 @@ export function TopBar({
   conversation,
   health,
   modelId,
+  displayMode,
   thinkingMode,
   contextMode,
   fixedContext,
@@ -65,6 +69,7 @@ export function TopBar({
   canCompress,
   isSettingsOpen,
   onModelChange,
+  onDisplayModeChange,
   onThinkingModeChange,
   onContextModeChange,
   onCompress,
@@ -91,6 +96,28 @@ export function TopBar({
         <ChevronDown size={18} />
       </button>
       <div className="topbar-actions">
+        <div className="view-toggle" role="group" aria-label="切换表现方式">
+          <button
+            className={displayMode === 'chat' ? 'active' : ''}
+            type="button"
+            aria-pressed={displayMode === 'chat'}
+            title="聊天视图"
+            onClick={() => onDisplayModeChange('chat')}
+          >
+            <MessageSquare size={16} />
+            <span>聊天</span>
+          </button>
+          <button
+            className={displayMode === 'game' ? 'active' : ''}
+            type="button"
+            aria-pressed={displayMode === 'game'}
+            title="游戏视图"
+            onClick={() => onDisplayModeChange('game')}
+          >
+            <Gamepad2 size={16} />
+            <span>游戏</span>
+          </button>
+        </div>
         <div className="model-menu">
           <button
             className={`model-chip ${modelMenuOpen ? 'open' : ''}`}

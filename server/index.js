@@ -22,6 +22,12 @@ import { executeWorldAction, listWorldActions } from './worldActions.js';
 import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
 import {
+  ensurePresentationDb,
+  getCurrentPresentationStage,
+  getPresentationCatalog,
+  PRESENTATION_ASSETS_DIR,
+} from './presentationDb.js';
+import {
   createSaveExportBundle,
   ensureTemplateDbFromSaveIfMissing,
   ensureTemplatePlayableDefaults,
@@ -38,6 +44,7 @@ rebuildSearchIndex();
 checkpointWorldDb();
 ensureTemplateDbFromSaveIfMissing();
 ensureTemplatePlayableDefaults();
+ensurePresentationDb();
 
 const app = express();
 const HOST = '127.0.0.1';
@@ -52,6 +59,7 @@ const COMPACT_SYSTEM_PROMPT =
   '你是一个对话上下文压缩助手。请用中文总结给定聊天记录，保留用户目标、关键事实、已达成结论、未解决问题、重要偏好和后续需要延续的上下文。不要添加原对话没有的信息。输出一段清晰、紧凑、可直接作为后续大模型上下文的摘要。';
 
 app.use(express.json({ limit: '64mb' }));
+app.use('/api/presentation/assets', express.static(PRESENTATION_ASSETS_DIR));
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -133,6 +141,14 @@ app.get('/api/world/schemas', (_req, res) => {
 
 app.get('/api/world/current-scene', (_req, res) => {
   res.json(getCurrentScene());
+});
+
+app.get('/api/presentation/catalog', (_req, res) => {
+  res.json(getPresentationCatalog());
+});
+
+app.get('/api/presentation/current-stage', (_req, res) => {
+  res.json(getCurrentPresentationStage(getCurrentScene()));
 });
 
 app.get('/api/world/entities', (req, res) => {

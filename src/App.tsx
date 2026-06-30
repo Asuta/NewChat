@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
+import { GameView } from './components/GameView';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { WorldPanel } from './components/WorldPanel';
@@ -24,11 +25,13 @@ import type {
   ChatMessage,
   ContextMode,
   Conversation,
+  DisplayMode,
   EntityBundle,
   FixedContext,
   HealthState,
   ModelRequestLog,
   ModelId,
+  PresentationStage,
   SaveDataResponse,
   SaveExportMode,
   WorldAgentStreamEvent,
@@ -60,15 +63,18 @@ export default function App() {
   const [activeId, setActiveId] = useState(() => conversations[0]?.id || '');
   const [health, setHealth] = useState<HealthState | null>(null);
   const [modelId, setModelId] = useState<ModelId>(getInitialModelId);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('chat');
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(getInitialThinkingMode);
   const [fixedContext, setFixedContext] = useState<FixedContext>(EMPTY_FIXED_CONTEXT);
   const [lastRequestLog, setLastRequestLog] = useState<ModelRequestLog | null>(null);
   const [world, setWorld] = useState<WorldOverview | null>(null);
+  const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isWorldLoading, setIsWorldLoading] = useState(false);
+  const [isPresentationLoading, setIsPresentationLoading] = useState(false);
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -117,6 +123,11 @@ export default function App() {
   useEffect(() => {
     setIsSettingsOpen(false);
   }, [activeId]);
+
+  useEffect(() => {
+    if (!world) return;
+    void refreshPresentationStage();
+  }, [world]);
 
   function createNewChat() {
     if (isCompressing) return;
@@ -678,6 +689,19 @@ export default function App() {
     }
   }
 
+  async function refreshPresentationStage() {
+    setIsPresentationLoading(true);
+    try {
+      const response = await fetch('/api/presentation/current-stage');
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setPresentationStage((await response.json()) as PresentationStage);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '表现层读取失败。');
+    } finally {
+      setIsPresentationLoading(false);
+    }
+  }
+
   async function selectWorldEntity(entityId: string) {
     setIsWorldLoading(true);
     try {
@@ -817,7 +841,9 @@ export default function App() {
           fixedContext={fixedContext}
           requestLog={lastRequestLog}
           modelId={modelId}
+          displayMode={displayMode}
           onModelChange={setModelId}
+          onDisplayModeChange={setDisplayMode}
           thinkingMode={thinkingMode}
           onThinkingModeChange={setThinkingMode}
           contextMode={getConversationContextMode(activeConversation)}
@@ -832,12 +858,23 @@ export default function App() {
           onImportSaveData={importSaveData}
           isSaveDataBusy={isSaveDataBusy}
         />
-        <ChatThread
-          conversation={activeConversation}
-          error={error}
-          fixedContext={fixedContext}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
+        {displayMode === 'game' ? (
+          <GameView
+            stage={presentationStage}
+            isLoading={isPresentationLoading}
+            conversation={activeConversation}
+            error={error}
+            fixedContext={fixedContext}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        ) : (
+          <ChatThread
+            conversation={activeConversation}
+            error={error}
+            fixedContext={fixedContext}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        )}
         <Composer
           isStreaming={isStreaming}
           isDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}

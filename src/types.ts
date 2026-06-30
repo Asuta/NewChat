@@ -2,6 +2,7 @@ export type Role = 'user' | 'assistant' | 'system';
 export type ThinkingMode = 'enabled' | 'disabled';
 export type ModelId = 'deepseek-v4-flash' | 'deepseek-v4-pro';
 export type ContextMode = 'summary-only' | 'summary-recent' | 'full-history';
+export type DisplayMode = 'chat' | 'game';
 
 export interface ChatMessage {
   id: string;
@@ -118,6 +119,29 @@ export interface WorldOverview {
     relationships: number;
   };
   recentAgentRuns: AgentRun[];
+}
+
+export interface PresentationStageCharacter {
+  entityId: string;
+  name: string;
+  kind: EntityKind;
+  portraitUrl: string | null;
+  position: string;
+  slot: 'left' | 'center' | 'right' | string;
+  scale: number;
+  hasBinding: boolean;
+  isFallbackPortrait: boolean;
+}
+
+export interface PresentationStage {
+  scene: {
+    id: string;
+    name: string;
+    description: string;
+  } | null;
+  backgroundUrl: string | null;
+  characters: PresentationStageCharacter[];
+  hiddenCharacterCount: number;
 }
 
 export interface WorldAction {
