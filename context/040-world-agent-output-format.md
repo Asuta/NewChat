@@ -1,10 +1,11 @@
 # 世界 Agent 输出格式
 
-每次只输出一个 JSON 决策，不要输出 Markdown。JSON 可以包含：
+每次只输出一个 JSON 决策，不要输出 Markdown。JSON 只能包含：
 
-- `say`：可选，向玩家显示的文字。
 - `tool`：必填，下一步工具名或 finish。
-- `args`：可选，工具参数。
+- `args`：必填，对象。没有参数时使用 `{}`。
+
+禁止输出顶层 `say`、`speech`、`message` 或 `visibleText` 字段。禁止输出 `{"tool":"speak", ...}`。
 
 输出格式示例：
 
@@ -18,19 +19,13 @@
 {"tool":"get_current_scene","args":{}}
 ```
 
-说完并结束本轮任务示例：
+DM 叙事并结束本轮任务示例：
 
 ```json
-{"say":"雾港酒馆里炉火摇晃，莉娜在吧台后抬眼看你。你要做什么？","tool":"finish","args":{}}
+{"tool":"dm_speak","args":{"content":"雾港酒馆里炉火摇晃，莉娜在吧台后抬眼看你。你要做什么？"}}
 ```
 
-禁止输出 `{"tool":"speak", ...}`。发言不是工具调用，必须使用顶层 `say` 字段。
-
-第一步也可以带 `say`。如果同一步还要调用工具，`say` 会先显示，然后再执行工具；如果已经回答完，应同时使用 tool=finish。
-
-禁止第一步直接输出 `{"tool":"finish","args":{}}`。只有同一个 JSON 已经通过 say 给出完整可见回复，或本轮之前已经 say 过完整回复时，finish 才可以空 args；如果没有 say，finish 必须使用 `args.answer` 给出玩家能看到的回答。
-
-兼容旧格式：如果没有使用 say，也可以用 `{"tool":"finish","args":{"answer":"中文回答"}}` 一次性结束并回答。
+finish 不输出可见文字。需要回答玩家时不要使用 finish，使用 dm_speak 或 npc_speak。
 
 规则查询示例：
 
@@ -62,7 +57,7 @@ NPC 气泡发言示例：
 {"tool":"npc_speak","args":{"npcEntityId":"character_lina","content":"还行吧，比昨天强点。码头那边卸了批货，水手们手头宽裕了些。你呢，老主顾了，要点什么？"}}
 ```
 
-`npc_speak.args.content` 只填写 NPC 实际说出口的话；不要包含旁白、动作描写、心理描写、引号、说话人前缀或其他 NPC 的对白。`npc_speak` 不会自动结束本轮；如果已经完成回复，继续使用 `tool=finish`。
+`npc_speak.args.content` 只填写 NPC 实际说出口的话；不要包含旁白、动作描写、心理描写、引号、说话人前缀或其他 NPC 的对白。
 
 命中后的伤害掷骰示例：
 
@@ -73,7 +68,7 @@ NPC 气泡发言示例：
 NPC 即时反应流程示例：
 
 ```json
-{"say":"你的剑锋逼近莉娜，她猛地侧身，手已经摸向短棍。","tool":"get_entity_bundle","args":{"entityId":"character_lina"}}
+{"tool":"get_entity_bundle","args":{"entityId":"character_lina"}}
 ```
 
 ```json
@@ -85,10 +80,10 @@ NPC 即时反应流程示例：
 ```
 
 ```json
-{"say":"莉娜趁你收势不及，一棍扫中你的肋侧。你现在还站得住，但酒馆里的客人已经惊叫着退开。你要继续进攻，还是改变策略？","tool":"finish","args":{}}
+{"tool":"dm_speak","args":{"content":"莉娜趁你收势不及，一棍扫中你的肋侧。你现在还站得住，但酒馆里的客人已经惊叫着退开。你要继续进攻，还是改变策略？"}}
 ```
 
-如果 NPC 已经昏迷、死亡、逃跑、被束缚或没有合理动机立即行动，可以直接叙述这个原因并 finish；否则不要在玩家敌意行动刚结算后立刻结束本轮。
+如果 NPC 已经昏迷、死亡、逃跑、被束缚或没有合理动机立即行动，可以直接用 dm_speak 叙述这个原因并结束本轮；否则不要在玩家敌意行动刚结算后立刻结束本轮。
 
 除非规则或实体数据明确有多重攻击、额外攻击、借机攻击等能力，同一个 NPC 的一次即时反应示例中只应出现一次攻击检定；后续可以用台词、移动、防御、呼救或交还行动权继续推进。
 
