@@ -1149,12 +1149,12 @@ function getStepResultScene(step: AgentStep): { id?: string; name?: string } | n
 
 function getInitialThinkingMode(): ThinkingMode {
   const stored = window.localStorage.getItem(THINKING_MODE_STORAGE_KEY);
-  return isThinkingMode(stored) ? stored : 'disabled';
+  return isThinkingMode(stored) ? stored : 'enabled';
 }
 
 function getInitialModelId(): ModelId {
   const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
-  return isModelId(stored) ? stored : 'deepseek-v4-pro';
+  return isModelId(stored) ? stored : 'deepseek-v4-flash';
 }
 
 function isThinkingMode(value: unknown): value is ThinkingMode {
