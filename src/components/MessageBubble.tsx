@@ -1,4 +1,7 @@
 import { Bot, CheckCheck, Copy, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
 
@@ -40,7 +43,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         <div className="message-bubble npc-message-bubble">
           <header className="npc-bubble-header">{message.npcSpeech?.name || 'NPC'}</header>
-          <p>{message.content}</p>
+          <MarkdownContent content={message.content} />
           <footer className="message-meta npc-message-meta">
             <time>{formatTime(message.createdAt)}</time>
           </footer>
@@ -61,7 +64,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
       <div className={`message-bubble ${message.status === 'error' ? 'error' : ''}`}>
         {message.content ? (
-          <p>{message.content}</p>
+          isUser ? <p className="message-text">{message.content}</p> : <MarkdownContent content={message.content} />
         ) : (
           <div className="thinking">
             <span />
@@ -77,6 +80,27 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </footer>
       </div>
     </article>
+  );
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="markdown-content">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+        components={{
+          a({ children, href, node: _node, ...props }) {
+            return (
+              <a href={href} rel="noreferrer" target="_blank" {...props}>
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
