@@ -328,6 +328,7 @@ export interface ModelRequestLogEntry {
   model: string | null;
   thinking: ThinkingMode | null;
   createdAt: number;
+  maxSteps?: number;
   messages: LoggedModelMessage[];
   content?: string;
   nativeTools?: string[];

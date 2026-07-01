@@ -30,6 +30,7 @@ interface TopBarProps {
   modelId: ModelId;
   displayMode: DisplayMode;
   thinkingMode: ThinkingMode;
+  agentMaxSteps: number;
   contextMode: ContextMode;
   fixedContext: FixedContext;
   requestLog: ModelRequestLog | null;
@@ -42,6 +43,7 @@ interface TopBarProps {
   onModelChange: (model: ModelId) => void;
   onDisplayModeChange: (mode: DisplayMode) => void;
   onThinkingModeChange: (mode: ThinkingMode) => void;
+  onAgentMaxStepsChange: (value: number) => void;
   onContextModeChange: (mode: ContextMode) => void;
   onCompress: () => void;
   onSettingsOpenChange: (open: boolean) => void;
@@ -59,6 +61,7 @@ export function TopBar({
   modelId,
   displayMode,
   thinkingMode,
+  agentMaxSteps,
   contextMode,
   fixedContext,
   requestLog,
@@ -71,6 +74,7 @@ export function TopBar({
   onModelChange,
   onDisplayModeChange,
   onThinkingModeChange,
+  onAgentMaxStepsChange,
   onContextModeChange,
   onCompress,
   onSettingsOpenChange,
@@ -249,7 +253,9 @@ export function TopBar({
           conversation={conversation}
           fixedContext={fixedContext}
           requestLog={requestLog}
+          agentMaxSteps={agentMaxSteps}
           disabled={controlsDisabled}
+          onAgentMaxStepsChange={onAgentMaxStepsChange}
           onClose={() => onSettingsOpenChange(false)}
           onSaveFixedContext={onSaveFixedContext}
           onClearFixedContext={onClearFixedContext}

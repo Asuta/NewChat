@@ -242,6 +242,7 @@ app.post('/api/world/agent', async (req, res) => {
       taskRole: req.body?.taskRole,
       model: req.body?.model,
       thinking: req.body?.thinking,
+      maxSteps: req.body?.maxSteps,
       contextEvents: sanitizeContextEvents(req.body?.contextEvents),
       conversationContext: sanitizeMessages(req.body?.messages),
     });
@@ -270,6 +271,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
         taskRole: req.body?.taskRole,
         model: req.body?.model,
         thinking: req.body?.thinking,
+        maxSteps: req.body?.maxSteps,
         contextEvents: sanitizeContextEvents(req.body?.contextEvents),
         conversationContext: sanitizeMessages(req.body?.messages),
         signal: controller.signal,

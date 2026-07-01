@@ -46,6 +46,10 @@ import type { ThinkingMode } from './types';
 
 const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
+const AGENT_MAX_STEPS_STORAGE_KEY = 'newchat.agentMaxSteps.v1';
+const DEFAULT_AGENT_MAX_STEPS = 30;
+const MIN_AGENT_MAX_STEPS = 1;
+const MAX_AGENT_MAX_STEPS = 100;
 const EMPTY_FIXED_CONTEXT: FixedContext = { content: '', editableContent: '', updatedAt: null, files: [] };
 const OPENING_STORY_PROMPT = [
   '新会话刚开始，请由 AI DM 主动给玩家一段故事梗概式开场白。',
@@ -68,6 +72,7 @@ export default function App() {
   const [modelId, setModelId] = useState<ModelId>(getInitialModelId);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('chat');
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(getInitialThinkingMode);
+  const [agentMaxSteps, setAgentMaxSteps] = useState(getInitialAgentMaxSteps);
   const [fixedContext, setFixedContext] = useState<FixedContext>(EMPTY_FIXED_CONTEXT);
   const [lastRequestLog, setLastRequestLog] = useState<ModelRequestLog | null>(null);
   const [world, setWorld] = useState<WorldOverview | null>(null);
@@ -121,6 +126,10 @@ export default function App() {
     if (!isResetConfirmOpen) return;
     resetCancelButtonRef.current?.focus();
   }, [isResetConfirmOpen]);
+
+  useEffect(() => {
+    window.localStorage.setItem(AGENT_MAX_STEPS_STORAGE_KEY, String(agentMaxSteps));
+  }, [agentMaxSteps]);
 
   useEffect(() => {
     fetch('/api/health')
@@ -246,6 +255,7 @@ export default function App() {
           prompt,
           taskRole,
           contextEvents,
+          maxSteps: agentMaxSteps,
         }),
         signal: controller.signal,
       });
@@ -582,6 +592,10 @@ export default function App() {
       contextMode: mode,
       updatedAt: Date.now(),
     }));
+  }
+
+  function updateAgentMaxSteps(value: number) {
+    setAgentMaxSteps(normalizeAgentMaxSteps(value));
   }
 
   async function saveFixedContext(content: string) {
@@ -939,6 +953,8 @@ export default function App() {
           onDisplayModeChange={setDisplayMode}
           thinkingMode={thinkingMode}
           onThinkingModeChange={setThinkingMode}
+          agentMaxSteps={agentMaxSteps}
+          onAgentMaxStepsChange={updateAgentMaxSteps}
           contextMode={getConversationContextMode(activeConversation)}
           onContextModeChange={updateContextMode}
           onCompress={compactConversation}
@@ -1224,6 +1240,18 @@ function getInitialThinkingMode(): ThinkingMode {
 function getInitialModelId(): ModelId {
   const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
   return isModelId(stored) ? stored : 'deepseek-v4-flash';
+}
+
+function getInitialAgentMaxSteps() {
+  const stored = window.localStorage.getItem(AGENT_MAX_STEPS_STORAGE_KEY);
+  return stored == null || stored === '' ? DEFAULT_AGENT_MAX_STEPS : normalizeAgentMaxSteps(stored);
+}
+
+function normalizeAgentMaxSteps(value: unknown) {
+  if (value == null || value === '') return DEFAULT_AGENT_MAX_STEPS;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_AGENT_MAX_STEPS;
+  return Math.min(MAX_AGENT_MAX_STEPS, Math.max(MIN_AGENT_MAX_STEPS, Math.floor(parsed)));
 }
 
 function isThinkingMode(value: unknown): value is ThinkingMode {

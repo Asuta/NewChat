@@ -1044,6 +1044,46 @@ button {
   justify-content: center;
 }
 
+.agent-runtime-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(49, 113, 217, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f7faff;
+}
+
+.agent-max-steps-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #2d3748;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-max-steps-control input {
+  width: 96px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+}
+
+.agent-max-steps-control input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.5);
+}
+
+.agent-max-steps-control input:disabled {
+  background: #f2f4f8;
+  color: var(--muted);
+}
+
 .hidden-file-input {
   display: none;
 }

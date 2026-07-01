@@ -6,7 +6,9 @@ interface ConversationSettingsPanelProps {
   conversation: Conversation;
   fixedContext: FixedContext;
   requestLog: ModelRequestLog | null;
+  agentMaxSteps: number;
   disabled: boolean;
+  onAgentMaxStepsChange: (value: number) => void;
   onClose: () => void;
   onClearChat: () => void;
   onClearFixedContext: () => void;
@@ -21,7 +23,9 @@ export function ConversationSettingsPanel({
   conversation,
   fixedContext,
   requestLog,
+  agentMaxSteps,
   disabled,
+  onAgentMaxStepsChange,
   onClose,
   onClearChat,
   onClearFixedContext,
@@ -150,6 +154,30 @@ export function ConversationSettingsPanel({
         </div>
       </section>
 
+      <section className="agent-runtime-panel" aria-label="Agent 运行设置">
+        <div className="save-data-panel-header">
+          <div>
+            <strong>Agent 运行设置</strong>
+            <span>控制单轮 Agent 最多可执行多少个工具步骤。</span>
+          </div>
+          <FileText size={18} />
+        </div>
+
+        <label className="agent-max-steps-control">
+          <span>每轮工具上限</span>
+          <input
+            aria-label="每轮工具上限"
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            value={agentMaxSteps}
+            disabled={disabled}
+            onChange={(event) => onAgentMaxStepsChange(event.target.value === '' ? 30 : Number(event.target.value))}
+          />
+        </label>
+      </section>
+
       <section className="model-request-log" aria-label="上一轮模型请求 Log">
         <div className="model-request-log-header">
           <div>
@@ -166,7 +194,7 @@ export function ConversationSettingsPanel({
                 <summary>
                   <span>{formatRequestEntryTitle(entry)}</span>
                   <small>
-                    {entry.model || '未配置模型'} · {entry.thinking || 'thinking unset'} · {formatUsageSummary(entry.usage)} · {formatLogTime(entry.createdAt)}
+                    {entry.model || '未配置模型'} · {entry.thinking || 'thinking unset'} · {formatMaxSteps(entry.maxSteps)} · {formatUsageSummary(entry.usage)} · {formatLogTime(entry.createdAt)}
                   </small>
                 </summary>
                 <div className="model-request-messages">
@@ -271,6 +299,10 @@ function ModelUsageSummary({ usage }: { usage?: ModelRequestUsage | null }) {
 
 function formatRequestEntryTitle(entry: ModelRequestLogEntry) {
   return entry.kind === 'final-answer' ? '最终答复' : `Step ${entry.stepIndex}`;
+}
+
+function formatMaxSteps(maxSteps?: number) {
+  return typeof maxSteps === 'number' ? `max ${maxSteps}` : 'max unset';
 }
 
 function formatUsageSummary(usage?: ModelRequestUsage | null) {

@@ -18,7 +18,9 @@ import {
 import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 
-export const WORLD_AGENT_MAX_STEPS = 12;
+export const WORLD_AGENT_DEFAULT_MAX_STEPS = 30;
+export const WORLD_AGENT_MIN_STEPS = 1;
+export const WORLD_AGENT_MAX_STEPS = 100;
 const WORLD_AGENT_MAX_PARSE_REPAIRS = 2;
 const WORLD_AGENT_JSON_MODE_INSTRUCTION = [
   '当前后端使用 JSON planner 兼容模式。',
@@ -129,6 +131,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
   const runId = createAgentRun(prompt);
   const steps = [];
+  const maxSteps = normalizeMaxSteps(input.maxSteps);
   let visibleAnswer = '';
   let assistantConversationAnswer = '';
   const requestLog = { entries: [] };
@@ -156,6 +159,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
         steps,
         requestLog,
         baseContextEvents,
+        maxSteps,
         state,
       });
     }
@@ -168,6 +172,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
       steps,
       requestLog,
       baseContextEvents,
+      maxSteps,
       state,
     });
   } catch (error) {
@@ -186,9 +191,10 @@ async function runJsonToolPlanningLoop({
   steps,
   requestLog,
   baseContextEvents,
+  maxSteps,
   state,
 }) {
-  for (let plannerTurn = 1; plannerTurn <= WORLD_AGENT_MAX_STEPS; plannerTurn += 1) {
+  for (let plannerTurn = 1; plannerTurn <= maxSteps; plannerTurn += 1) {
     const decision = await planNextToolCall({
       prompt,
       steps,
@@ -197,6 +203,7 @@ async function runJsonToolPlanningLoop({
       contextEvents: baseContextEvents,
       runId,
       stepIndex: plannerTurn,
+      maxSteps,
       requestLog,
       signal: input.signal,
     });
@@ -234,6 +241,7 @@ async function runNativeToolPlanningLoop({
   steps,
   requestLog,
   baseContextEvents,
+  maxSteps,
   state,
 }) {
   const apiKey = process.env.LLM_API_KEY;
@@ -246,7 +254,7 @@ async function runNativeToolPlanningLoop({
     useNativeModelMessages: true,
   });
 
-  while (state.stepIndex <= WORLD_AGENT_MAX_STEPS) {
+  while (state.stepIndex <= maxSteps) {
     const logEntry = {
       kind: 'tool-plan',
       mode: 'native-tools',
@@ -254,6 +262,7 @@ async function runNativeToolPlanningLoop({
       model: selectedModel,
       thinking: 'enabled',
       createdAt: Date.now(),
+      maxSteps,
       nativeTools: WORLD_AGENT_TOOL_SCHEMAS.map((tool) => tool.function.name),
       messages: messages.map(logModelMessage),
     };
@@ -396,7 +405,7 @@ async function runNativeToolPlanningLoop({
         state,
       });
       if (applied.response) return applied.response;
-      if (state.stepIndex > WORLD_AGENT_MAX_STEPS) break;
+      if (state.stepIndex > maxSteps) break;
     }
   }
 
@@ -1047,7 +1056,7 @@ function normalizeContextToolCalls(toolCalls) {
     .filter(Boolean);
 }
 
-async function planNextToolCall({ prompt, steps, model, thinking, contextEvents, runId, stepIndex, requestLog, signal }) {
+async function planNextToolCall({ prompt, steps, model, thinking, contextEvents, runId, stepIndex, maxSteps, requestLog, signal }) {
   if (process.env.LLM_MOCK === '1') {
     return fallbackToolCall(prompt, steps);
   }
@@ -1088,6 +1097,7 @@ async function planNextToolCall({ prompt, steps, model, thinking, contextEvents,
       model: selectedModel,
       thinking: thinkingMode,
       createdAt: Date.now(),
+      maxSteps,
       ...(repairAttempt > 0 ? { parseRepairAttempt: repairAttempt } : {}),
       messages: attemptMessages.map(logModelMessage),
     };
@@ -1183,6 +1193,13 @@ function shouldUseNativeToolPlanner(input) {
   const thinkingMode = normalizeThinkingMode(input.thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
   if (thinkingMode !== 'enabled') return false;
   return isDeepSeekLikeModel(selectedModel);
+}
+
+function normalizeMaxSteps(value) {
+  if (value == null || value === '') return WORLD_AGENT_DEFAULT_MAX_STEPS;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return WORLD_AGENT_DEFAULT_MAX_STEPS;
+  return Math.min(WORLD_AGENT_MAX_STEPS, Math.max(WORLD_AGENT_MIN_STEPS, Math.floor(parsed)));
 }
 
 function isDeepSeekLikeModel(model) {
