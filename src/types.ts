@@ -9,7 +9,7 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
-  kind?: 'scene-transition' | 'action-result' | 'npc-speech';
+  kind?: 'scene-transition' | 'action-result' | 'npc-speech' | 'agent-step';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
@@ -25,6 +25,7 @@ export interface ChatMessage {
     toSceneName: string;
   };
   actionResult?: ActionResult;
+  agentStep?: AgentStep;
 }
 
 export interface Conversation {

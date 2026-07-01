@@ -77,6 +77,19 @@ export function createActionResultMessage(actionResult: NonNullable<ChatMessage[
   };
 }
 
+export function createAgentStepMessage(step: AgentStep, runId?: number): ChatMessage {
+  return {
+    id: createId('step'),
+    role: 'system',
+    kind: 'agent-step',
+    content: formatAgentStepMessageContent(step),
+    createdAt: Date.now(),
+    status: 'done',
+    agentRunId: runId,
+    agentStep: step,
+  };
+}
+
 export function createNpcSpeechMessage({
   entityId,
   name,
@@ -194,7 +207,7 @@ export function buildModelMessages(
       message.id !== excludedMessageId &&
       (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
-      (message.content.trim() || message.modelTranscript?.length),
+      (message.content.trim() || message.agentSteps?.length || message.modelTranscript?.length),
   );
   const contextMode = getConversationContextMode(conversation);
   const summary = conversation.contextSummary;
@@ -214,7 +227,7 @@ export function buildContextEvents(
       message.id !== excludedMessageId &&
       (message.role !== 'system' || message.kind === 'scene-transition' || message.kind === 'action-result') &&
       message.status !== 'streaming' &&
-      (message.content.trim() || message.modelTranscript?.length),
+      (message.content.trim() || message.agentSteps?.length || message.modelTranscript?.length),
   );
   return buildDynamicContextEvents(cleanMessages, conversation.contextSummary, getConversationContextMode(conversation));
 }
@@ -457,6 +470,17 @@ function createAgentStepContextEvents(steps: AgentStep[], runId?: number): Agent
       result: isRecord(step.result) ? step.result : {},
     };
   });
+}
+
+function formatAgentStepMessageContent(step: AgentStep) {
+  const result = isRecord(step.result) ? step.result : {};
+  const summary = result.summary;
+  if (typeof summary === 'string' && summary.trim()) return summary.trim();
+  const error = result.error;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  const answer = result.answer;
+  if (typeof answer === 'string' && answer.trim()) return answer.trim();
+  return result.ok === false ? '工具调用失败。' : '已执行。';
 }
 
 function createModelMessageContextEvents(messages: AgentModelTranscriptMessage[]): AgentContextEvent[] {

@@ -8,6 +8,7 @@ import { WorldPanel } from './components/WorldPanel';
 import {
   buildCompactMessages,
   buildContextEvents,
+  createAgentStepMessage,
   createActionResultMessage,
   createConversation,
   createMessage,
@@ -289,6 +290,11 @@ export default function App() {
             agentRunId: runId,
             agentSteps: streamedSteps,
           }));
+          insertAgentStepMessage(
+            conversationId,
+            createAgentStepMessage(event.step, runId),
+            hasVisibleAssistantContent || activeAssistantContent ? undefined : assistantMessageId,
+          );
           return;
         }
 
@@ -522,6 +528,26 @@ export default function App() {
       updatedAt: Date.now(),
       messages: [...conversation.messages, message],
     }));
+  }
+
+  function insertAgentStepMessage(conversationId: string, message: ChatMessage, beforeMessageId?: string) {
+    updateConversation(conversationId, (conversation) => {
+      const insertIndex = beforeMessageId
+        ? conversation.messages.findIndex((candidate) => candidate.id === beforeMessageId)
+        : -1;
+      const messages = insertIndex >= 0
+        ? [
+            ...conversation.messages.slice(0, insertIndex),
+            message,
+            ...conversation.messages.slice(insertIndex),
+          ]
+        : [...conversation.messages, message];
+      return {
+        ...conversation,
+        updatedAt: Date.now(),
+        messages,
+      };
+    });
   }
 
   function updateAssistantMessage(

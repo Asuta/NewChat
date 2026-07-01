@@ -1,7 +1,7 @@
 import { Bot, CircleAlert } from 'lucide-react';
 import { Fragment, useEffect, useRef } from 'react';
 import type { Conversation, FixedContext } from '../types';
-import { AgentStepsTimelineItem } from './AgentStepsTimelineItem';
+import { AgentStepTimelineItem } from './AgentStepsTimelineItem';
 import { ContextSummaryBar } from './ContextSummaryBar';
 import { FixedContextStatus } from './FixedContextStatus';
 import { MessageBubble } from './MessageBubble';
@@ -82,6 +82,11 @@ export function ChatThread({ conversation, error, fixedContext, onOpenSettings }
   const summaryAnchorFound = summary?.lastMessageId
     ? messages.some((message) => message.id === summary.lastMessageId)
     : false;
+  const explicitAgentStepRunIds = new Set(
+    messages
+      .filter((message) => message.kind === 'agent-step' && typeof message.agentRunId === 'number')
+      .map((message) => message.agentRunId as number),
+  );
 
   return (
     <div className="thread-scroll" ref={threadRef}>
@@ -105,14 +110,17 @@ export function ChatThread({ conversation, error, fixedContext, onOpenSettings }
 
             return (
               <Fragment key={message.id}>
-                {message.role === 'assistant' && message.agentSteps?.length ? (
-                  <AgentStepsTimelineItem
-                    runId={message.agentRunId}
-                    steps={message.agentSteps}
-                    onLayoutChange={preserveAnchorAfterTimelineResize}
-                  />
-                ) : null}
-                <MessageBubble message={message} />
+                {shouldRenderLegacyAgentSteps(message, explicitAgentStepRunIds)
+                  ? message.agentSteps?.map((step, stepIndex) => (
+                      <AgentStepTimelineItem
+                        key={`${message.id}-step-${step.index ?? step.stepIndex ?? stepIndex}`}
+                        runId={message.agentRunId}
+                        step={step}
+                        onLayoutChange={preserveAnchorAfterTimelineResize}
+                      />
+                    ))
+                  : null}
+                <MessageBubble message={message} onLayoutChange={preserveAnchorAfterTimelineResize} />
                 {shouldRenderSummary ? <ContextSummaryBar conversation={conversation} /> : null}
               </Fragment>
             );
@@ -127,5 +135,17 @@ export function ChatThread({ conversation, error, fixedContext, onOpenSettings }
         ) : null}
       </div>
     </div>
+  );
+}
+
+function shouldRenderLegacyAgentSteps(
+  message: Conversation['messages'][number],
+  explicitAgentStepRunIds: Set<number>,
+) {
+  return (
+    message.role === 'assistant' &&
+    Boolean(message.agentSteps?.length) &&
+    typeof message.agentRunId === 'number' &&
+    !explicitAgentStepRunIds.has(message.agentRunId)
   );
 }

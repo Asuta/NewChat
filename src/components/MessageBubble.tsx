@@ -4,12 +4,24 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
+import { AgentStepTimelineItem } from './AgentStepsTimelineItem';
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onLayoutChange?: (anchor: HTMLElement) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
+  if (message.kind === 'agent-step' && message.agentStep) {
+    return (
+      <AgentStepTimelineItem
+        runId={message.agentRunId}
+        step={message.agentStep}
+        onLayoutChange={onLayoutChange}
+      />
+    );
+  }
+
   if (message.kind === 'scene-transition') {
     return (
       <article className="scene-transition-row" aria-label="场景移动记录">

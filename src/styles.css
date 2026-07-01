@@ -2450,62 +2450,6 @@ button {
   margin-left: 56px;
 }
 
-.agent-timeline-summary {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 24px;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 1px solid rgba(18, 100, 220, 0.16);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: rgba(237, 245, 255, 0.68);
-  color: #354156;
-  text-align: left;
-}
-
-.agent-timeline-summary:hover {
-  border-color: rgba(18, 100, 220, 0.28);
-  background: #f3f8ff;
-}
-
-.agent-timeline-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: #ffffff;
-  color: var(--accent);
-}
-
-.agent-timeline-copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.agent-timeline-copy strong,
-.agent-timeline-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-timeline-copy strong {
-  font-size: 14px;
-}
-
-.agent-timeline-copy small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.agent-timeline-steps {
-  display: grid;
-  gap: 8px;
-}
-
 .agent-timeline-step {
   display: grid;
   gap: 7px;
@@ -2538,6 +2482,13 @@ button {
 .agent-step-title strong {
   color: #263043;
   font-size: 14px;
+}
+
+.agent-step-title small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .agent-timeline-step p {

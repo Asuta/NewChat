@@ -1,10 +1,9 @@
-import { ChevronDown, ChevronRight, ListTree, Wrench } from 'lucide-react';
-import { useState } from 'react';
+import { Wrench } from 'lucide-react';
 import type { AgentStep } from '../types';
 
-interface AgentStepsTimelineItemProps {
+interface AgentStepTimelineItemProps {
   runId?: number;
-  steps: AgentStep[];
+  step: AgentStep;
   onLayoutChange?: (anchor: HTMLElement) => void;
 }
 
@@ -25,61 +24,27 @@ const TOOL_LABELS: Record<string, string> = {
   apply_world_patch: '修改世界数据',
 };
 
-export function AgentStepsTimelineItem({ runId, steps, onLayoutChange }: AgentStepsTimelineItemProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  if (!steps.length) return null;
-
-  const labels = steps.map((step) => getToolLabel(step.tool));
-  const uniqueLabels = Array.from(new Set(labels));
-  const summary = `Agent 调用了 ${steps.length} 个工具：${uniqueLabels.join('、')}`;
+export function AgentStepTimelineItem({ runId, step, onLayoutChange }: AgentStepTimelineItemProps) {
+  const stepIndex = typeof step.stepIndex === 'number' ? step.stepIndex : typeof step.index === 'number' ? step.index : null;
 
   return (
     <section className="agent-timeline-item" aria-label="Agent 工具步骤">
-      <button
-        className="agent-timeline-summary"
-        type="button"
-        onMouseDownCapture={(event) => onLayoutChange?.(event.currentTarget)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            onLayoutChange?.(event.currentTarget);
-          }
-        }}
-        onClick={(event) => {
-          onLayoutChange?.(event.currentTarget);
-          setIsOpen((current) => !current);
-        }}
-      >
-        <span className="agent-timeline-icon">
-          <ListTree size={17} />
-        </span>
-        <span className="agent-timeline-copy">
-          <strong>{summary}</strong>
-          <small>{runId ? `Run #${runId}` : '本轮后台工具调用记录'}</small>
-        </span>
-        {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-      </button>
-
-      {isOpen ? (
-        <div className="agent-timeline-steps">
-          {steps.map((step, index) => (
-            <article className="agent-timeline-step" key={`${step.tool}-${step.index ?? step.stepIndex ?? index}`}>
-              <div className="agent-step-title">
-                <span>{index + 1}</span>
-                <Wrench size={15} />
-                <strong>{getToolLabel(step.tool)}</strong>
-              </div>
-              <p>{formatStepResult(step.result)}</p>
-              <details onMouseDownCapture={(event) => onLayoutChange?.(event.currentTarget)}>
-                <summary>查看详情</summary>
-                <div className="agent-step-json-grid">
-                  <JsonBlock title="参数" value={step.args} />
-                  <JsonBlock title="结果" value={step.result} />
-                </div>
-              </details>
-            </article>
-          ))}
+      <article className="agent-timeline-step">
+        <div className="agent-step-title">
+          <span>{stepIndex ?? '·'}</span>
+          <Wrench size={15} />
+          <strong>{getToolLabel(step.tool)}</strong>
+          {runId ? <small>Run #{runId}</small> : null}
         </div>
-      ) : null}
+        <p>{formatStepResult(step.result)}</p>
+        <details onMouseDownCapture={(event) => onLayoutChange?.(event.currentTarget)}>
+          <summary>查看详情</summary>
+          <div className="agent-step-json-grid">
+            <JsonBlock title="参数" value={step.args} />
+            <JsonBlock title="结果" value={step.result} />
+          </div>
+        </details>
+      </article>
     </section>
   );
 }
