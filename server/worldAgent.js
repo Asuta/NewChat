@@ -33,7 +33,6 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
   '只处理最后一条 role=user 的当前任务；更早的 user/assistant/tool 消息只是历史上下文。',
   '读取、搜索、掷骰、写库、切换场景默认静默；需要玩家看见内容时调用 dm_speak 或 npc_speak。',
-  'dm_speak 和 npc_speak 是普通工具，不会自动结束本轮；完成全部行动后调用 finish。',
 ].join('\n');
 const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
@@ -49,7 +48,6 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'npc_speak',
   'enter_scene',
   'apply_world_patch',
-  'finish',
 ]);
 const WORLD_AGENT_TOOL_SCHEMAS = [
   createToolSchema('search_entities', '按名称、别名、全文、类型或场景搜索世界实体。', {
@@ -113,7 +111,6 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     },
     dryRun: { type: 'boolean', description: '为 true 时只预览变更。' },
   }, ['operations']),
-  createToolSchema('finish', '结束本轮 Agent 任务，不输出可见文字。', {}),
 ];
 
 export async function runWorldAgentTask(input) {
@@ -368,32 +365,6 @@ async function runNativeToolPlanningLoop({
         },
       ];
 
-      if (decision.tool === 'finish') {
-        const applied = await applyExecutedAgentTool({
-          decision,
-          result,
-          input,
-          handlers,
-          runId,
-          steps,
-          requestLog,
-          state,
-        });
-        if (applied.response) return applied.response;
-        return await finishSuccessfulRun({
-          runId,
-          steps,
-          seedAnswer: '',
-          visibleAnswer: state.visibleAnswer,
-          conversationAnswer: state.assistantConversationAnswer,
-          requestLog,
-          modelTranscript: state.modelTranscript,
-          handlers,
-          signal: input.signal,
-          allowEmptyAnswer: true,
-        });
-      }
-
       const applied = await applyExecutedAgentTool({
         decision,
         result,
@@ -445,23 +416,6 @@ async function applyAgentDecision({
     state,
   });
   if (applied.response) return applied;
-
-  if (decision.tool === 'finish') {
-    return {
-      response: await finishSuccessfulRun({
-        runId,
-        steps,
-        seedAnswer: '',
-        visibleAnswer: state.visibleAnswer,
-        conversationAnswer: state.assistantConversationAnswer,
-        requestLog,
-        modelTranscript: state.modelTranscript,
-        handlers,
-        signal: input.signal,
-        allowEmptyAnswer: true,
-      }),
-    };
-  }
 
   return applied;
 }
@@ -862,15 +816,6 @@ export function executeWorldTool(tool, args, prompt = '') {
     }
   }
 
-  if (tool === 'finish') {
-    return {
-      ok: true,
-      done: true,
-      answer: typeof args.answer === 'string' && args.answer.trim() ? args.answer.trim() : '',
-      summary: 'Agent 结束本轮任务。',
-    };
-  }
-
   return {
     ok: false,
     error: `未知工具：${tool}`,
@@ -1253,7 +1198,7 @@ function createLegacyJsonToolResultMessage({ step, runId }) {
     content: JSON.stringify(
       {
         type: 'legacy_json_tool_result',
-        instruction: '上一条 assistant 内容是旧 JSON 决策，后端已经按兼容逻辑执行。之后请使用 API tool_calls；完成本轮时调用 finish。',
+        instruction: '上一条 assistant 内容是旧 JSON 决策，后端已经按兼容逻辑执行。之后请使用 API tool_calls。',
         contextEvents: step ? [createAgentStepContextEvent(step, runId)] : [],
       },
       null,
@@ -1360,8 +1305,8 @@ function createParseRepairMessage({ previousContent, parseError }) {
         parseError,
         previousOutput: truncateForRepairPrompt(previousContent),
         requiredShape: {
-          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、dm_speak、npc_speak、roll_dice、apply_world_patch、finish。',
-          args: '必须是对象。DM 叙事使用 dm_speak.args.content；NPC 对白使用 npc_speak.args.content；finish 时可以为空对象。',
+          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、dm_speak、npc_speak、roll_dice、apply_world_patch。',
+          args: '必须是对象。DM 叙事使用 dm_speak.args.content；NPC 对白使用 npc_speak.args.content。',
         },
       },
       null,
@@ -1469,13 +1414,13 @@ function normalizeToolCall(raw) {
   const action = isRecord(raw.action) ? raw.action : null;
   const args = isRecord(action?.args) ? action.args : isRecord(raw.args) ? raw.args : {};
   const legacySay = normalizeToolContent(raw.say ?? raw.speech ?? raw.message ?? raw.visibleText);
-  const tool = typeof action?.tool === 'string'
+  const tool = (typeof action?.tool === 'string'
     ? action.tool
     : typeof raw.tool === 'string'
       ? raw.tool
       : typeof raw.name === 'string'
         ? raw.name
-        : 'finish';
+        : 'unknown_tool').trim() || 'unknown_tool';
 
   if (legacySay) {
     return {
@@ -1489,16 +1434,6 @@ function normalizeToolCall(raw) {
       tool: 'dm_speak',
       args: { content: normalizeToolContent(args.content ?? args.text ?? args.message ?? args.answer) },
     };
-  }
-
-  if (tool === 'finish' && (typeof args.answer === 'string' || typeof args.text === 'string' || typeof args.message === 'string')) {
-    const content = normalizeToolContent(args.answer ?? args.text ?? args.message);
-    if (content) {
-      return {
-        tool: 'dm_speak',
-        args: { content },
-      };
-    }
   }
 
   if (tool === 'dm_speak') {
@@ -1522,10 +1457,9 @@ function normalizeToolCall(raw) {
     'npc_speak',
     'enter_scene',
     'apply_world_patch',
-    'finish',
   ]);
   return {
-    tool: valid.has(tool) ? tool : 'finish',
+    tool: valid.has(tool) ? tool : tool,
     args,
   };
 }

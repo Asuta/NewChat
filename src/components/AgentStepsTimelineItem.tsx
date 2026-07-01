@@ -23,7 +23,6 @@ const TOOL_LABELS: Record<string, string> = {
   speak: '发言',
   enter_scene: '切换场景',
   apply_world_patch: '修改世界数据',
-  finish: '结束本轮任务',
 };
 
 export function AgentStepsTimelineItem({ runId, steps, onLayoutChange }: AgentStepsTimelineItemProps) {

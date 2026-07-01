@@ -102,11 +102,10 @@ Agent 可用规则工具：
 - `npc_speak`：让 NPC 以独立对话气泡发言。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
-- `finish`：结束本轮 Agent 任务，不输出可见文字。
 
 开启 DeepSeek 思考模式时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链，并在同一轮工具循环内回传 `reasoning_content`。未开启思考模式或兼容回退时，后端仍可使用旧 JSON planner。
 
-读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。发言工具不会自动结束本轮，模型需要在完成后显式调用 `finish`。
+读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 
