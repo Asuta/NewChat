@@ -163,7 +163,9 @@ function getVisibleCharacters(
   const slots = STAGE_SLOTS[Math.min(selected.length, 3) as keyof typeof STAGE_SLOTS] || STAGE_SLOTS[1];
   return selected.map((character, index) => ({
     ...character,
-    slot: character.position && character.position !== 'auto' ? character.position : slots[index] || 'center',
+    slot: selected.length === 1 && character.position && character.position !== 'auto'
+      ? character.position
+      : slots[index] || 'center',
   }));
 }
 

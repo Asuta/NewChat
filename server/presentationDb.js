@@ -10,6 +10,29 @@ export const PRESENTATION_DB_FILE = join(PRESENTATION_DIR, 'presentation.sqlite'
 const nowSql = "datetime('now')";
 const FALLBACK_CHARACTER_ASSET_ID = 'asset_character_placeholder';
 
+const SEVEN_DAY_CROWN_SCENE_ASSETS = [
+  ['scene_ash_chapel', 'asset_scene_ash_chapel_backdrop', 'scenes/scene-scene_ash_chapel-backdrop.png'],
+  ['scene_outer_gate', 'asset_scene_outer_gate_backdrop', 'scenes/scene-scene_outer_gate-backdrop.png'],
+  ['scene_registry', 'asset_scene_registry_backdrop', 'scenes/scene-scene_registry-backdrop.png'],
+  ['scene_knight_hall', 'asset_scene_knight_hall_backdrop', 'scenes/scene-scene_knight_hall-backdrop.png'],
+  ['scene_sanctum', 'asset_scene_sanctum_backdrop', 'scenes/scene-scene_sanctum-backdrop.png'],
+  ['scene_people_theater', 'asset_scene_people_theater_backdrop', 'scenes/scene-scene_people_theater-backdrop.png'],
+  ['scene_blackstone_tomb', 'asset_scene_blackstone_tomb_backdrop', 'scenes/scene-scene_blackstone_tomb-backdrop.png'],
+  ['scene_mirror_archive', 'asset_scene_mirror_archive_backdrop', 'scenes/scene-scene_mirror_archive-backdrop.png'],
+  ['scene_crown_hall', 'asset_scene_crown_hall_backdrop', 'scenes/scene-scene_crown_hall-backdrop.png'],
+];
+
+const SEVEN_DAY_CROWN_CHARACTER_ASSETS = [
+  ['character_elena', 'asset_character_elena_idle', 'characters/npc-character_elena-idle.png'],
+  ['character_rowan', 'asset_character_rowan_idle', 'characters/npc-character_rowan-idle.png'],
+  ['character_milo', 'asset_character_milo_idle', 'characters/npc-character_milo-idle.png'],
+  ['character_aldric', 'asset_character_aldric_idle', 'characters/npc-character_aldric-idle.png'],
+  ['character_eve', 'asset_character_eve_idle', 'characters/npc-character_eve-idle.png'],
+  ['character_kaen', 'asset_character_kaen_idle', 'characters/npc-character_kaen-idle.png'],
+  ['character_hollow_knight', 'asset_character_hollow_knight_idle', 'characters/npc-character_hollow_knight-idle.png'],
+  ['character_crown_will', 'asset_character_crown_will_idle', 'characters/npc-character_crown_will-idle.png'],
+];
+
 export function ensurePresentationDb() {
   mkdirSync(PRESENTATION_ASSETS_DIR, { recursive: true });
   const database = openPresentationDatabase();
@@ -127,27 +150,6 @@ function openPresentationDatabase() {
 
 function seedDefaults(database) {
   upsertAsset(database, {
-    id: 'asset_scene_tavern_background',
-    type: 'background',
-    path: 'scenes/mist-tavern.png',
-    mimeType: 'image/png',
-    metadata: { label: '雾港酒馆默认背景' },
-  });
-  upsertAsset(database, {
-    id: 'asset_scene_market_background',
-    type: 'background',
-    path: 'scenes/mist-market.png',
-    mimeType: 'image/png',
-    metadata: { label: '旧市集默认背景' },
-  });
-  upsertAsset(database, {
-    id: 'asset_character_lina_portrait',
-    type: 'portrait',
-    path: 'characters/lina/idle.png',
-    mimeType: 'image/png',
-    metadata: { label: '莉娜默认立绘' },
-  });
-  upsertAsset(database, {
     id: FALLBACK_CHARACTER_ASSET_ID,
     type: 'portrait',
     path: 'characters/_fallback/placeholder.png',
@@ -155,9 +157,42 @@ function seedDefaults(database) {
     metadata: { label: '临时 NPC 默认站位图', fallback: true },
   });
 
-  upsertSceneBinding(database, 'scene_tavern', 'asset_scene_tavern_background');
-  upsertSceneBinding(database, 'scene_market', 'asset_scene_market_background');
-  upsertEntityBinding(database, 'character_lina', 'asset_character_lina_portrait', 'center', 1);
+  upsertEntityBinding(database, 'character_elena', FALLBACK_CHARACTER_ASSET_ID, 'auto', 1);
+  seedSevenDayCrownAssets(database);
+}
+
+function seedSevenDayCrownAssets(database) {
+  for (const [sceneEntityId, assetId, assetPath] of SEVEN_DAY_CROWN_SCENE_ASSETS) {
+    if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
+    upsertAsset(database, {
+      id: assetId,
+      type: 'background',
+      path: assetPath,
+      mimeType: 'image/png',
+      metadata: {
+        generated: true,
+        provider: 'ai-pixel-image2',
+        model: 'gpt-image-2',
+      },
+    });
+    upsertSceneBinding(database, sceneEntityId, assetId);
+  }
+
+  for (const [entityId, assetId, assetPath] of SEVEN_DAY_CROWN_CHARACTER_ASSETS) {
+    if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
+    upsertAsset(database, {
+      id: assetId,
+      type: 'portrait',
+      path: assetPath,
+      mimeType: 'image/png',
+      metadata: {
+        generated: true,
+        provider: 'ai-pixel-image2',
+        model: 'gpt-image-2',
+      },
+    });
+    upsertEntityBinding(database, entityId, assetId, 'auto', 1);
+  }
 }
 
 function upsertAsset(database, asset) {
@@ -177,7 +212,9 @@ function upsertSceneBinding(database, sceneEntityId, backgroundAssetId) {
   database.prepare(
     `INSERT INTO presentation_scene_bindings (scene_entity_id, background_asset_id, metadata, created_at, updated_at)
      VALUES (?, ?, '{}', ${nowSql}, ${nowSql})
-     ON CONFLICT(scene_entity_id) DO NOTHING`,
+     ON CONFLICT(scene_entity_id) DO UPDATE SET
+       background_asset_id = excluded.background_asset_id,
+       updated_at = ${nowSql}`,
   ).run(sceneEntityId, backgroundAssetId);
 }
 
@@ -185,7 +222,11 @@ function upsertEntityBinding(database, entityId, portraitAssetId, position, scal
   database.prepare(
     `INSERT INTO presentation_entity_bindings (entity_id, portrait_asset_id, position, scale, metadata, created_at, updated_at)
      VALUES (?, ?, ?, ?, '{}', ${nowSql}, ${nowSql})
-     ON CONFLICT(entity_id) DO NOTHING`,
+     ON CONFLICT(entity_id) DO UPDATE SET
+       portrait_asset_id = excluded.portrait_asset_id,
+       position = excluded.position,
+       scale = excluded.scale,
+       updated_at = ${nowSql}`,
   ).run(entityId, portraitAssetId, position, scale);
 }
 

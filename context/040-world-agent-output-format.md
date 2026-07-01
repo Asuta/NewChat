@@ -1,4 +1,4 @@
-# 世界 Agent 输出格式
+﻿# 世界 Agent 输出格式
 
 后端会通过 API 原生工具调用协议执行工具。需要行动时，使用可用工具；不要输出裸 JSON、Markdown 代码块、工具名说明或内部流程。
 
@@ -26,7 +26,7 @@
   "operations": [
     {
       "op": "set_component",
-      "entityId": "character_lina",
+      "entityId": "character_hollow_knight",
       "componentType": "stats",
       "path": "currentHitPoints",
       "value": 4
@@ -41,3 +41,4 @@
 如果 NPC 已经昏迷、死亡、逃跑、被束缚或没有合理动机立即行动，可以用 `dm_speak` 叙述这个原因；否则不要在玩家敌意行动刚结算后立刻结束本轮。
 
 除非规则或实体数据明确有多重攻击、额外攻击、借机攻击等能力，同一个 NPC 的一次即时反应中只应出现一次攻击检定；后续可以用台词、移动、防御、呼救或交还行动权继续推进。
+

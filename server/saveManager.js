@@ -11,6 +11,14 @@ import {
 import { basename, dirname, join, resolve } from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
+import {
+  SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
+  SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
+  SEVEN_DAY_CROWN_PLAYER_PROFILE_ID,
+  getSevenDayCrownElenaStats,
+  getSevenDayCrownHollowKnightStats,
+  getSevenDayCrownPlayerStats,
+} from './defaultWorld.js';
 
 export const DATA_DIR = resolve(process.cwd(), 'data');
 export const FACTORY_CONTEXT_DIR = resolve(process.cwd(), 'context');
@@ -84,55 +92,35 @@ export function ensureTemplatePlayableDefaults() {
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
-    upsertTemplateEntity(database, 'item_longsword', 'item', '旧长剑');
-    setTemplateAliases(database, 'item_longsword', ['长剑', 'Longsword']);
+    upsertTemplateEntity(database, 'item_crown_mark', 'item', '王冠印记');
+    upsertTemplateEntity(database, 'item_iron_sword', 'item', '礼拜堂铁剑');
+    setTemplateAliases(database, 'player', ['玩家', '殿下', '第四王选者', '无记忆继承者']);
+    setTemplateAliases(database, 'item_iron_sword', ['铁剑', '长剑', 'Iron Sword']);
     mergeTemplateComponent(database, 'player', 'identity', {
-      role: 'player',
-      description: '玩家角色，刚抵达雾港。',
+      role: '失忆王选者',
+      description: '玩家从灰烬礼拜堂的黑石棺中醒来，手背带着发光的王冠印记。',
       class: 'fighter',
       level: 1,
     });
-    mergeTemplateStats(database, 'player', {
-      level: 1,
-      strength: 16,
-      strengthMod: 3,
-      dexterity: 14,
-      dexterityMod: 2,
-      constitution: 14,
-      constitutionMod: 2,
-      intelligence: 10,
-      intelligenceMod: 0,
-      wisdom: 12,
-      wisdomMod: 1,
-      charisma: 10,
-      charismaMod: 0,
-      proficiencyBonus: 2,
-      armorClass: 14,
-      ac: 14,
-      maxHitPoints: 12,
-      currentHitPoints: 12,
-      speed: 30,
-      initiativeBonus: 2,
-      passivePerception: 11,
-      longswordAttackBonus: 5,
-      longswordDamageBonus: 3,
-      longswordDamageDice: '1d8',
-      longswordVersatileDamageDice: '1d10',
-      longswordDamageType: 'slashing',
-    }, 'dnd-basic-player-v1');
+    mergeTemplateStats(database, 'player', getSevenDayCrownPlayerStats(), SEVEN_DAY_CROWN_PLAYER_PROFILE_ID);
     mergeTemplateComponent(database, 'player', 'status', {
       state: 'healthy',
-      label: '健康',
-      description: '玩家状态良好，可以正常行动。',
+      label: '刚刚苏醒',
+      description: '玩家刚从黑石棺中醒来，失去大部分记忆，但身体仍能行动。',
       canAct: true,
     });
     mergeTemplateInventory(database, 'player', {
-      items: ['item_longsword'],
-      equippedWeaponId: 'item_longsword',
+      items: ['item_crown_mark', 'item_iron_sword'],
+      equippedWeaponId: 'item_iron_sword',
     });
-    mergeTemplateComponent(database, 'item_longsword', 'identity', {
+    mergeTemplateComponent(database, 'item_crown_mark', 'identity', {
+      role: 'key_item',
+      description: '玩家手背上的发光王冠印记。它证明玩家拥有王选资格，也会在玩家迷路时指向下一条主线线索。',
+      effect: { type: 'quest_guidance', targetQuestId: 'quest_main' },
+    });
+    mergeTemplateComponent(database, 'item_iron_sword', 'identity', {
       role: 'weapon',
-      description: '一把有些旧但保养良好的长剑，适合进行基础近战攻击判定。',
+      description: '灰烬礼拜堂中拾得的旧铁剑，剑柄刻着白狮纹章。适合低等级近战判定。',
       weaponCategory: 'martial melee weapon',
       damageDice: '1d8',
       versatileDamageDice: '1d10',
@@ -140,35 +128,16 @@ export function ensureTemplatePlayableDefaults() {
       attackAbility: 'strength',
       proficient: true,
     });
-    upsertTemplateRelationship(database, 'player', 'item_longsword', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_crown_mark', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家随身携带一把旧长剑。',
+      summary: '玩家手背带着王冠印记。',
     });
-
-    mergeTemplateStats(database, 'character_lina', {
-      level: 2,
-      strength: 10,
-      strengthMod: 0,
-      dexterity: 14,
-      dexterityMod: 2,
-      constitution: 11,
-      constitutionMod: 0,
-      intelligence: 12,
-      intelligenceMod: 1,
-      wisdom: 14,
-      wisdomMod: 2,
-      charisma: 15,
-      charismaMod: 2,
-      proficiencyBonus: 2,
-      armorClass: 12,
-      maxHitPoints: 9,
-      currentHitPoints: 9,
-      speed: 30,
-      initiativeBonus: 2,
-      passivePerception: 14,
-      insightBonus: 4,
-      persuasionBonus: 4,
-    }, 'dnd-basic-npc-lina-v1');
+    upsertTemplateRelationship(database, 'player', 'item_iron_sword', 'ownership', null, {
+      source: 'baseline',
+      summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。',
+    });
+    mergeTemplateStats(database, 'character_elena', getSevenDayCrownElenaStats(), SEVEN_DAY_CROWN_ELENA_PROFILE_ID);
+    mergeTemplateStats(database, 'character_hollow_knight', getSevenDayCrownHollowKnightStats(), SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID);
     database.exec('COMMIT;');
   } catch (error) {
     try {
@@ -336,7 +305,7 @@ function upsertTemplateEntity(database, id, kind, name) {
 
 function setTemplateAliases(database, entityId, aliases) {
   database.prepare('DELETE FROM entity_aliases WHERE entity_id = ?').run(entityId);
-  const insert = database.prepare('INSERT INTO entity_aliases (entity_id, alias) VALUES (?, ?)');
+  const insert = database.prepare('INSERT OR IGNORE INTO entity_aliases (entity_id, alias) VALUES (?, ?)');
   for (const alias of aliases) {
     insert.run(entityId, alias);
   }
