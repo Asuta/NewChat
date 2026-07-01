@@ -391,6 +391,21 @@ export type WorldAgentStreamEvent =
       delta: string;
     }
   | {
+      type: 'npc_speech_start';
+      npcEntityId: string;
+      npcName: string;
+      runId?: number;
+      stepIndex?: number;
+    }
+  | {
+      type: 'npc_speech_delta';
+      npcEntityId: string;
+      npcName: string;
+      delta: string;
+      runId?: number;
+      stepIndex?: number;
+    }
+  | {
       type: 'npc_speech';
       npcEntityId: string;
       npcName: string;

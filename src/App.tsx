@@ -246,6 +246,7 @@ export default function App() {
     let hasVisibleAssistantContent = false;
     const runAssistantMessageIds = [assistantMessageId];
     let didFinish = false;
+    let streamedModelTranscript: ChatMessage['modelTranscript'];
 
     try {
       setAgentSteps([]);
@@ -336,6 +337,70 @@ export default function App() {
           return;
         }
 
+        if (event.type === 'npc_speech_start') {
+          const npcMessage = createNpcSpeechMessage({
+            entityId: event.npcEntityId,
+            name: event.npcName,
+            content: '',
+            status: 'streaming',
+          });
+          setStageSpeechByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              entityId: event.npcEntityId,
+              name: event.npcName,
+              content: '',
+              createdAt: Date.now(),
+            },
+          }));
+          if (streamedAnswer) streamedAnswer += '\n\n';
+
+          if (!activeAssistantContent && activeAssistantMessageId === assistantMessageId && runAssistantMessageIds.length === 1) {
+            activeAssistantMessageId = assistantMessageId;
+            activeAssistantContent = '';
+            patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
+              ...message,
+              kind: 'npc-speech',
+              content: '',
+              status: 'streaming',
+              agentRunId: runId,
+              npcSpeech: {
+                entityId: event.npcEntityId,
+                name: event.npcName,
+              },
+            }));
+          } else {
+            const nextMessage = {
+              ...npcMessage,
+              agentRunId: runId,
+            };
+            activeAssistantMessageId = nextMessage.id;
+            activeAssistantContent = '';
+            runAssistantMessageIds.push(nextMessage.id);
+            appendAssistantMessage(conversationId, nextMessage);
+          }
+          return;
+        }
+
+        if (event.type === 'npc_speech_delta') {
+          streamedAnswer += event.delta;
+          activeAssistantContent += event.delta;
+          hasVisibleAssistantContent = true;
+          setStageSpeechByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              entityId: event.npcEntityId,
+              name: event.npcName,
+              content: activeAssistantContent,
+              createdAt: current[conversationId]?.createdAt || Date.now(),
+            },
+          }));
+          updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
+            agentRunId: runId,
+          });
+          return;
+        }
+
         if (event.type === 'npc_speech') {
           const npcMessage = createNpcSpeechMessage({
             entityId: event.npcEntityId,
@@ -388,6 +453,7 @@ export default function App() {
           streamedAnswer = event.answer || streamedAnswer;
           streamedSteps = event.steps || streamedSteps;
           const modelTranscript = event.modelTranscript || [];
+          streamedModelTranscript = modelTranscript;
           const completedSceneTransition = getCompletedSceneTransition(streamedSteps, pendingSceneTransition);
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
@@ -427,6 +493,7 @@ export default function App() {
           fallbackContent: '已停止生成。',
           agentRunId: runId,
           agentSteps: streamedSteps,
+          modelTranscript: streamedModelTranscript,
           primaryMessageId: assistantMessageId,
         });
       } else {
@@ -437,6 +504,7 @@ export default function App() {
           fallbackContent: message,
           agentRunId: runId,
           agentSteps: streamedSteps,
+          modelTranscript: streamedModelTranscript,
           primaryMessageId: assistantMessageId,
         });
       }
@@ -505,7 +573,7 @@ export default function App() {
   function markAssistantMessagesInterrupted(
     conversationId: string,
     messageIds: string[],
-    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps'> & {
+    metadata: Pick<ChatMessage, 'agentRunId' | 'agentSteps' | 'modelTranscript'> & {
       activeMessageId: string;
       fallbackContent: string;
       primaryMessageId: string;
@@ -524,7 +592,14 @@ export default function App() {
           content: isActive && !message.content.trim() ? metadata.fallbackContent : message.content,
           status: isActive ? 'error' : 'done',
           agentRunId: metadata.agentRunId,
-          ...(isPrimary ? { agentSteps: metadata.agentSteps } : {}),
+          ...(isPrimary
+            ? {
+                agentSteps: metadata.agentSteps,
+                ...(metadata.modelTranscript || message.modelTranscript
+                  ? { modelTranscript: metadata.modelTranscript ?? message.modelTranscript }
+                  : {}),
+              }
+            : {}),
         };
       }),
     }));
@@ -1199,6 +1274,25 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
   if (eventType === 'speech_delta') {
     return { type: 'speech_delta', delta: String(payload.delta || '') };
+  }
+  if (eventType === 'npc_speech_start') {
+    return {
+      type: 'npc_speech_start',
+      npcEntityId: String(payload.npcEntityId || ''),
+      npcName: String(payload.npcName || ''),
+      runId: typeof payload.runId === 'number' ? payload.runId : undefined,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+    };
+  }
+  if (eventType === 'npc_speech_delta') {
+    return {
+      type: 'npc_speech_delta',
+      npcEntityId: String(payload.npcEntityId || ''),
+      npcName: String(payload.npcName || ''),
+      delta: String(payload.delta || ''),
+      runId: typeof payload.runId === 'number' ? payload.runId : undefined,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+    };
   }
   if (eventType === 'npc_speech') {
     return {

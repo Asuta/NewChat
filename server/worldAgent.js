@@ -520,13 +520,18 @@ async function applyExecutedAgentTool({
 
   if (npcSpeech) {
     state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, npcSpeech.content);
-    handlers.onNpcSpeech?.({
+    const event = {
       runId,
       stepIndex: step.index,
       npcEntityId: npcSpeech.npcEntityId,
       npcName: npcSpeech.npcName,
-      content: npcSpeech.content,
-    });
+    };
+    handlers.onNpcSpeechStart?.(event);
+    await streamTextDeltas(
+      npcSpeech.content,
+      (delta) => handlers.onNpcSpeechDelta?.({ ...event, delta }),
+      input.signal,
+    );
     return { step, response: null };
   }
 
