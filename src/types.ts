@@ -152,6 +152,13 @@ export interface StageSpeech {
   createdAt: number;
 }
 
+export interface StageNarration {
+  content: string;
+  createdAt: number;
+  runId?: number;
+  messageId?: string;
+}
+
 export interface WorldMapScene {
   id: string;
   name: string;

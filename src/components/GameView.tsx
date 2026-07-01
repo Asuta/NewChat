@@ -1,6 +1,6 @@
-import { ImageOff, Loader2, MapPinned, UserRound } from 'lucide-react';
+import { ImageOff, Loader2, MapPinned, ScrollText, UserRound } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageSpeech, WorldMapState } from '../types';
+import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageNarration, StageSpeech, WorldMapState } from '../types';
 import { ChatThread } from './ChatThread';
 import { SceneMiniMap } from './SceneMiniMap';
 
@@ -15,6 +15,7 @@ interface GameViewProps {
   stage: PresentationStage | null;
   worldMap: WorldMapState | null;
   activeStageSpeech: StageSpeech | null;
+  activeStageNarration: StageNarration | null;
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
@@ -29,6 +30,7 @@ export function GameView({
   stage,
   worldMap,
   activeStageSpeech,
+  activeStageNarration,
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
@@ -44,6 +46,7 @@ export function GameView({
   const visibleCharacters = getVisibleCharacters(stageCharacters, activeStageSpeech);
   const visibleSpeaker = visibleCharacters.find((character) => character.entityId === activeStageSpeech?.entityId) || null;
   const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
+  const stageNarration = activeStageNarration?.content.trim() || '';
 
   return (
     <div className="game-view">
@@ -76,6 +79,16 @@ export function GameView({
             isNavigationDisabled={isNavigationDisabled}
             onEnterScene={onEnterScene}
           />
+
+          {stageNarration ? (
+            <aside className="stage-narration-panel" aria-label="当前旁白">
+              <strong>
+                <ScrollText size={14} />
+                旁白
+              </strong>
+              <p>{stageNarration}</p>
+            </aside>
+          ) : null}
 
           <div className="game-character-layer" aria-label="当前场景人物">
             {visibleCharacters.map((character) => (

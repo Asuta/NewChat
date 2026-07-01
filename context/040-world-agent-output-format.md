@@ -16,6 +16,8 @@
 - 切换场景：调用 `enter_scene`，优先传 `sceneId`，只有只知道当前出口关系 id 时才传 `exitId`。
 - 结束本轮：调用 `finish`，不输出可见文字。
 
+`dm_speak.args.content` 会作为普通 DM 叙事显示在聊天流里，并在游戏视图中投影为舞台旁白。适合写当前画面、行动结果、环境变化或 DM 说明；保持自然叙事即可，不要输出工具名或内部流程。
+
 `npc_speak.args.content` 只填写 NPC 实际说出口的话；不要包含旁白、动作描写、心理描写、引号、说话人前缀或其他 NPC 的对白。
 
 造成伤害后写回 HP 时，`apply_world_patch` 使用：

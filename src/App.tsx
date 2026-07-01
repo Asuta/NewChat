@@ -35,6 +35,7 @@ import type {
   PresentationStage,
   SaveDataResponse,
   SaveExportMode,
+  StageNarration,
   StageSpeech,
   WorldAgentStreamEvent,
   WorldAction,
@@ -79,6 +80,7 @@ export default function App() {
   const [worldMap, setWorldMap] = useState<WorldMapState | null>(null);
   const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
   const [stageSpeechByConversation, setStageSpeechByConversation] = useState<Record<string, StageSpeech>>({});
+  const [stageNarrationByConversation, setStageNarrationByConversation] = useState<Record<string, StageNarration>>({});
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -101,6 +103,7 @@ export default function App() {
     [activeId, conversations],
   );
   const activeStageSpeech = activeConversation ? stageSpeechByConversation[activeConversation.id] || null : null;
+  const activeStageNarration = activeConversation ? stageNarrationByConversation[activeConversation.id] || null : null;
 
   useEffect(() => {
     saveConversations(conversations);
@@ -302,6 +305,15 @@ export default function App() {
             activeAssistantMessageId = assistantMessageId;
             activeAssistantContent = '';
           }
+          setStageNarrationByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              content: '',
+              createdAt: Date.now(),
+              runId,
+              messageId: activeAssistantMessageId,
+            },
+          }));
           return;
         }
 
@@ -312,6 +324,15 @@ export default function App() {
           updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
             agentRunId: runId,
           });
+          setStageNarrationByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              content: activeAssistantContent,
+              createdAt: Date.now(),
+              runId,
+              messageId: activeAssistantMessageId,
+            },
+          }));
           return;
         }
 
@@ -639,6 +660,11 @@ export default function App() {
       delete next[conversationId];
       return next;
     });
+    setStageNarrationByConversation((current) => {
+      const next = { ...current };
+      delete next[conversationId];
+      return next;
+    });
     setError(null);
   }
 
@@ -757,6 +783,7 @@ export default function App() {
     setAgentSteps([]);
     setLastRequestLog(null);
     setStageSpeechByConversation({});
+    setStageNarrationByConversation({});
 
     if (options.resetConversations) {
       const next = options.openingConversation || createConversation();
@@ -972,6 +999,7 @@ export default function App() {
             stage={presentationStage}
             worldMap={worldMap}
             activeStageSpeech={activeStageSpeech}
+            activeStageNarration={activeStageNarration}
             isLoading={isPresentationLoading}
             isWorldMapLoading={isWorldMapLoading}
             isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
