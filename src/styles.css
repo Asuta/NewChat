@@ -1181,23 +1181,49 @@ button {
 }
 
 .game-view {
+  --game-stage-topbar-height: 90px;
+  --game-stage-composer-height: 160px;
+  --game-stage-chat-min-height: 180px;
+  --game-stage-frame-padding: 12px;
+  --game-stage-max-width: clamp(
+    360px,
+    calc(
+      (100vh - var(--game-stage-topbar-height) - var(--game-stage-composer-height) - var(--game-stage-chat-min-height) - (var(--game-stage-frame-padding) * 2))
+      * 16 / 9
+    ),
+    1280px
+  );
   display: grid;
   min-height: 0;
   min-width: 0;
-  grid-template-rows: minmax(320px, 44vh) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
 }
 
-.game-stage {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
+.game-stage-frame {
+  display: grid;
+  min-width: 0;
+  place-items: center;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
+  padding: var(--game-stage-frame-padding);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(65, 88, 118, 0.2), transparent 48%),
+    #101722;
+}
+
+.game-stage {
+  position: relative;
+  width: min(100%, var(--game-stage-max-width));
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(29, 39, 56, 0.18), rgba(11, 18, 28, 0.62)),
     #1f2a35;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.32);
 }
 
 .game-stage-background,
@@ -1287,8 +1313,11 @@ button {
   position: absolute;
   bottom: -20px;
   display: grid;
+  height: 82%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: end;
   justify-items: center;
-  width: min(32vw, 280px);
+  width: min(30%, 280px);
   margin: 0;
   transform: translateX(-50%) scale(var(--character-scale));
   transform-origin: bottom center;
@@ -1309,7 +1338,7 @@ button {
 .game-character img {
   display: block;
   max-width: 100%;
-  max-height: min(43vh, 390px);
+  max-height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 24px 26px rgba(0, 0, 0, 0.36));
 }
@@ -1324,7 +1353,7 @@ button {
 
 .game-character-missing {
   width: min(100%, 210px);
-  height: min(36vh, 340px);
+  height: min(100%, 340px);
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 50% 50% 8px 8px;
   background: linear-gradient(180deg, rgba(210, 216, 224, 0.58), rgba(128, 138, 150, 0.34));
@@ -2503,7 +2532,11 @@ button {
   }
 
   .game-view {
-    grid-template-rows: minmax(260px, 38vh) minmax(0, 1fr);
+    --game-stage-topbar-height: 74px;
+    --game-stage-composer-height: 160px;
+    --game-stage-chat-min-height: 160px;
+    --game-stage-frame-padding: 8px;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .game-stage-header {
@@ -2517,11 +2550,8 @@ button {
   }
 
   .game-character {
-    width: 42vw;
-  }
-
-  .game-character img {
-    max-height: min(34vh, 320px);
+    width: min(38%, 220px);
+    height: 80%;
   }
 
   .game-stage-footer {

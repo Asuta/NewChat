@@ -47,81 +47,83 @@ export function GameView({
 
   return (
     <div className="game-view">
-      <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
-        {stage?.backgroundUrl ? (
-          <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
-        ) : (
-          <div className="game-stage-fallback" aria-hidden="true" />
-        )}
+      <div className="game-stage-frame">
+        <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
+          {stage?.backgroundUrl ? (
+            <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
+          ) : (
+            <div className="game-stage-fallback" aria-hidden="true" />
+          )}
 
-        <div className="game-stage-overlay" />
+          <div className="game-stage-overlay" />
 
-        <header className="game-stage-header">
-          <div>
-            <MapPinned size={17} />
-            <strong>{sceneName}</strong>
+          <header className="game-stage-header">
+            <div>
+              <MapPinned size={17} />
+              <strong>{sceneName}</strong>
+            </div>
+            {isLoading ? (
+              <span className="game-stage-loading">
+                <Loader2 className="spin" size={15} />
+                更新中
+              </span>
+            ) : null}
+          </header>
+
+          <SceneMiniMap
+            worldMap={worldMap}
+            isLoading={isWorldMapLoading}
+            isNavigationDisabled={isNavigationDisabled}
+            onEnterScene={onEnterScene}
+          />
+
+          <div className="game-character-layer" aria-label="当前场景人物">
+            {visibleCharacters.map((character) => (
+              <figure
+                className={[
+                  'game-character',
+                  `slot-${character.slot}`,
+                  character.isFallbackPortrait ? 'fallback-character' : '',
+                  character.entityId === activeStageSpeech?.entityId ? 'speaking-character' : '',
+                ].filter(Boolean).join(' ')}
+                key={character.entityId}
+                style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
+              >
+                {character.portraitUrl ? <img src={character.portraitUrl} alt={character.name} /> : <div className="game-character-missing" />}
+                <figcaption>{character.name}</figcaption>
+              </figure>
+            ))}
           </div>
-          {isLoading ? (
-            <span className="game-stage-loading">
-              <Loader2 className="spin" size={15} />
-              更新中
-            </span>
+
+          {!visibleCharacters.length ? (
+            <div className="game-stage-empty">
+              <ImageOff size={20} />
+              <span>当前场景暂无可显示立绘</span>
+            </div>
           ) : null}
-        </header>
 
-        <SceneMiniMap
-          worldMap={worldMap}
-          isLoading={isWorldMapLoading}
-          isNavigationDisabled={isNavigationDisabled}
-          onEnterScene={onEnterScene}
-        />
+          {hiddenCharacterCount > 0 ? (
+            <div className="game-stage-overflow" aria-label={`还有 ${hiddenCharacterCount} 名人物未显示`}>
+              +{hiddenCharacterCount}
+            </div>
+          ) : null}
 
-        <div className="game-character-layer" aria-label="当前场景人物">
-          {visibleCharacters.map((character) => (
-            <figure
-              className={[
-                'game-character',
-                `slot-${character.slot}`,
-                character.isFallbackPortrait ? 'fallback-character' : '',
-                character.entityId === activeStageSpeech?.entityId ? 'speaking-character' : '',
-              ].filter(Boolean).join(' ')}
-              key={character.entityId}
-              style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
+          {activeStageSpeech && visibleSpeaker ? (
+            <aside
+              className={`stage-speech-bubble slot-${visibleSpeaker.slot}`}
+              aria-label={`${activeStageSpeech.name} 正在发言`}
             >
-              {character.portraitUrl ? <img src={character.portraitUrl} alt={character.name} /> : <div className="game-character-missing" />}
-              <figcaption>{character.name}</figcaption>
-            </figure>
-          ))}
-        </div>
+              <strong>{activeStageSpeech.name}</strong>
+              <p>{formatStageSpeech(activeStageSpeech.content)}</p>
+            </aside>
+          ) : null}
 
-        {!visibleCharacters.length ? (
-          <div className="game-stage-empty">
-            <ImageOff size={20} />
-            <span>当前场景暂无可显示立绘</span>
-          </div>
-        ) : null}
-
-        {hiddenCharacterCount > 0 ? (
-          <div className="game-stage-overflow" aria-label={`还有 ${hiddenCharacterCount} 名人物未显示`}>
-            +{hiddenCharacterCount}
-          </div>
-        ) : null}
-
-        {activeStageSpeech && visibleSpeaker ? (
-          <aside
-            className={`stage-speech-bubble slot-${visibleSpeaker.slot}`}
-            aria-label={`${activeStageSpeech.name} 正在发言`}
-          >
-            <strong>{activeStageSpeech.name}</strong>
-            <p>{formatStageSpeech(activeStageSpeech.content)}</p>
-          </aside>
-        ) : null}
-
-        <footer className="game-stage-footer">
-          <UserRound size={16} />
-          <span>{sceneDescription}</span>
-        </footer>
-      </section>
+          <footer className="game-stage-footer">
+            <UserRound size={16} />
+            <span>{sceneDescription}</span>
+          </footer>
+        </section>
+      </div>
 
       <ChatThread
         conversation={conversation}
