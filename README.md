@@ -103,7 +103,7 @@ Agent 可用规则工具：
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
 
-开启 DeepSeek 思考模式时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链，并在同一轮工具循环内回传 `reasoning_content`。未开启思考模式或兼容回退时，后端仍可使用旧 JSON planner。
+配置真实模型时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链；模型不再调用工具并返回普通 assistant 内容时，本轮自然结束。DeepSeek 思考模式开启时会在同一轮工具循环内回传 `reasoning_content`；Mock 或缺少模型配置时只使用本地 fallback 规划。
 
 读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。
 

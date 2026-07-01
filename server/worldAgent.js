@@ -21,13 +21,6 @@ import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 export const WORLD_AGENT_DEFAULT_MAX_STEPS = 30;
 export const WORLD_AGENT_MIN_STEPS = 1;
 export const WORLD_AGENT_MAX_STEPS = 100;
-const WORLD_AGENT_MAX_PARSE_REPAIRS = 2;
-const WORLD_AGENT_JSON_MODE_INSTRUCTION = [
-  '当前后端使用 JSON planner 兼容模式。',
-  '本条系统消息覆盖固定上下文里的 API 原生工具调用格式说明。',
-  '你必须只输出一个 JSON 对象，形状为 {"tool":"工具名","args":{...}}。',
-  '不要输出 Markdown、解释文字、顶层 say 字段或 API tool_calls。',
-].join('\n');
 const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '当前后端使用 API 原生工具调用模式。',
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
@@ -161,14 +154,13 @@ async function runWorldAgentTaskInternal(input, handlers) {
       });
     }
 
-    return await runJsonToolPlanningLoop({
+    return await runLocalFallbackToolPlanningLoop({
       input,
       handlers,
       prompt,
       runId,
       steps,
       requestLog,
-      baseContextEvents,
       maxSteps,
       state,
     });
@@ -180,29 +172,23 @@ async function runWorldAgentTaskInternal(input, handlers) {
   }
 }
 
-async function runJsonToolPlanningLoop({
+async function runLocalFallbackToolPlanningLoop({
   input,
   handlers,
   prompt,
   runId,
   steps,
   requestLog,
-  baseContextEvents,
   maxSteps,
   state,
 }) {
   for (let plannerTurn = 1; plannerTurn <= maxSteps; plannerTurn += 1) {
-    const decision = await planNextToolCall({
+    const decision = planFallbackToolCall({
       prompt,
       steps,
-      model: input.model,
-      thinking: input.thinking,
-      contextEvents: baseContextEvents,
-      runId,
       stepIndex: plannerTurn,
       maxSteps,
       requestLog,
-      signal: input.signal,
     });
 
     const applied = await applyAgentDecision({
@@ -216,6 +202,19 @@ async function runJsonToolPlanningLoop({
       state,
     });
     if (applied.response) return applied.response;
+    if ((decision.tool === 'dm_speak' || decision.tool === 'npc_speak') && state.visibleAnswer) {
+      return await finishSuccessfulRun({
+        runId,
+        steps,
+        seedAnswer: '',
+        visibleAnswer: state.visibleAnswer,
+        conversationAnswer: state.assistantConversationAnswer,
+        requestLog,
+        handlers,
+        signal: input.signal,
+        allowEmptyAnswer: true,
+      });
+    }
   }
 
   return await finishSuccessfulRun({
@@ -242,7 +241,8 @@ async function runNativeToolPlanningLoop({
   state,
 }) {
   const apiKey = process.env.LLM_API_KEY;
-  const selectedModel = normalizeModel(input.model) || process.env.LLM_MODEL;
+  const selectedModel = normalizeModel(input.model) || String(process.env.LLM_MODEL || '').trim();
+  const thinkingMode = normalizeThinkingMode(input.thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
   const endpoint = `${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`;
   const messages = createInitialPlanningMessages({
     prompt,
@@ -257,7 +257,7 @@ async function runNativeToolPlanningLoop({
       mode: 'native-tools',
       stepIndex: state.stepIndex,
       model: selectedModel,
-      thinking: 'enabled',
+      thinking: thinkingMode || 'unset',
       createdAt: Date.now(),
       maxSteps,
       nativeTools: WORLD_AGENT_TOOL_SCHEMAS.map((tool) => tool.function.name),
@@ -277,7 +277,7 @@ async function runNativeToolPlanningLoop({
         stream: false,
         tools: WORLD_AGENT_TOOL_SCHEMAS,
         tool_choice: 'auto',
-        ...deepSeekThinkingConfig('enabled'),
+        ...deepSeekThinkingConfig(input.thinking, selectedModel),
       }),
       signal: input.signal,
     });
@@ -298,29 +298,6 @@ async function runNativeToolPlanningLoop({
 
     if (!assistantMessage.tool_calls.length) {
       const finalContent = String(assistantMessage.content || '').trim();
-      const legacyParse = parseModelToolCall(finalContent);
-      if (legacyParse.ok) {
-        logEntry.legacyJsonFallback = true;
-        const applied = await applyAgentDecision({
-          decision: legacyParse.toolCall,
-          input,
-          handlers,
-          prompt,
-          runId,
-          steps,
-          requestLog,
-          state,
-        });
-        if (applied.response) return applied.response;
-
-        messages.push(createNativeAssistantTranscriptMessage(assistantMessage));
-        messages.push(createLegacyJsonToolResultMessage({
-          step: applied.step,
-          runId,
-        }));
-        continue;
-      }
-
       if (finalContent || assistantMessage.reasoning_content) {
         const finalTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
         messages.push(finalTranscript);
@@ -1006,118 +983,21 @@ function normalizeContextToolCalls(toolCalls) {
     .filter(Boolean);
 }
 
-async function planNextToolCall({ prompt, steps, model, thinking, contextEvents, runId, stepIndex, maxSteps, requestLog, signal }) {
-  if (process.env.LLM_MOCK === '1') {
-    return fallbackToolCall(prompt, steps);
-  }
-
-  const apiKey = process.env.LLM_API_KEY;
-  const selectedModel = normalizeModel(model) || process.env.LLM_MODEL;
-  if (!apiKey || !selectedModel) {
-    return fallbackToolCall(prompt, steps);
-  }
-
-  const planningContextEvents = [
-    ...(Array.isArray(contextEvents) ? contextEvents : []),
-    ...steps.map((step) => createAgentStepContextEvent(step, runId)),
-  ];
-  const messages = createInitialPlanningMessages({
-    prompt,
-    contextEvents: planningContextEvents,
-    modeInstruction: WORLD_AGENT_JSON_MODE_INSTRUCTION,
+function planFallbackToolCall({ prompt, steps, stepIndex, maxSteps, requestLog }) {
+  const decision = fallbackToolCall(prompt, steps);
+  requestLog?.entries?.push({
+    kind: 'tool-plan',
+    mode: 'local-fallback',
+    stepIndex,
+    createdAt: Date.now(),
+    maxSteps,
+    decision,
   });
-  const endpoint = `${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`;
-  const thinkingMode = normalizeThinkingMode(thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
-  let lastContent = '';
-  let lastParseError = '';
-
-  for (let repairAttempt = 0; repairAttempt <= WORLD_AGENT_MAX_PARSE_REPAIRS; repairAttempt += 1) {
-    const attemptMessages = repairAttempt === 0
-      ? messages
-      : [
-        ...messages,
-        createParseRepairMessage({
-          previousContent: lastContent,
-          parseError: lastParseError,
-        }),
-      ];
-    const logEntry = {
-      kind: 'tool-plan',
-      stepIndex,
-      model: selectedModel,
-      thinking: thinkingMode,
-      createdAt: Date.now(),
-      maxSteps,
-      ...(repairAttempt > 0 ? { parseRepairAttempt: repairAttempt } : {}),
-      messages: attemptMessages.map(logModelMessage),
-    };
-    requestLog?.entries?.push(logEntry);
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: attemptMessages,
-        stream: false,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        ...deepSeekThinkingConfig(thinking),
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`模型服务请求失败：${response.status}${detail ? ` ${detail}` : ''}`);
-    }
-
-    const json = await response.json();
-    logEntry.usage = normalizeUsage(json.usage);
-    const content = json.choices?.[0]?.message?.content;
-    lastContent = typeof content === 'string' ? content : '';
-    logEntry.content = lastContent;
-
-    const parseResult = parseModelToolCall(lastContent);
-    if (parseResult.ok) {
-      return parseResult.toolCall;
-    }
-
-    lastParseError = parseResult.error;
-    logEntry.parseError = lastParseError;
-  }
-
-  throw new Error(`模型连续返回不可解析的工具规划 JSON：${lastParseError || '未知解析错误'}。`);
+  return decision;
 }
 
 function normalizeUsage(usage) {
   return isRecord(usage) ? usage : null;
-}
-
-function parseModelToolCall(content) {
-  const rawContent = String(content || '').trim();
-  const normalized = stripCodeFence(rawContent).trim();
-  const candidates = [normalized, extractJsonObject(normalized)].filter(Boolean);
-  let parseError = '';
-
-  for (const candidate of candidates) {
-    try {
-      return {
-        ok: true,
-        toolCall: normalizeToolCall(JSON.parse(candidate)),
-      };
-    } catch (error) {
-      parseError = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  return {
-    ok: false,
-    error: parseError || '模型没有返回 JSON。',
-  };
 }
 
 function createToolSchema(name, description, properties, required = []) {
@@ -1138,11 +1018,9 @@ function createToolSchema(name, description, properties, required = []) {
 function shouldUseNativeToolPlanner(input) {
   if (process.env.LLM_MOCK === '1') return false;
   const apiKey = process.env.LLM_API_KEY;
-  const selectedModel = normalizeModel(input.model) || process.env.LLM_MODEL;
+  const selectedModel = normalizeModel(input.model) || String(process.env.LLM_MODEL || '').trim();
   if (!apiKey || !selectedModel) return false;
-  const thinkingMode = normalizeThinkingMode(input.thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
-  if (thinkingMode !== 'enabled') return false;
-  return isDeepSeekLikeModel(selectedModel);
+  return true;
 }
 
 function normalizeMaxSteps(value) {
@@ -1189,21 +1067,6 @@ function createNativeToolResultMessage(toolCall, result) {
     role: 'tool',
     tool_call_id: getNativeToolCallId(toolCall),
     content: JSON.stringify(result),
-  };
-}
-
-function createLegacyJsonToolResultMessage({ step, runId }) {
-  return {
-    role: 'user',
-    content: JSON.stringify(
-      {
-        type: 'legacy_json_tool_result',
-        instruction: '上一条 assistant 内容是旧 JSON 决策，后端已经按兼容逻辑执行。之后请使用 API tool_calls。',
-        contextEvents: step ? [createAgentStepContextEvent(step, runId)] : [],
-      },
-      null,
-      2,
-    ),
   };
 }
 
@@ -1293,38 +1156,6 @@ function logModelMessage(message) {
     ...(Array.isArray(message.tool_calls) ? { toolCalls: summarizeNativeToolCalls(message.tool_calls) } : {}),
     ...(typeof message.reasoning_content === 'string' ? { reasoningContentLength: message.reasoning_content.length } : {}),
   };
-}
-
-function createParseRepairMessage({ previousContent, parseError }) {
-  return {
-    role: 'user',
-    content: JSON.stringify(
-      {
-        type: 'model_output_parse_error',
-        instruction: '你上一条回复无法解析为工具规划 JSON。请根据 parseError 修正输出；不要解释，不要使用 Markdown，不要输出代码块，只输出一个完整 JSON 对象。',
-        parseError,
-        previousOutput: truncateForRepairPrompt(previousContent),
-        requiredShape: {
-          tool: '必须是一个可用工具名，例如 search_entities、get_entity_bundle、dm_speak、npc_speak、roll_dice、apply_world_patch。',
-          args: '必须是对象。DM 叙事使用 dm_speak.args.content；NPC 对白使用 npc_speak.args.content。',
-        },
-      },
-      null,
-      2,
-    ),
-  };
-}
-
-function truncateForRepairPrompt(value) {
-  const text = String(value || '');
-  return text.length > 4000 ? `${text.slice(0, 4000)}\n...[已截断]` : text;
-}
-
-function extractJsonObject(content) {
-  const start = content.indexOf('{');
-  const end = content.lastIndexOf('}');
-  if (start < 0 || end <= start) return '';
-  return content.slice(start, end + 1);
 }
 
 async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
@@ -1743,15 +1574,12 @@ function hasPromptMessageEvent(contextEvents, prompt) {
   return latestUserMessage?.content === prompt;
 }
 
-function stripCodeFence(content) {
-  return content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-}
-
 function normalizeBaseURL(value) {
   return value.replace(/\/+$/, '');
 }
 
-function deepSeekThinkingConfig(requestThinking) {
+function deepSeekThinkingConfig(requestThinking, model) {
+  if (!isDeepSeekLikeModel(model)) return {};
   const thinking = normalizeThinkingMode(requestThinking) || normalizeThinkingMode(process.env.LLM_THINKING);
   if (thinking !== 'enabled' && thinking !== 'disabled') return {};
   return { thinking: { type: thinking } };
