@@ -1,4 +1,4 @@
-import { Archive, Brain, ChevronDown, Gamepad2, Loader2, MessageSquare, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
+import { Archive, Brain, ChevronDown, Gamepad2, Loader2, MessageSquare, MoreHorizontal, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import type {
   ContextMode,
@@ -91,10 +91,27 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <button className="title-button" type="button">
-        {conversation.title}
-        <ChevronDown size={18} />
-      </button>
+      <div className="topbar-left">
+        <button className="title-button" type="button">
+          {conversation.title}
+          <ChevronDown size={18} />
+        </button>
+        <button
+          className="restart-button"
+          type="button"
+          disabled={controlsDisabled}
+          title={controlsDisabled ? '当前正在处理，暂时不能重新开始' : '重置当前存档并重新开始'}
+          onClick={() => {
+            setModelMenuOpen(false);
+            setContextMenuOpen(false);
+            onSettingsOpenChange(false);
+            onResetSaveData();
+          }}
+        >
+          <RotateCcw size={16} />
+          <span>重新开始</span>
+        </button>
+      </div>
       <div className="topbar-actions">
         <div className="view-toggle" role="group" aria-label="切换表现方式">
           <button

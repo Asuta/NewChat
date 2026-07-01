@@ -508,6 +508,13 @@ button {
   padding: 20px 32px;
 }
 
+.topbar-left {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
 .title-button,
 .model-chip {
   display: inline-flex;
@@ -525,6 +532,32 @@ button {
   white-space: nowrap;
   font-size: 21px;
   font-weight: 700;
+}
+
+.restart-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(194, 65, 61, 0.28);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff6f5;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.restart-button:hover {
+  border-color: rgba(194, 65, 61, 0.4);
+  background: #ffedeb;
+}
+
+.restart-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .topbar-actions {
@@ -757,6 +790,50 @@ button {
   padding: 16px;
   background: #ffffff;
   box-shadow: 0 22px 56px rgba(22, 35, 55, 0.18);
+}
+
+.confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(19, 25, 35, 0.36);
+}
+
+.confirmation-dialog {
+  display: grid;
+  width: min(420px, calc(100vw - 48px));
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  background: #ffffff;
+  box-shadow: 0 26px 70px rgba(22, 35, 55, 0.26);
+}
+
+.confirmation-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.confirmation-copy strong {
+  color: #1d2738;
+  font-size: 18px;
+}
+
+.confirmation-copy p {
+  margin: 0;
+  color: #4b5668;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .settings-panel-header {
@@ -2435,9 +2512,23 @@ button {
     padding: 14px 16px;
   }
 
+  .topbar-left {
+    gap: 6px;
+  }
+
   .title-button {
     max-width: 18vw;
     font-size: 17px;
+  }
+
+  .restart-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
+  .restart-button span {
+    display: none;
   }
 
   .topbar-actions {

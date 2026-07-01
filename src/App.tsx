@@ -84,9 +84,12 @@ export default function App() {
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
+  const resetDialogRef = useRef<HTMLElement | null>(null);
+  const resetCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
@@ -113,6 +116,11 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
   }, [modelId]);
+
+  useEffect(() => {
+    if (!isResetConfirmOpen) return;
+    resetCancelButtonRef.current?.focus();
+  }, [isResetConfirmOpen]);
 
   useEffect(() => {
     fetch('/api/health')
@@ -620,10 +628,16 @@ export default function App() {
     setError(null);
   }
 
+  function requestResetSaveData() {
+    if (isStreaming || isCompressing || isSaveDataBusy) return;
+    setIsSettingsOpen(false);
+    setIsResetConfirmOpen(true);
+  }
+
   async function resetSaveData() {
     if (isStreaming || isCompressing || isSaveDataBusy) return;
-    if (!window.confirm('重置会用当前世界模板覆盖玩家存档，并清空当前聊天记录。确定继续吗？')) return;
 
+    setIsResetConfirmOpen(false);
     setIsSaveDataBusy(true);
     setError(null);
     try {
@@ -643,6 +657,30 @@ export default function App() {
     } finally {
       setIsSaveDataBusy(false);
     }
+  }
+
+  function handleResetConfirmKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (!isSaveDataBusy) setIsResetConfirmOpen(false);
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+
+    const focusable = resetDialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable?.length) return;
+
+    const focusableElements = Array.from(focusable);
+    event.preventDefault();
+    const currentIndex = focusableElements.findIndex((element) => element === document.activeElement);
+    const fallbackIndex = event.shiftKey ? focusableElements.length : -1;
+    const nextIndex = event.shiftKey
+      ? (currentIndex >= 0 ? currentIndex : fallbackIndex) - 1
+      : (currentIndex >= 0 ? currentIndex : fallbackIndex) + 1;
+    focusableElements[(nextIndex + focusableElements.length) % focusableElements.length].focus();
   }
 
   async function exportSaveData(mode: SaveExportMode) {
@@ -908,7 +946,7 @@ export default function App() {
           onSaveFixedContext={saveFixedContext}
           onClearFixedContext={clearFixedContext}
           onClearChat={clearCurrentChat}
-          onResetSaveData={resetSaveData}
+          onResetSaveData={requestResetSaveData}
           onExportSaveData={exportSaveData}
           onImportSaveData={importSaveData}
           isSaveDataBusy={isSaveDataBusy}
@@ -954,6 +992,37 @@ export default function App() {
         onRequestEntityActions={requestWorldActions}
         onExecuteWorldAction={executeWorldAction}
       />
+      {isResetConfirmOpen ? (
+        <div className="confirmation-backdrop" role="presentation">
+          <section
+            ref={resetDialogRef}
+            className="confirmation-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-save-title"
+            onKeyDown={handleResetConfirmKeyDown}
+          >
+            <div className="confirmation-copy">
+              <strong id="reset-save-title">重新开始？</strong>
+              <p>这会用当前世界模板覆盖玩家存档，并清空当前聊天记录。这个操作无法撤销。</p>
+            </div>
+            <div className="confirmation-actions">
+              <button
+                ref={resetCancelButtonRef}
+                className="settings-secondary"
+                type="button"
+                disabled={isSaveDataBusy}
+                onClick={() => setIsResetConfirmOpen(false)}
+              >
+                取消
+              </button>
+              <button className="settings-danger" type="button" disabled={isSaveDataBusy} onClick={() => void resetSaveData()}>
+                重新开始
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
