@@ -11,6 +11,7 @@ import {
 import { basename, dirname, join, resolve } from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
+import { createWorldDbSchema } from './worldDbSchema.js';
 import {
   SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
   SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
@@ -18,6 +19,7 @@ import {
   getSevenDayCrownElenaStats,
   getSevenDayCrownHollowKnightStats,
   getSevenDayCrownPlayerStats,
+  seedSevenDayCrownWorld,
 } from './defaultWorld.js';
 
 export const DATA_DIR = resolve(process.cwd(), 'data');
@@ -159,6 +161,42 @@ export function resetSaveToTemplate() {
   copyDirectoryContents(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR, { clear: true });
   syncGeneratedWorldSchemaContext(SAVE_CONTEXT_DIR);
   copyDirectoryContents(TEMPLATE_RULES_DIR, SAVE_RULES_DIR, { clear: true });
+}
+
+export function restoreTemplateFromFactoryDefaults() {
+  removeSqliteFamily(TEMPLATE_DB_FILE);
+  mkdirSync(dirname(TEMPLATE_DB_FILE), { recursive: true });
+
+  const database = new DatabaseSync(TEMPLATE_DB_FILE);
+  try {
+    database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+    createWorldDbSchema(database);
+    database.exec('BEGIN;');
+    seedSevenDayCrownWorld({
+      upsertEntity: (id, kind, name) => upsertTemplateEntity(database, id, kind, name),
+      setAliases: (entityId, aliases) => setTemplateAliases(database, entityId, aliases),
+      upsertComponent: (entityId, type, data) => writeTemplateComponent(database, entityId, type, data),
+      upsertRelationship: (sourceEntityId, targetEntityId, type, value, data) =>
+        upsertTemplateRelationship(database, sourceEntityId, targetEntityId, type, value, data),
+      setMeta: (key, value) => setTemplateMeta(database, key, value),
+      addEvent: (type, actorId, targetId, payload) => addTemplateEvent(database, type, actorId, targetId, payload),
+    });
+    database.exec('COMMIT;');
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK;');
+    } catch {
+      // Preserve the original factory restore error.
+    }
+    throw error;
+  } finally {
+    database.close();
+  }
+
+  copyDirectoryContents(FACTORY_CONTEXT_DIR, TEMPLATE_CONTEXT_DIR, { clear: true });
+  syncGeneratedWorldSchemaContext(TEMPLATE_CONTEXT_DIR);
+  copyDirectoryContents(FACTORY_RULES_DIR, TEMPLATE_RULES_DIR, { clear: true });
+  ensureTemplatePlayableDefaults();
 }
 
 export function createSaveExportBundle(mode) {
@@ -392,6 +430,19 @@ function upsertTemplateRelationship(database, sourceEntityId, targetEntityId, ty
        DO UPDATE SET value = excluded.value, data_json = excluded.data_json, updated_at = excluded.updated_at`,
     )
     .run(sourceEntityId, targetEntityId, type, value, JSON.stringify(data), time, time);
+}
+
+function setTemplateMeta(database, key, value) {
+  database
+    .prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, value);
+}
+
+function addTemplateEvent(database, type, actorId, targetId, payload = {}) {
+  const result = database
+    .prepare('INSERT INTO events (type, actor_id, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(type, actorId ?? null, targetId ?? null, JSON.stringify(payload), new Date().toISOString());
+  return { id: Number(result.lastInsertRowid) };
 }
 
 function templateEntityExists(database, entityId) {

@@ -800,6 +800,34 @@ export default function App() {
     }
   }
 
+  async function restoreFactoryWorld() {
+    if (isStreaming || isCompressing || isSaveDataBusy) return;
+    const confirmed = window.confirm(
+      '恢复内置最新世界会用当前项目代码里的预制世界覆盖 data/template 和 data/save，并清空当前聊天。确定继续吗？',
+    );
+    if (!confirmed) return;
+
+    setIsSaveDataBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/save/restore-factory', { method: 'POST' });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const state = (await response.json()) as SaveDataResponse;
+      const { conversation, assistantMessage } = createOpeningConversation();
+      applySaveDataResponse(state, { resetConversations: true, openingConversation: conversation });
+      void streamAgentResponse({
+        conversationId: conversation.id,
+        assistantMessageId: assistantMessage.id,
+        prompt: OPENING_STORY_PROMPT,
+        contextEvents: [],
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '恢复内置世界失败。');
+    } finally {
+      setIsSaveDataBusy(false);
+    }
+  }
+
   function handleResetConfirmKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -1091,6 +1119,7 @@ export default function App() {
           onClearFixedContext={clearFixedContext}
           onClearChat={clearCurrentChat}
           onResetSaveData={requestResetSaveData}
+          onRestoreFactoryWorld={restoreFactoryWorld}
           onExportSaveData={exportSaveData}
           onImportSaveData={importSaveData}
           isSaveDataBusy={isSaveDataBusy}

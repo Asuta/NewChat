@@ -15,6 +15,7 @@ interface ConversationSettingsPanelProps {
   onExportSaveData: (mode: SaveExportMode) => void;
   onImportSaveData: (file: File) => void;
   onResetSaveData: () => void;
+  onRestoreFactoryWorld: () => void;
   onSaveFixedContext: (content: string) => void;
   isSaveDataBusy: boolean;
 }
@@ -32,6 +33,7 @@ export function ConversationSettingsPanel({
   onExportSaveData,
   onImportSaveData,
   onResetSaveData,
+  onRestoreFactoryWorld,
   onSaveFixedContext,
   isSaveDataBusy,
 }: ConversationSettingsPanelProps) {
@@ -113,7 +115,7 @@ export function ConversationSettingsPanel({
         <div className="save-data-panel-header">
           <div>
             <strong>数据管理</strong>
-            <span>当前游玩只写入 data/save，可重置回 data/template 或导入导出世界包。</span>
+            <span>当前游玩只写入 data/save；可重置到当前模板，或恢复项目内置最新版世界。</span>
           </div>
           <FileText size={18} />
         </div>
@@ -122,6 +124,10 @@ export function ConversationSettingsPanel({
           <button className="settings-danger" type="button" disabled={disabled || isSaveDataBusy} onClick={onResetSaveData}>
             <RotateCcw size={16} />
             重置当前存档
+          </button>
+          <button className="settings-danger" type="button" disabled={disabled || isSaveDataBusy} onClick={onRestoreFactoryWorld}>
+            <RotateCcw size={16} />
+            恢复内置最新世界
           </button>
           <button className="settings-secondary" type="button" disabled={disabled || isSaveDataBusy} onClick={() => onExportSaveData('template')}>
             <Download size={16} />

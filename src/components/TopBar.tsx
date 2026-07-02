@@ -51,6 +51,7 @@ interface TopBarProps {
   onClearFixedContext: () => void;
   onClearChat: () => void;
   onResetSaveData: () => void;
+  onRestoreFactoryWorld: () => void;
   onExportSaveData: (mode: SaveExportMode) => void;
   onImportSaveData: (file: File) => void;
 }
@@ -82,6 +83,7 @@ export function TopBar({
   onClearFixedContext,
   onClearChat,
   onResetSaveData,
+  onRestoreFactoryWorld,
   onExportSaveData,
   onImportSaveData,
 }: TopBarProps) {
@@ -261,6 +263,7 @@ export function TopBar({
           onClearFixedContext={onClearFixedContext}
           onClearChat={onClearChat}
           onResetSaveData={onResetSaveData}
+          onRestoreFactoryWorld={onRestoreFactoryWorld}
           onExportSaveData={onExportSaveData}
           onImportSaveData={onImportSaveData}
           isSaveDataBusy={isSaveDataBusy}

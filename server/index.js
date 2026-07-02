@@ -34,6 +34,7 @@ import {
   ensureTemplatePlayableDefaults,
   importSaveBundle,
   resetSaveToTemplate,
+  restoreTemplateFromFactoryDefaults,
   TEMPLATE_DB_FILE,
 } from './saveManager.js';
 
@@ -99,6 +100,23 @@ app.post('/api/save/reset', (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message || '重置存档失败。' });
+  }
+});
+
+app.post('/api/save/restore-factory', (_req, res) => {
+  try {
+    checkpointWorldDb();
+    restoreTemplateFromFactoryDefaults();
+    restoreWorldDbFromFile(TEMPLATE_DB_FILE);
+    resetSaveToTemplate();
+    refreshWorldRuntime();
+    res.json({
+      world: getWorldOverview(),
+      fixedContext: readFixedContextBundle(),
+      conversations: null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || '恢复内置世界失败。' });
   }
 });
 
