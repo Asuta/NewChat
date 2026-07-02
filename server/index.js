@@ -297,12 +297,11 @@ app.post('/api/world/agent/stream', async (req, res) => {
       {
         onStart: (event) => writeSseEvent(res, 'start', event),
         onStep: (event) => writeSseEvent(res, 'step', { step: event.step }),
-        onSpeechStart: (event) => writeSseEvent(res, 'speech_start', event),
-        onSpeechDelta: (delta) => writeSseEvent(res, 'speech_delta', { delta }),
+        onAssistantTextStart: (event) => writeSseEvent(res, 'assistant_text_start', event),
+        onAssistantTextDelta: (delta) => writeSseEvent(res, 'assistant_text_delta', { delta }),
         onNpcSpeechStart: (event) => writeSseEvent(res, 'npc_speech_start', event),
         onNpcSpeechDelta: (event) => writeSseEvent(res, 'npc_speech_delta', event),
         onNpcSpeech: (event) => writeSseEvent(res, 'npc_speech', event),
-        onFinalAnswerDelta: (delta) => writeSseEvent(res, 'answer_delta', { delta }),
         onDone: (event) => {
           didSendDone = true;
           writeSseEvent(res, 'done', event);

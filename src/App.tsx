@@ -18,7 +18,6 @@ import {
   getConversationContextMode,
   getInitialConversations,
   saveConversations,
-  stripReasoningFromConversations,
   titleFromMessage,
 } from './lib/chat';
 import { publishStageSnapshot, writeStageSourceHeartbeat } from './lib/stageSync';
@@ -324,7 +323,7 @@ export default function App() {
           return;
         }
 
-        if (event.type === 'speech_start') {
+        if (event.type === 'assistant_text_start') {
           if (hasVisibleAssistantContent || activeAssistantContent) {
             const nextMessage = {
               ...createMessage('assistant', '', 'streaming'),
@@ -350,7 +349,7 @@ export default function App() {
           return;
         }
 
-        if (event.type === 'answer_delta' || event.type === 'speech_delta') {
+        if (event.type === 'assistant_text_delta') {
           streamedAnswer += event.delta;
           activeAssistantContent += event.delta;
           hasVisibleAssistantContent = true;
@@ -893,7 +892,7 @@ export default function App() {
       if (mode === 'full') {
         bundle.save = {
           ...(bundle.save || {}),
-          conversations: stripReasoningFromConversations(conversations),
+          conversations,
         };
       }
 
@@ -1343,18 +1342,15 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   if (eventType === 'step') {
     return { type: 'step', step: payload.step as AgentStep };
   }
-  if (eventType === 'speech_start') {
+  if (eventType === 'assistant_text_start') {
     return {
-      type: 'speech_start',
+      type: 'assistant_text_start',
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
     };
   }
-  if (eventType === 'answer_delta') {
-    return { type: 'answer_delta', delta: String(payload.delta || '') };
-  }
-  if (eventType === 'speech_delta') {
-    return { type: 'speech_delta', delta: String(payload.delta || '') };
+  if (eventType === 'assistant_text_delta') {
+    return { type: 'assistant_text_delta', delta: String(payload.delta || '') };
   }
   if (eventType === 'npc_speech_start') {
     return {

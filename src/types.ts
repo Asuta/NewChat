@@ -379,16 +379,12 @@ export type WorldAgentStreamEvent =
       step: AgentStep;
     }
   | {
-      type: 'speech_start';
+      type: 'assistant_text_start';
       runId?: number;
       stepIndex?: number;
     }
   | {
-      type: 'answer_delta';
-      delta: string;
-    }
-  | {
-      type: 'speech_delta';
+      type: 'assistant_text_delta';
       delta: string;
     }
   | {

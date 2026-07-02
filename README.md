@@ -98,14 +98,13 @@ Agent 可用规则工具：
 - `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
 - `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
-- `dm_speak`：让 AI DM 输出普通叙事、规则结果、环境描写或说明。
 - `npc_speak`：让 NPC 以独立对话气泡发言。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。
 
 配置真实模型时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链；模型不再调用工具并返回普通 assistant 内容时，本轮自然结束。DeepSeek 思考模式开启时会在同一轮工具循环内回传 `reasoning_content`；Mock 或缺少模型配置时只使用本地 fallback 规划。
 
-读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 发言使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段。
+读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 叙事直接使用 assistant 正文，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段或旧发言工具。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 

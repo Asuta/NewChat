@@ -25,7 +25,8 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '当前后端使用 API 原生工具调用模式。',
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
   '只处理最后一条 role=user 的当前任务；更早的 user/assistant/tool 消息只是历史上下文。',
-  '读取、搜索、掷骰、写库、切换场景默认静默；需要玩家看见内容时调用 dm_speak 或 npc_speak。',
+  '读取、搜索、掷骰、写库、切换场景默认静默；普通叙事、规则结果和说明直接写在 assistant 正文里。',
+  '只有 NPC 实际说出口的直接对白才调用 npc_speak，并且 content 只写 NPC 说出口的话。',
 ].join('\n');
 const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
@@ -37,7 +38,6 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_rules',
   'get_rule_section',
   'roll_dice',
-  'dm_speak',
   'npc_speak',
   'enter_scene',
   'apply_world_patch',
@@ -80,9 +80,6 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     expression: { type: 'string', description: '骰子表达式，例如 1d20+5、1d8+3。' },
     reason: { type: 'string', description: '本次掷骰原因。' },
   }, ['expression']),
-  createToolSchema('dm_speak', '让 AI DM 向玩家输出普通叙事、规则结果、环境描写或说明。', {
-    content: { type: 'string', description: '玩家可见的 DM 文本。' },
-  }, ['content']),
   createToolSchema('npc_speak', '让一个已存在实体以独立 NPC 对话气泡发言。', {
     npcEntityId: { type: 'string', description: 'NPC 实体 id。' },
     content: { type: 'string', description: 'NPC 实际说出口的话，不包含旁白或说话人前缀。' },
@@ -190,6 +187,7 @@ async function runLocalFallbackToolPlanningLoop({
       maxSteps,
       requestLog,
     });
+    if (!decision) break;
 
     const applied = await applyAgentDecision({
       decision,
@@ -202,19 +200,6 @@ async function runLocalFallbackToolPlanningLoop({
       state,
     });
     if (applied.response) return applied.response;
-    if ((decision.tool === 'dm_speak' || decision.tool === 'npc_speak') && state.visibleAnswer) {
-      return await finishSuccessfulRun({
-        runId,
-        steps,
-        seedAnswer: '',
-        visibleAnswer: state.visibleAnswer,
-        conversationAnswer: state.assistantConversationAnswer,
-        requestLog,
-        handlers,
-        signal: input.signal,
-        allowEmptyAnswer: true,
-      });
-    }
   }
 
   return await finishSuccessfulRun({
@@ -295,21 +280,28 @@ async function runNativeToolPlanningLoop({
       ? assistantMessage.reasoning_content.length
       : 0;
     logEntry.toolCalls = summarizeNativeToolCalls(assistantMessage.tool_calls);
+    const assistantVisibleText = formatAssistantVisibleText(assistantMessage, thinkingMode);
 
     if (!assistantMessage.tool_calls.length) {
-      const finalContent = String(assistantMessage.content || '').trim();
-      if (finalContent || assistantMessage.reasoning_content) {
+      if (assistantVisibleText || assistantMessage.reasoning_content) {
         const finalTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
         messages.push(finalTranscript);
         state.modelTranscript.push(finalTranscript);
       }
+      await appendAssistantVisibleText({
+        text: assistantVisibleText,
+        runId,
+        state,
+        handlers,
+        signal: input.signal,
+      });
 
       return await finishSuccessfulRun({
         runId,
         steps,
-        seedAnswer: finalContent,
+        seedAnswer: '',
         visibleAnswer: state.visibleAnswer,
-        conversationAnswer: createFinalConversationAnswer(state.assistantConversationAnswer, finalContent),
+        conversationAnswer: state.assistantConversationAnswer,
         requestLog,
         modelTranscript: state.modelTranscript,
         handlers,
@@ -321,6 +313,13 @@ async function runNativeToolPlanningLoop({
     const assistantTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
     messages.push(assistantTranscript);
     state.modelTranscript.push(assistantTranscript);
+    await appendAssistantVisibleText({
+      text: assistantVisibleText,
+      runId,
+      state,
+      handlers,
+      signal: input.signal,
+    });
 
     for (const toolCall of assistantMessage.tool_calls) {
       const parsed = parseNativeToolCall(toolCall);
@@ -409,7 +408,6 @@ async function applyExecutedAgentTool({
 }) {
   const args = isRecord(decision.args) ? decision.args : {};
   const npcSpeech = createNpcSpeechEvent(decision.tool, args, result);
-  const dmSpeech = createDmSpeechText(decision.tool, args, result);
   const step = recordAgentStep({
     runId,
     stepIndex: state.stepIndex,
@@ -421,7 +419,7 @@ async function applyExecutedAgentTool({
   });
   state.stepIndex += 1;
 
-  if ((decision.tool === 'dm_speak' || decision.tool === 'npc_speak') && result.ok === false) {
+  if (decision.tool === 'npc_speak' && result.ok === false) {
     return {
       step,
       response: await finishSuccessfulRun({
@@ -436,17 +434,6 @@ async function applyExecutedAgentTool({
         signal: input.signal,
       }),
     };
-  }
-
-  if (dmSpeech) {
-    const delta = createSpeechDelta(state.visibleAnswer, dmSpeech);
-    if (delta) {
-      state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, delta);
-      state.assistantConversationAnswer = appendSpeechText(state.assistantConversationAnswer, dmSpeech);
-      handlers.onSpeechStart?.({ runId, stepIndex: step.index });
-      await streamTextDeltas(delta, handlers.onSpeechDelta, input.signal);
-    }
-    return { step, response: null };
   }
 
   if (npcSpeech) {
@@ -504,13 +491,6 @@ function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers
 function compactToolResultForAgentStep(tool, result) {
   if (!isRecord(result) || result.ok === false) return result;
 
-  if (tool === 'dm_speak' || tool === 'speak') {
-    return {
-      ok: true,
-      summary: 'OK',
-    };
-  }
-
   if (tool === 'npc_speak') {
     return {
       ok: true,
@@ -565,9 +545,24 @@ function createNpcSpeechEvent(tool, args, result) {
   };
 }
 
-function createDmSpeechText(tool, args, result) {
-  if (tool !== 'dm_speak' || !isRecord(result) || result.ok === false) return '';
-  return String(result.answer || result.content || args.content || args.text || args.message || '').trim();
+async function appendAssistantVisibleText({ text, runId, state, handlers, signal }) {
+  const content = String(text || '').trim();
+  if (!content) return;
+  state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
+  state.assistantConversationAnswer = appendVisibleAnswer(state.assistantConversationAnswer, content);
+  handlers.onAssistantTextStart?.({ runId });
+  await streamTextDeltas(content, handlers.onAssistantTextDelta, signal);
+}
+
+function formatAssistantVisibleText(message, thinkingMode) {
+  const content = String(message.content || '').trim();
+  if (thinkingMode !== 'enabled') return content;
+
+  const reasoning = String(message.reasoning_content || '').trim();
+  return [
+    reasoning ? `思考：\n${reasoning}` : '',
+    content ? `正文：\n${content}` : '',
+  ].filter(Boolean).join('\n\n');
 }
 
 async function finishSuccessfulRun({
@@ -586,20 +581,15 @@ async function finishSuccessfulRun({
   let answer = String(visibleAnswer || '').trim();
   const finalText = String(seedAnswer || '').trim();
 
-  if (finalText && finalText !== answer) {
-    if (answer) {
-      const delta = createSpeechDelta(answer, finalText);
-      if (delta) {
-        answer = appendVisibleAnswer(answer, delta);
-        await streamTextDeltas(delta, handlers.onFinalAnswerDelta, signal);
-      }
-    } else {
-      answer = await streamFallbackAnswer(finalText, handlers.onFinalAnswerDelta, signal);
-    }
+  if (finalText) {
+    answer = appendVisibleAnswer(answer, finalText);
+    handlers.onAssistantTextStart?.({ runId });
+    await streamTextDeltas(finalText, handlers.onAssistantTextDelta, signal);
   }
 
   if (!answer && !allowEmptyAnswer) {
-    answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onFinalAnswerDelta, signal);
+    handlers.onAssistantTextStart?.({ runId });
+    answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onAssistantTextDelta, signal);
   }
 
   const conversationText = conversationAnswer === undefined ? answer : String(conversationAnswer || '').trim();
@@ -700,21 +690,6 @@ export function executeWorldTool(tool, args, prompt = '') {
       expression: String(args.expression || args.dice || '1d20'),
       reason: String(args.reason || ''),
     });
-  }
-
-  if (tool === 'dm_speak' || tool === 'speak') {
-    const content = String(args.content || args.text || args.message || args.answer || '').trim();
-    return content
-      ? {
-          ok: true,
-          content,
-          answer: content,
-          summary: 'DM 发言成功。',
-        }
-      : {
-          ok: false,
-          error: 'dm_speak.content 不能为空。',
-        };
   }
 
   if (tool === 'npc_speak') {
@@ -1086,18 +1061,6 @@ function parseNativeToolCall(toolCall) {
     };
   }
 
-  if (toolName === 'speak') {
-    return {
-      ok: true,
-      toolCall: {
-        tool: 'dm_speak',
-        args: {
-          content: normalizeToolContent(parsedArgs.args.content ?? parsedArgs.args.text ?? parsedArgs.args.message ?? parsedArgs.args.answer),
-        },
-      },
-    };
-  }
-
   return {
     ok: true,
     toolCall: {
@@ -1184,35 +1147,11 @@ function splitAnswerChunks(answer) {
   return chunks.length ? chunks : ['完成。'];
 }
 
-function createSpeechDelta(currentAnswer, text) {
-  const normalized = String(text || '').trim();
-  if (!normalized) return '';
-  const current = String(currentAnswer || '').trim();
-  if (current && normalized === current) return '';
-  if (current && normalized.startsWith(current)) {
-    return normalized.slice(current.length).trim();
-  }
-  const lastVisibleSegment = current.split(/\n{2,}/).pop()?.trim();
-  if (lastVisibleSegment === normalized) return '';
-  return normalized;
-}
-
 function appendVisibleAnswer(currentAnswer, delta) {
   const current = String(currentAnswer || '').trim();
   const next = String(delta || '').trim();
   if (!next) return current;
   return current ? `${current}\n\n${next}` : next;
-}
-
-function appendSpeechText(currentAnswer, text) {
-  const delta = createSpeechDelta(currentAnswer, text);
-  return delta ? appendVisibleAnswer(currentAnswer, delta) : String(currentAnswer || '').trim();
-}
-
-function createFinalConversationAnswer(currentAnswer, finalText) {
-  const current = String(currentAnswer || '').trim();
-  const final = String(finalText || '').trim();
-  return final ? appendSpeechText(current, final) : current;
 }
 
 function fallbackToolCall(prompt, steps) {
@@ -1238,13 +1177,12 @@ function fallbackToolCall(prompt, steps) {
     return { tool: 'get_rule_section', args: { id: last.result.results[0].id } };
   }
 
-  return { tool: 'dm_speak', args: { content: summarizeAgentResult(prompt, steps) } };
+  return null;
 }
 
 function normalizeToolCall(raw) {
   const action = isRecord(raw.action) ? raw.action : null;
   const args = isRecord(action?.args) ? action.args : isRecord(raw.args) ? raw.args : {};
-  const legacySay = normalizeToolContent(raw.say ?? raw.speech ?? raw.message ?? raw.visibleText);
   const tool = (typeof action?.tool === 'string'
     ? action.tool
     : typeof raw.tool === 'string'
@@ -1252,27 +1190,6 @@ function normalizeToolCall(raw) {
       : typeof raw.name === 'string'
         ? raw.name
         : 'unknown_tool').trim() || 'unknown_tool';
-
-  if (legacySay) {
-    return {
-      tool: 'dm_speak',
-      args: { content: legacySay },
-    };
-  }
-
-  if (tool === 'speak') {
-    return {
-      tool: 'dm_speak',
-      args: { content: normalizeToolContent(args.content ?? args.text ?? args.message ?? args.answer) },
-    };
-  }
-
-  if (tool === 'dm_speak') {
-    return {
-      tool: 'dm_speak',
-      args: { content: normalizeToolContent(args.content ?? args.text ?? args.message ?? args.answer) },
-    };
-  }
 
   const valid = new Set([
     'search_entities',
@@ -1284,7 +1201,6 @@ function normalizeToolCall(raw) {
     'search_rules',
     'get_rule_section',
     'roll_dice',
-    'dm_speak',
     'npc_speak',
     'enter_scene',
     'apply_world_patch',
@@ -1293,10 +1209,6 @@ function normalizeToolCall(raw) {
     tool: valid.has(tool) ? tool : tool,
     args,
   };
-}
-
-function normalizeToolContent(value) {
-  return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
 function rollDice({ expression, reason }) {
