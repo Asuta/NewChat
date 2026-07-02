@@ -1,10 +1,14 @@
 import { ImageOff, Loader2, MapPinned, ScrollText, UserRound } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Conversation, FixedContext, PresentationStage, PresentationStageCharacter, StageNarration, StageSpeech, WorldMapState } from '../types';
 import { ChatThread } from './ChatThread';
 import { SceneMiniMap } from './SceneMiniMap';
 
 const STAGE_SPEECH_MAX_LENGTH = 100;
+const GAME_STAGE_BASE_WIDTH = 1280;
+const GAME_STAGE_BASE_HEIGHT = 720;
+const GAME_STAGE_MIN_SCALE = 0.3;
 const STAGE_SLOTS = {
   1: ['center'],
   2: ['left', 'right'],
@@ -47,11 +51,20 @@ export function GameView({
   const visibleSpeaker = visibleCharacters.find((character) => character.entityId === activeStageSpeech?.entityId) || null;
   const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
   const stageNarration = activeStageNarration?.content.trim() || '';
+  const { frameRef, stageScale } = useGameStageScale();
 
   return (
     <div className="game-view">
-      <div className="game-stage-frame">
-        <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
+      <div className="game-stage-frame" ref={frameRef}>
+        <div
+          className="game-stage-shell"
+          style={{
+            '--game-stage-scale': stageScale,
+            width: GAME_STAGE_BASE_WIDTH * stageScale,
+            height: GAME_STAGE_BASE_HEIGHT * stageScale,
+          } as CSSProperties}
+        >
+          <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
           {stage?.backgroundUrl ? (
             <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
           ) : (
@@ -135,7 +148,8 @@ export function GameView({
             <UserRound size={16} />
             <span>{sceneDescription}</span>
           </footer>
-        </section>
+          </section>
+        </div>
       </div>
 
       <ChatThread
@@ -146,6 +160,70 @@ export function GameView({
       />
     </div>
   );
+}
+
+function useGameStageScale() {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [stageScale, setStageScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    let animationFrame = 0;
+
+    const measure = () => {
+      const frameStyles = getComputedStyle(frame);
+      const paddingX = parseCssPx(frameStyles.paddingLeft) + parseCssPx(frameStyles.paddingRight);
+      const paddingY = parseCssPx(frameStyles.paddingTop) + parseCssPx(frameStyles.paddingBottom);
+      const gameViewStyles = getComputedStyle(frame.closest('.game-view') || frame);
+      const composerHeight = readCssPx(gameViewStyles, '--game-stage-composer-height');
+      const chatMinHeight = readCssPx(gameViewStyles, '--game-stage-chat-min-height');
+      const frameTop = frame.getBoundingClientRect().top;
+      const widthBudget = Math.max(0, frame.clientWidth - paddingX);
+      const heightBudget = Math.max(0, window.innerHeight - frameTop - composerHeight - chatMinHeight - paddingY);
+      const nextScale = clamp(
+        Math.min(1, widthBudget / GAME_STAGE_BASE_WIDTH, heightBudget / GAME_STAGE_BASE_HEIGHT),
+        GAME_STAGE_MIN_SCALE,
+        1,
+      );
+
+      setStageScale((currentScale) => (
+        Math.abs(currentScale - nextScale) > 0.001 ? nextScale : currentScale
+      ));
+    };
+
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(measure);
+    };
+
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(frame);
+    window.addEventListener('resize', scheduleMeasure);
+    measure();
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+      window.removeEventListener('resize', scheduleMeasure);
+    };
+  }, []);
+
+  return { frameRef, stageScale };
+}
+
+function readCssPx(styles: CSSStyleDeclaration, propertyName: string) {
+  return parseCssPx(styles.getPropertyValue(propertyName));
+}
+
+function parseCssPx(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function getVisibleCharacters(

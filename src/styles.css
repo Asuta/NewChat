@@ -1302,14 +1302,8 @@ button {
   --game-stage-composer-height: 160px;
   --game-stage-chat-min-height: 180px;
   --game-stage-frame-padding: 12px;
-  --game-stage-max-width: clamp(
-    360px,
-    calc(
-      (100vh - var(--game-stage-topbar-height) - var(--game-stage-composer-height) - var(--game-stage-chat-min-height) - (var(--game-stage-frame-padding) * 2))
-      * 16 / 9
-    ),
-    1280px
-  );
+  --game-stage-base-width: 1280px;
+  --game-stage-base-height: 720px;
   display: grid;
   min-height: 0;
   min-width: 0;
@@ -1321,6 +1315,7 @@ button {
 .game-stage-frame {
   display: grid;
   min-width: 0;
+  overflow: hidden;
   place-items: center;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
@@ -1330,10 +1325,15 @@ button {
     #101722;
 }
 
+.game-stage-shell {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .game-stage {
   position: relative;
-  width: min(100%, var(--game-stage-max-width));
-  aspect-ratio: 16 / 9;
+  width: var(--game-stage-base-width);
+  height: var(--game-stage-base-height);
   min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1341,6 +1341,8 @@ button {
     linear-gradient(180deg, rgba(29, 39, 56, 0.18), rgba(11, 18, 28, 0.62)),
     #1f2a35;
   box-shadow: 0 22px 52px rgba(0, 0, 0, 0.32);
+  transform: scale(var(--game-stage-scale, 1));
+  transform-origin: left top;
 }
 
 .game-stage-background,
@@ -1872,7 +1874,7 @@ button {
   bottom: 126px;
   display: grid;
   gap: 5px;
-  width: min(320px, 38vw);
+  width: 320px;
   max-height: 116px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 8px;
@@ -2778,62 +2780,6 @@ button {
     --game-stage-chat-min-height: 160px;
     --game-stage-frame-padding: 8px;
     grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .game-stage-header {
-    left: 14px;
-    right: 14px;
-    top: 12px;
-  }
-
-  .game-character-layer {
-    inset: 40px 14px 34px;
-  }
-
-  .game-character {
-    width: min(38%, 220px);
-    height: 80%;
-  }
-
-  .game-stage-footer {
-    left: 14px;
-    right: 14px;
-    bottom: 12px;
-  }
-
-  .game-stage-overflow {
-    right: 14px;
-    bottom: 68px;
-  }
-
-  .stage-narration-panel {
-    top: 58px;
-    left: 14px;
-    width: min(300px, calc(100% - 170px));
-    max-height: 104px;
-    padding: 8px 10px;
-  }
-
-  .stage-narration-panel p {
-    font-size: 13px;
-    line-height: 1.42;
-    -webkit-line-clamp: 3;
-  }
-
-  .stage-speech-bubble {
-    bottom: 112px;
-    width: min(300px, 72vw);
-  }
-
-  .scene-minimap-trigger {
-    top: 58px;
-    right: 14px;
-    width: 128px;
-    padding: 8px;
-  }
-
-  .scene-minimap-svg {
-    height: 70px;
   }
 
   .scene-map-modal {
