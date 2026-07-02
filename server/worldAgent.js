@@ -119,8 +119,6 @@ async function runWorldAgentTaskInternal(input, handlers) {
   const runId = createAgentRun(prompt);
   const steps = [];
   const maxSteps = normalizeMaxSteps(input.maxSteps);
-  let visibleAnswer = '';
-  let assistantConversationAnswer = '';
   const requestLog = { entries: [] };
   const baseContextEvents = Array.isArray(input.contextEvents)
     ? input.contextEvents
@@ -131,8 +129,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
 
   try {
     const state = {
-      visibleAnswer,
-      assistantConversationAnswer,
+      visibleAnswer: '',
+      assistantText: '',
       stepIndex: 1,
       modelTranscript: [],
     };
@@ -205,9 +203,9 @@ async function runLocalFallbackToolPlanningLoop({
   return await finishSuccessfulRun({
     runId,
     steps,
-    seedAnswer: state.visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
     visibleAnswer: state.visibleAnswer,
-    conversationAnswer: state.assistantConversationAnswer,
+    assistantText: state.assistantText,
+    fallbackText: state.visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
     requestLog,
     handlers,
     signal: input.signal,
@@ -299,14 +297,12 @@ async function runNativeToolPlanningLoop({
       return await finishSuccessfulRun({
         runId,
         steps,
-        seedAnswer: '',
         visibleAnswer: state.visibleAnswer,
-        conversationAnswer: state.assistantConversationAnswer,
+        assistantText: state.assistantText,
         requestLog,
         modelTranscript: state.modelTranscript,
         handlers,
         signal: input.signal,
-        allowEmptyAnswer: Boolean(state.visibleAnswer),
       });
     }
 
@@ -359,9 +355,9 @@ async function runNativeToolPlanningLoop({
   return await finishSuccessfulRun({
     runId,
     steps,
-    seedAnswer: state.visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
     visibleAnswer: state.visibleAnswer,
-    conversationAnswer: state.assistantConversationAnswer,
+    assistantText: state.assistantText,
+    fallbackText: state.visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
     requestLog,
     modelTranscript: state.modelTranscript,
     handlers,
@@ -425,9 +421,9 @@ async function applyExecutedAgentTool({
       response: await finishSuccessfulRun({
         runId,
         steps,
-        seedAnswer: result.error || '发言失败。',
         visibleAnswer: state.visibleAnswer,
-        conversationAnswer: state.assistantConversationAnswer,
+        assistantText: state.assistantText,
+        fallbackText: result.error || '发言失败。',
         requestLog,
         modelTranscript: state.modelTranscript,
         handlers,
@@ -459,9 +455,9 @@ async function applyExecutedAgentTool({
       response: await finishSuccessfulRun({
         runId,
         steps,
-        seedAnswer: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
         visibleAnswer: state.visibleAnswer,
-        conversationAnswer: state.assistantConversationAnswer,
+        assistantText: state.assistantText,
+        fallbackText: `工具连续失败，已停止本轮操作：${result.error || '未知错误'}。`,
         requestLog,
         modelTranscript: state.modelTranscript,
         handlers,
@@ -549,7 +545,7 @@ async function appendAssistantVisibleText({ text, runId, state, handlers, signal
   const content = String(text || '').trim();
   if (!content) return;
   state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
-  state.assistantConversationAnswer = appendVisibleAnswer(state.assistantConversationAnswer, content);
+  state.assistantText = appendVisibleAnswer(state.assistantText, content);
   handlers.onAssistantTextStart?.({ runId });
   await streamTextDeltas(content, handlers.onAssistantTextDelta, signal);
 }
@@ -568,33 +564,35 @@ function formatAssistantVisibleText(message, thinkingMode) {
 async function finishSuccessfulRun({
   runId,
   steps,
-  seedAnswer,
   visibleAnswer,
-  conversationAnswer,
+  assistantText = '',
+  fallbackText = '',
   requestLog,
   modelTranscript = [],
   handlers,
   signal,
-  allowEmptyAnswer = false,
-  persistAssistantConversation = true,
 }) {
   let answer = String(visibleAnswer || '').trim();
-  const finalText = String(seedAnswer || '').trim();
+  let assistantConversationText = String(assistantText || '').trim();
+  const finalText = String(fallbackText || '').trim();
 
   if (finalText) {
     answer = appendVisibleAnswer(answer, finalText);
+    assistantConversationText = appendVisibleAnswer(assistantConversationText, finalText);
     handlers.onAssistantTextStart?.({ runId });
     await streamTextDeltas(finalText, handlers.onAssistantTextDelta, signal);
   }
 
-  if (!answer && !allowEmptyAnswer) {
+  if (!answer) {
+    const emptyAnswer = '本轮没有生成可见回复。';
+    answer = appendVisibleAnswer(answer, emptyAnswer);
+    assistantConversationText = appendVisibleAnswer(assistantConversationText, emptyAnswer);
     handlers.onAssistantTextStart?.({ runId });
-    answer = await streamFallbackAnswer('本轮没有生成可见回复。', handlers.onAssistantTextDelta, signal);
+    await streamTextDeltas(emptyAnswer, handlers.onAssistantTextDelta, signal);
   }
 
-  const conversationText = conversationAnswer === undefined ? answer : String(conversationAnswer || '').trim();
-  if (persistAssistantConversation && conversationText) {
-    addConversation('assistant', null, '世界 Agent', conversationText);
+  if (assistantConversationText) {
+    addConversation('assistant', null, '世界 Agent', assistantConversationText);
   }
   finishAgentRun(runId, 'completed', answer, null);
   addEvent('agent.finished', null, null, { summary: answer, stepCount: steps.length });
@@ -1119,12 +1117,6 @@ function logModelMessage(message) {
     ...(Array.isArray(message.tool_calls) ? { toolCalls: summarizeNativeToolCalls(message.tool_calls) } : {}),
     ...(typeof message.reasoning_content === 'string' ? { reasoningContentLength: message.reasoning_content.length } : {}),
   };
-}
-
-async function streamFallbackAnswer(seedAnswer, onDelta, signal) {
-  const answer = String(seedAnswer || '完成。');
-  await streamTextDeltas(answer, onDelta, signal);
-  return answer;
 }
 
 async function streamTextDeltas(text, onDelta, signal) {
