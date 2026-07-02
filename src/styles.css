@@ -1608,6 +1608,15 @@ button {
   background: rgba(8, 18, 31, 0.74);
 }
 
+.scene-minimap-trigger.readonly {
+  cursor: default;
+}
+
+.scene-minimap-trigger.readonly:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(7, 13, 21, 0.62);
+}
+
 .scene-minimap-title {
   display: flex;
   align-items: center;
@@ -1969,6 +1978,31 @@ button {
 .game-view .thread-scroll {
   background: rgba(255, 255, 255, 0.62);
   padding-top: 18px;
+}
+
+.stage-only-root {
+  --game-stage-base-width: 1280px;
+  --game-stage-base-height: 720px;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  place-items: center;
+  background: transparent;
+}
+
+.stage-only-root .game-stage-frame {
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.stage-only-root .game-stage {
+  box-shadow: none;
 }
 
 .thread-scroll {

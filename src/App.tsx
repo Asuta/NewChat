@@ -21,6 +21,7 @@ import {
   stripReasoningFromConversations,
   titleFromMessage,
 } from './lib/chat';
+import { publishStageSnapshot, writeStageSourceHeartbeat } from './lib/stageSync';
 import type {
   AgentStep,
   ExecuteWorldActionResponse,
@@ -166,6 +167,31 @@ export default function App() {
     void refreshPresentationStage();
     void refreshWorldMap();
   }, [world]);
+
+  useEffect(() => {
+    writeStageSourceHeartbeat();
+    const heartbeatTimer = window.setInterval(writeStageSourceHeartbeat, 2_000);
+    return () => window.clearInterval(heartbeatTimer);
+  }, []);
+
+  useEffect(() => {
+    publishStageSnapshot({
+      stage: presentationStage,
+      worldMap,
+      activeStageSpeech,
+      activeStageNarration,
+      isLoading: isPresentationLoading,
+      isWorldMapLoading,
+      updatedAt: Date.now(),
+    });
+  }, [
+    presentationStage,
+    worldMap,
+    activeStageSpeech,
+    activeStageNarration,
+    isPresentationLoading,
+    isWorldMapLoading,
+  ]);
 
   function createNewChat() {
     if (isCompressing) return;

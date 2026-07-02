@@ -6,6 +6,7 @@ interface SceneMiniMapProps {
   worldMap: WorldMapState | null;
   isLoading: boolean;
   isNavigationDisabled: boolean;
+  isInteractive?: boolean;
   onEnterScene: (sceneId: string) => void;
 }
 
@@ -25,6 +26,7 @@ export function SceneMiniMap({
   worldMap,
   isLoading,
   isNavigationDisabled,
+  isInteractive = true,
   onEnterScene,
 }: SceneMiniMapProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -54,21 +56,34 @@ export function SceneMiniMap({
     onEnterScene(selectedNode.scene.id);
   }
 
+  const title = selectedNode?.isCurrent ? selectedNode.scene.name : layout.currentNode?.scene.name || '地图';
+  const triggerContent = (
+    <>
+      <span className="scene-minimap-title">
+        <MapIcon size={15} />
+        <strong>{title}</strong>
+        {isLoading ? <Loader2 className="spin" size={13} /> : isInteractive ? <Maximize2 size={13} /> : null}
+      </span>
+      <MiniMapCanvas layout={layout} />
+    </>
+  );
+
   return (
     <>
+      {!isInteractive ? (
+        <div className="scene-minimap-trigger readonly" aria-label="场景地图预览">
+          {triggerContent}
+        </div>
+      ) : (
       <button
         className="scene-minimap-trigger"
         type="button"
         onClick={() => setIsExpanded(true)}
-        aria-label="展开场景地图"
+          aria-label="展开场景地图"
       >
-        <span className="scene-minimap-title">
-          <MapIcon size={15} />
-          <strong>{selectedNode?.isCurrent ? selectedNode.scene.name : layout.currentNode?.scene.name || '地图'}</strong>
-          {isLoading ? <Loader2 className="spin" size={13} /> : <Maximize2 size={13} />}
-        </span>
-        <MiniMapCanvas layout={layout} />
+          {triggerContent}
       </button>
+      )}
 
       {isExpanded ? (
         <div className="scene-map-modal" role="dialog" aria-modal="true" aria-label="场景地图">
