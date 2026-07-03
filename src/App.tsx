@@ -20,7 +20,14 @@ import {
   saveConversations,
   titleFromMessage,
 } from './lib/chat';
-import { publishStageSnapshot, writeStageSourceHeartbeat } from './lib/stageSync';
+import {
+  STAGE_COMMAND_ACK_TIMEOUT_MS,
+  publishStageCommandAck,
+  publishStageSnapshot,
+  subscribeStageCommand,
+  writeStageSourceHeartbeat,
+  type StageLogEntry,
+} from './lib/stageSync';
 import type {
   AgentStep,
   ExecuteWorldActionResponse,
@@ -65,6 +72,10 @@ interface SendMessageOptions {
   pendingSceneTransition?: PendingSceneTransition;
 }
 
+interface QueuedMessage {
+  streamPromise: Promise<void>;
+}
+
 type AgentTaskRole = 'user' | 'system';
 
 export default function App() {
@@ -96,6 +107,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
+  const queueMessageRef = useRef<((content: string) => QueuedMessage | null) | null>(null);
+  const handledStageCommandIdsRef = useRef<Set<string>>(new Set());
   const resetDialogRef = useRef<HTMLElement | null>(null);
   const resetCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -173,21 +186,53 @@ export default function App() {
     return () => window.clearInterval(heartbeatTimer);
   }, []);
 
+  useEffect(() => subscribeStageCommand((command) => {
+    const content = command.content.trim();
+    const expiresAt = command.expiresAt || command.createdAt + STAGE_COMMAND_ACK_TIMEOUT_MS;
+    if (!content || handledStageCommandIdsRef.current.has(command.id)) return;
+    if (expiresAt <= Date.now()) return;
+
+    handledStageCommandIdsRef.current.add(command.id);
+    const queuedMessage = queueMessageRef.current?.(content) || null;
+    if (!queuedMessage) {
+      publishStageCommandAck(command.id, 'rejected', 'busy');
+      if (handledStageCommandIdsRef.current.size > 80) {
+        handledStageCommandIdsRef.current = new Set([...handledStageCommandIdsRef.current].slice(-40));
+      }
+      return;
+    }
+
+    publishStageCommandAck(command.id, 'accepted');
+    void queuedMessage.streamPromise;
+    if (handledStageCommandIdsRef.current.size > 80) {
+      handledStageCommandIdsRef.current = new Set([...handledStageCommandIdsRef.current].slice(-40));
+    }
+  }), []);
+
   useEffect(() => {
     publishStageSnapshot({
       stage: presentationStage,
+      world,
       worldMap,
       activeStageSpeech,
       activeStageNarration,
+      recentLogEntries: activeConversation ? buildStageLogEntries(activeConversation.messages) : [],
+      isActionPending: isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy,
       isLoading: isPresentationLoading,
       isWorldMapLoading,
       updatedAt: Date.now(),
     });
   }, [
     presentationStage,
+    world,
     worldMap,
     activeStageSpeech,
     activeStageNarration,
+    activeConversation,
+    isStreaming,
+    isCompressing,
+    isFixedContextSaving,
+    isSaveDataBusy,
     isPresentationLoading,
     isWorldMapLoading,
   ]);
@@ -217,10 +262,10 @@ export default function App() {
     updateConversation(activeConversation.id, updater);
   }
 
-  async function sendMessage(content: string, options: SendMessageOptions = {}) {
+  function queueMessage(content: string, options: SendMessageOptions = {}): QueuedMessage | null {
     const latestActiveConversation =
       conversationsRef.current.find((conversation) => conversation.id === activeId) || conversationsRef.current[0];
-    if (!latestActiveConversation || isStreaming || isCompressing || isFixedContextSaving) return;
+    if (!latestActiveConversation || isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy) return null;
 
     const userMessage = createMessage('user', content);
     const assistantMessage = createMessage('assistant', '', 'streaming');
@@ -235,14 +280,24 @@ export default function App() {
       messages: nextMessages,
     }));
 
-    await streamAgentResponse({
+    const streamPromise = streamAgentResponse({
       conversationId: latestActiveConversation.id,
       assistantMessageId: assistantMessage.id,
       prompt: content,
       contextEvents,
       pendingSceneTransition: options.pendingSceneTransition,
     });
+    return { streamPromise };
   }
+
+  async function sendMessage(content: string, options: SendMessageOptions = {}) {
+    const queuedMessage = queueMessage(content, options);
+    if (!queuedMessage) return false;
+    await queuedMessage.streamPromise;
+    return true;
+  }
+
+  queueMessageRef.current = queueMessage;
 
   async function streamAgentResponse({
     conversationId,
@@ -1419,6 +1474,26 @@ function getCompletedSceneTransition(
     toSceneId: resultScene?.id || pendingTransition.toSceneId,
     toSceneName: resultScene?.name || pendingTransition.toSceneName,
   };
+}
+
+function buildStageLogEntries(messages: ChatMessage[]): StageLogEntry[] {
+  return messages
+    .filter((message) => message.role !== 'system' && message.content.trim())
+    .slice(-8)
+    .map((message) => {
+      const role: StageLogEntry['role'] = message.role === 'user'
+        ? 'player'
+        : message.kind === 'npc-speech'
+          ? 'npc'
+          : message.kind === 'agent-step'
+            ? 'system'
+            : 'dm';
+      return {
+        id: message.id,
+        role,
+        text: message.content.trim().replace(/\s+/g, ' ').slice(0, 72),
+      };
+    });
 }
 
 function getStepResultScene(step: AgentStep): { id?: string; name?: string } | null {
