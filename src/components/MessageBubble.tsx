@@ -46,6 +46,24 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
     );
   }
 
+  if (message.kind === 'assistant-reasoning') {
+    return (
+      <article className="message-row assistant reasoning-message-row">
+        <div className="assistant-avatar" aria-hidden="true">
+          <Bot size={20} />
+        </div>
+
+        <details className="message-bubble reasoning-bubble" onToggle={(event) => onLayoutChange?.(event.currentTarget)}>
+          <summary className="reasoning-summary">
+            <span>思考过程</span>
+            <time>{formatTime(message.createdAt)}</time>
+          </summary>
+          <MarkdownContent content={message.content || '正在思考...'} />
+        </details>
+      </article>
+    );
+  }
+
   if (message.kind === 'npc-speech') {
     return (
       <article className="message-row npc" aria-label={`${message.npcSpeech?.name || 'NPC'} 发言`}>

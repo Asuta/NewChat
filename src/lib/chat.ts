@@ -358,7 +358,7 @@ function toModelMessages(messages: ChatMessage[], agentStepLedger: AgentStepLedg
         content: formatAgentStepsForContext(message.agentSteps, message.agentRunId),
       });
     }
-    if (message.kind === 'npc-speech') {
+    if (message.kind === 'npc-speech' || message.kind === 'assistant-reasoning') {
       return output;
     }
     output.push({ role: message.role, content: message.content });
@@ -404,7 +404,7 @@ function toContextEvents(
     if (message.role === 'assistant' && message.agentSteps?.length) {
       output.push(...createAgentStepContextEvents(message.agentSteps, message.agentRunId));
     }
-    if (message.kind === 'npc-speech') {
+    if (message.kind === 'npc-speech' || message.kind === 'assistant-reasoning') {
       return output;
     }
     output.push({

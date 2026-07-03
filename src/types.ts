@@ -9,7 +9,7 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
-  kind?: 'scene-transition' | 'action-result' | 'npc-speech' | 'agent-step';
+  kind?: 'scene-transition' | 'action-result' | 'npc-speech' | 'agent-step' | 'assistant-reasoning';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
@@ -382,6 +382,15 @@ export type WorldAgentStreamEvent =
       type: 'assistant_text_start';
       runId?: number;
       stepIndex?: number;
+    }
+  | {
+      type: 'assistant_reasoning_start';
+      runId?: number;
+      stepIndex?: number;
+    }
+  | {
+      type: 'assistant_reasoning_delta';
+      delta: string;
     }
   | {
       type: 'assistant_text_delta';

@@ -378,6 +378,39 @@ export default function App() {
           return;
         }
 
+        if (event.type === 'assistant_reasoning_start') {
+          if (hasVisibleAssistantContent || activeAssistantContent) {
+            const nextMessage = {
+              ...createMessage('assistant', '', 'streaming'),
+              kind: 'assistant-reasoning' as const,
+              agentRunId: runId,
+            };
+            activeAssistantMessageId = nextMessage.id;
+            activeAssistantContent = '';
+            runAssistantMessageIds.push(nextMessage.id);
+            appendAssistantMessage(conversationId, nextMessage);
+          } else {
+            activeAssistantMessageId = assistantMessageId;
+            activeAssistantContent = '';
+            patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
+              ...message,
+              kind: 'assistant-reasoning',
+              content: '',
+              status: 'streaming',
+              agentRunId: runId,
+            }));
+          }
+          return;
+        }
+
+        if (event.type === 'assistant_reasoning_delta') {
+          activeAssistantContent += event.delta;
+          updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
+            agentRunId: runId,
+          });
+          return;
+        }
+
         if (event.type === 'assistant_text_start') {
           if (hasVisibleAssistantContent || activeAssistantContent) {
             const nextMessage = {
@@ -1403,6 +1436,16 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
     };
+  }
+  if (eventType === 'assistant_reasoning_start') {
+    return {
+      type: 'assistant_reasoning_start',
+      runId: typeof payload.runId === 'number' ? payload.runId : undefined,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+    };
+  }
+  if (eventType === 'assistant_reasoning_delta') {
+    return { type: 'assistant_reasoning_delta', delta: String(payload.delta || '') };
   }
   if (eventType === 'assistant_text_delta') {
     return { type: 'assistant_text_delta', delta: String(payload.delta || '') };

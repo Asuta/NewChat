@@ -2706,6 +2706,41 @@ button {
   background: #fff6f5;
 }
 
+.reasoning-bubble {
+  overflow: hidden;
+  background: rgba(248, 250, 252, 0.92);
+  box-shadow: none;
+}
+
+.reasoning-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 42px;
+  padding: 0 18px;
+  color: #536174;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.reasoning-summary time {
+  flex: 0 0 auto;
+  color: #7a8596;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.reasoning-bubble .markdown-content {
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 16px;
+  color: #435063;
+  font-size: 15px;
+}
+
 .message-text,
 .markdown-content {
   margin: 0;

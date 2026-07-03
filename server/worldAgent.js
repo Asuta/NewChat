@@ -284,7 +284,8 @@ async function runNativeToolPlanningLoop({
       ? assistantMessage.reasoning_content.length
       : 0;
     logEntry.toolCalls = summarizeNativeToolCalls(assistantMessage.tool_calls);
-    const assistantVisibleParts = getAssistantVisibleParts(assistantMessage, thinkingMode);
+    const assistantReasoningText = getAssistantReasoningText(assistantMessage, thinkingMode);
+    const assistantVisibleParts = getAssistantVisibleParts(assistantMessage);
     const assistantVisibleText = assistantVisibleParts.map((part) => part.text).filter(Boolean).join('\n\n');
 
     if (!assistantMessage.tool_calls.length) {
@@ -293,6 +294,12 @@ async function runNativeToolPlanningLoop({
         messages.push(finalTranscript);
         state.modelTranscript.push(finalTranscript);
       }
+      await appendAssistantReasoningText({
+        text: assistantReasoningText,
+        runId,
+        handlers,
+        signal: input.signal,
+      });
       await appendAssistantVisibleText({
         parts: assistantVisibleParts,
         runId,
@@ -316,6 +323,12 @@ async function runNativeToolPlanningLoop({
     const assistantTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
     messages.push(assistantTranscript);
     state.modelTranscript.push(assistantTranscript);
+    await appendAssistantReasoningText({
+      text: assistantReasoningText,
+      runId,
+      handlers,
+      signal: input.signal,
+    });
     await appendAssistantVisibleText({
       parts: assistantVisibleParts,
       runId,
@@ -494,6 +507,13 @@ function compactToolResultForAgentStep(tool, result) {
   return result;
 }
 
+async function appendAssistantReasoningText({ text, runId, handlers, signal }) {
+  const content = String(text || '').trim();
+  if (!content) return;
+  handlers.onAssistantReasoningStart?.({ runId });
+  await streamTextDeltas(content, handlers.onAssistantReasoningDelta, signal);
+}
+
 async function appendAssistantVisibleText({ parts, text, runId, state, handlers, signal }) {
   const visibleParts = Array.isArray(parts) ? parts : [{ text, parseNpcSpeech: true }];
 
@@ -596,17 +616,14 @@ function stripNpcSpeechTags(text) {
     .replace(/<\/npc-speech\s*>/gi, '');
 }
 
-function getAssistantVisibleParts(message, thinkingMode) {
-  const content = String(message.content || '').trim();
-  if (thinkingMode !== 'enabled') {
-    return content ? [{ text: content, parseNpcSpeech: true }] : [];
-  }
+function getAssistantReasoningText(message, thinkingMode) {
+  if (thinkingMode !== 'enabled') return '';
+  return String(message.reasoning_content || '').trim();
+}
 
-  const reasoning = String(message.reasoning_content || '').trim();
-  return [
-    reasoning ? { text: `思考：\n${reasoning}`, parseNpcSpeech: false } : null,
-    content ? { text: `正文：\n${content}`, parseNpcSpeech: true } : null,
-  ].filter(Boolean);
+function getAssistantVisibleParts(message) {
+  const content = String(message.content || '').trim();
+  return content ? [{ text: content, parseNpcSpeech: true }] : [];
 }
 
 async function finishSuccessfulRun({
