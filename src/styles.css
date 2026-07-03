@@ -2734,6 +2734,25 @@ button {
   font-weight: 500;
 }
 
+.reasoning-summary-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reasoning-spinner {
+  flex: 0 0 auto;
+  color: #66758a;
+  animation: reasoning-spin 0.9s linear infinite;
+}
+
+@keyframes reasoning-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .reasoning-bubble .markdown-content {
   border-top: 1px solid rgba(148, 163, 184, 0.22);
   padding-top: 16px;

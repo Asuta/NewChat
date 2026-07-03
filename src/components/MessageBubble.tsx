@@ -1,4 +1,4 @@
-import { Bot, CheckCheck, Copy, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
+import { Bot, CheckCheck, Copy, LoaderCircle, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
@@ -55,7 +55,12 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
 
         <details className="message-bubble reasoning-bubble" onToggle={(event) => onLayoutChange?.(event.currentTarget)}>
           <summary className="reasoning-summary">
-            <span>思考过程</span>
+            <span className="reasoning-summary-label">
+              {message.status === 'streaming' ? (
+                <LoaderCircle className="reasoning-spinner" size={15} aria-hidden="true" />
+              ) : null}
+              <span>思考过程</span>
+            </span>
             <time>{formatTime(message.createdAt)}</time>
           </summary>
           <MarkdownContent content={message.content || '正在思考...'} />
