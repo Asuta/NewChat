@@ -1,5 +1,5 @@
 import { Bot, CircleAlert } from 'lucide-react';
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Conversation, FixedContext } from '../types';
 import { AgentStepTimelineItem } from './AgentStepsTimelineItem';
 import { ContextSummaryBar } from './ContextSummaryBar';
@@ -20,6 +20,11 @@ export function ChatThread({ conversation, error, fixedContext, onOpenSettings }
   const shouldStickToBottomRef = useRef(true);
   const summary = conversation.contextSummary;
   const lastMessage = messages[messages.length - 1];
+  const previousThreadStateRef = useRef({
+    conversationId: conversation.id,
+    lastMessageId: lastMessage?.id ?? null,
+    messageCount: messages.length,
+  });
 
   function scrollToBottom() {
     const thread = threadRef.current;
@@ -55,9 +60,36 @@ export function ChatThread({ conversation, error, fixedContext, onOpenSettings }
     window.setTimeout(preserveAnchor, 500);
   }
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [error, fixedContext.updatedAt, lastMessage?.content, lastMessage?.status, messages.length, summary?.compressedAt]);
+  useLayoutEffect(() => {
+    const previousThreadState = previousThreadStateRef.current;
+    const isConversationChange = previousThreadState.conversationId !== conversation.id;
+    const isNewMessage =
+      messages.length > previousThreadState.messageCount ||
+      (messages.length === previousThreadState.messageCount && lastMessage?.id !== previousThreadState.lastMessageId);
+    const shouldFollowNewUserMessage = isNewMessage && lastMessage?.role === 'user';
+    const shouldScrollToBottom =
+      isConversationChange || shouldStickToBottomRef.current || shouldFollowNewUserMessage;
+
+    if (shouldScrollToBottom) {
+      scrollToBottom();
+      shouldStickToBottomRef.current = true;
+    }
+
+    previousThreadStateRef.current = {
+      conversationId: conversation.id,
+      lastMessageId: lastMessage?.id ?? null,
+      messageCount: messages.length,
+    };
+  }, [
+    conversation.id,
+    error,
+    fixedContext.updatedAt,
+    lastMessage?.content,
+    lastMessage?.id,
+    lastMessage?.status,
+    messages.length,
+    summary?.compressedAt,
+  ]);
 
   useEffect(() => {
     const thread = threadRef.current;
