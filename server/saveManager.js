@@ -13,13 +13,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
-  SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
-  SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
-  SEVEN_DAY_CROWN_PLAYER_PROFILE_ID,
-  getSevenDayCrownElenaStats,
-  getSevenDayCrownHollowKnightStats,
-  getSevenDayCrownPlayerStats,
-  seedSevenDayCrownWorld,
+  MA_DASHUAI_FAN_DEBIAO_PROFILE_ID,
+  MA_DASHUAI_NIU_ER_PROFILE_ID,
+  MA_DASHUAI_PLAYER_PROFILE_ID,
+  getMaDashuaiFanDebiaoStats,
+  getMaDashuaiNiuErStats,
+  getMaDashuaiPlayerStats,
+  seedMaDashuaiWorld,
 } from './defaultWorld.js';
 
 export const DATA_DIR = resolve(process.cwd(), 'data');
@@ -94,52 +94,55 @@ export function ensureTemplatePlayableDefaults() {
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
-    upsertTemplateEntity(database, 'item_crown_mark', 'item', '王冠印记');
-    upsertTemplateEntity(database, 'item_iron_sword', 'item', '礼拜堂铁剑');
-    setTemplateAliases(database, 'player', ['玩家', '殿下', '第四王选者', '无记忆继承者']);
-    setTemplateAliases(database, 'item_iron_sword', ['铁剑', '长剑', 'Iron Sword']);
+    upsertTemplateEntity(database, 'item_rural_bag', 'item', '进城包袱');
+    upsertTemplateEntity(database, 'item_fan_address', 'item', '范德彪地址纸条');
+    upsertTemplateEntity(database, 'item_bride_price_debt', 'item', '彩礼债');
+    setTemplateAliases(database, 'player', ['玩家', '大帅', '老马', '马大叔', '马家堡子马大帅']);
+    setTemplateAliases(database, 'item_fan_address', ['地址', '纸条', '范德彪地址']);
     mergeTemplateComponent(database, 'player', 'identity', {
-      role: '失忆王选者',
-      description: '玩家从灰烬礼拜堂的黑石棺中醒来，手背带着发光的王冠印记。',
-      class: 'fighter',
-      level: 1,
+      role: '进城找女儿的农村父亲',
+      description: '马大帅从马家堡子进城寻找逃婚的女儿小翠。',
+      class: 'ordinary_person',
+      campaignRole: 'protagonist',
     });
-    mergeTemplateStats(database, 'player', getSevenDayCrownPlayerStats(), SEVEN_DAY_CROWN_PLAYER_PROFILE_ID);
+    mergeTemplateStats(database, 'player', getMaDashuaiPlayerStats(), MA_DASHUAI_PLAYER_PROFILE_ID);
     mergeTemplateComponent(database, 'player', 'status', {
-      state: 'healthy',
-      label: '刚刚苏醒',
-      description: '玩家刚从黑石棺中醒来，失去大部分记忆，但身体仍能行动。',
+      state: 'active',
+      label: '刚进城',
+      description: '马大帅正在找小翠和范德彪。',
       canAct: true,
     });
     mergeTemplateInventory(database, 'player', {
-      items: ['item_crown_mark', 'item_iron_sword'],
-      equippedWeaponId: 'item_iron_sword',
+      items: ['item_rural_bag', 'item_fan_address', 'item_bride_price_debt'],
+      equippedWeaponId: '',
     });
-    mergeTemplateComponent(database, 'item_crown_mark', 'identity', {
-      role: 'key_item',
-      description: '玩家手背上的发光王冠印记。它证明玩家拥有王选资格，也会在玩家迷路时指向下一条主线线索。',
-      effect: { type: 'quest_guidance', targetQuestId: 'quest_main' },
+    mergeTemplateComponent(database, 'item_rural_bag', 'identity', {
+      role: 'starting_item',
+      description: '马大帅进城时背的旧包袱。',
     });
-    mergeTemplateComponent(database, 'item_iron_sword', 'identity', {
-      role: 'weapon',
-      description: '灰烬礼拜堂中拾得的旧铁剑，剑柄刻着白狮纹章。适合低等级近战判定。',
-      weaponCategory: 'martial melee weapon',
-      damageDice: '1d8',
-      versatileDamageDice: '1d10',
-      damageType: 'slashing',
-      attackAbility: 'strength',
-      proficient: true,
+    mergeTemplateComponent(database, 'item_fan_address', 'identity', {
+      role: 'clue',
+      description: '写着范德彪地址的纸条，是找到小翠的重要线索。',
+      effect: { type: 'quest_guidance', targetQuestId: 'quest_find_xiaocui' },
     });
-    upsertTemplateRelationship(database, 'player', 'item_crown_mark', 'ownership', null, {
+    mergeTemplateComponent(database, 'item_bride_price_debt', 'identity', {
+      role: 'debt',
+      description: '小翠逃婚留下的彩礼债。',
+    });
+    upsertTemplateRelationship(database, 'player', 'item_rural_bag', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家手背带着王冠印记。',
+      summary: '马大帅背着进城包袱。',
     });
-    upsertTemplateRelationship(database, 'player', 'item_iron_sword', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_fan_address', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。',
+      summary: '马大帅带着范德彪地址纸条。',
     });
-    mergeTemplateStats(database, 'character_elena', getSevenDayCrownElenaStats(), SEVEN_DAY_CROWN_ELENA_PROFILE_ID);
-    mergeTemplateStats(database, 'character_hollow_knight', getSevenDayCrownHollowKnightStats(), SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID);
+    upsertTemplateRelationship(database, 'player', 'item_bride_price_debt', 'ownership', null, {
+      source: 'baseline',
+      summary: '马大帅背着小翠逃婚留下的彩礼债。',
+    });
+    mergeTemplateStats(database, 'character_fan_debiao', getMaDashuaiFanDebiaoStats(), MA_DASHUAI_FAN_DEBIAO_PROFILE_ID);
+    mergeTemplateStats(database, 'character_niu_er', getMaDashuaiNiuErStats(), MA_DASHUAI_NIU_ER_PROFILE_ID);
     database.exec('COMMIT;');
   } catch (error) {
     try {
@@ -172,7 +175,7 @@ export function restoreTemplateFromFactoryDefaults() {
     database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     createWorldDbSchema(database);
     database.exec('BEGIN;');
-    seedSevenDayCrownWorld({
+    seedMaDashuaiWorld({
       upsertEntity: (id, kind, name) => upsertTemplateEntity(database, id, kind, name),
       setAliases: (entityId, aliases) => setTemplateAliases(database, entityId, aliases),
       upsertComponent: (entityId, type, data) => writeTemplateComponent(database, entityId, type, data),

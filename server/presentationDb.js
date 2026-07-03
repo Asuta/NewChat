@@ -10,27 +10,39 @@ export const PRESENTATION_DB_FILE = join(PRESENTATION_DIR, 'presentation.sqlite'
 const nowSql = "datetime('now')";
 const FALLBACK_CHARACTER_ASSET_ID = 'asset_character_placeholder';
 
-const SEVEN_DAY_CROWN_SCENE_ASSETS = [
-  ['scene_ash_chapel', 'asset_scene_ash_chapel_backdrop', 'scenes/scene-scene_ash_chapel-backdrop.png'],
-  ['scene_outer_gate', 'asset_scene_outer_gate_backdrop', 'scenes/scene-scene_outer_gate-backdrop.png'],
-  ['scene_registry', 'asset_scene_registry_backdrop', 'scenes/scene-scene_registry-backdrop.png'],
-  ['scene_knight_hall', 'asset_scene_knight_hall_backdrop', 'scenes/scene-scene_knight_hall-backdrop.png'],
-  ['scene_sanctum', 'asset_scene_sanctum_backdrop', 'scenes/scene-scene_sanctum-backdrop.png'],
-  ['scene_people_theater', 'asset_scene_people_theater_backdrop', 'scenes/scene-scene_people_theater-backdrop.png'],
-  ['scene_blackstone_tomb', 'asset_scene_blackstone_tomb_backdrop', 'scenes/scene-scene_blackstone_tomb-backdrop.png'],
-  ['scene_mirror_archive', 'asset_scene_mirror_archive_backdrop', 'scenes/scene-scene_mirror_archive-backdrop.png'],
-  ['scene_crown_hall', 'asset_scene_crown_hall_backdrop', 'scenes/scene-scene_crown_hall-backdrop.png'],
+const MA_DASHUAI_SCENE_ASSETS = [
+  ['scene_majia_baozi', 'asset_scene_majia_baozi_backdrop', 'scenes/scene-scene_majia_baozi-backdrop.png'],
+  ['scene_bus_station', 'asset_scene_bus_station_backdrop', 'scenes/scene-scene_bus_station-backdrop.png'],
+  ['scene_city_street', 'asset_scene_city_street_backdrop', 'scenes/scene-scene_city_street-backdrop.png'],
+  ['scene_victoria_plaza', 'asset_scene_victoria_plaza_backdrop', 'scenes/scene-scene_victoria_plaza-backdrop.png'],
+  ['scene_security_room', 'asset_scene_security_room_backdrop', 'scenes/scene-scene_security_room-backdrop.png'],
+  ['scene_dance_backstage', 'asset_scene_dance_backstage_backdrop', 'scenes/scene-scene_dance_backstage-backdrop.png'],
+  ['scene_yufen_room', 'asset_scene_yufen_room_backdrop', 'scenes/scene-scene_yufen_room-backdrop.png'],
+  ['scene_hospital', 'asset_scene_hospital_backdrop', 'scenes/scene-scene_hospital-backdrop.png'],
+  ['scene_guiying_diner', 'asset_scene_guiying_diner_backdrop', 'scenes/scene-scene_guiying_diner-backdrop.png'],
+  ['scene_labor_market', 'asset_scene_labor_market_backdrop', 'scenes/scene-scene_labor_market-backdrop.png'],
+  ['scene_su_grandma_home', 'asset_scene_su_grandma_home_backdrop', 'scenes/scene-scene_su_grandma_home-backdrop.png'],
+  ['scene_fishing_park', 'asset_scene_fishing_park_backdrop', 'scenes/scene-scene_fishing_park-backdrop.png'],
+  ['scene_dream_clinic', 'asset_scene_dream_clinic_backdrop', 'scenes/scene-scene_dream_clinic-backdrop.png'],
+  ['scene_wedding_hall', 'asset_scene_wedding_hall_backdrop', 'scenes/scene-scene_wedding_hall-backdrop.png'],
 ];
 
-const SEVEN_DAY_CROWN_CHARACTER_ASSETS = [
-  ['character_elena', 'asset_character_elena_idle', 'characters/npc-character_elena-idle.png'],
-  ['character_rowan', 'asset_character_rowan_idle', 'characters/npc-character_rowan-idle.png'],
-  ['character_milo', 'asset_character_milo_idle', 'characters/npc-character_milo-idle.png'],
-  ['character_aldric', 'asset_character_aldric_idle', 'characters/npc-character_aldric-idle.png'],
-  ['character_eve', 'asset_character_eve_idle', 'characters/npc-character_eve-idle.png'],
-  ['character_kaen', 'asset_character_kaen_idle', 'characters/npc-character_kaen-idle.png'],
-  ['character_hollow_knight', 'asset_character_hollow_knight_idle', 'characters/npc-character_hollow_knight-idle.png'],
-  ['character_crown_will', 'asset_character_crown_will_idle', 'characters/npc-character_crown_will-idle.png'],
+const MA_DASHUAI_CHARACTER_ASSETS = [
+  ['player', 'asset_character_ma_dashuai_player_idle', 'characters/ma-dashuai-player-idle.png'],
+  ['character_xiaocui', 'asset_character_xiaocui_idle', 'characters/npc-character_xiaocui-idle.png'],
+  ['character_fan_debiao', 'asset_character_fan_debiao_idle', 'characters/npc-character_fan_debiao-idle.png'],
+  ['character_wang_yufen', 'asset_character_wang_yufen_idle', 'characters/npc-character_wang_yufen-idle.png'],
+  ['character_gangzi', 'asset_character_gangzi_idle', 'characters/npc-character_gangzi-idle.png'],
+  ['character_guiying', 'asset_character_guiying_idle', 'characters/npc-character_guiying-idle.png'],
+  ['character_wu_boss', 'asset_character_wu_boss_idle', 'characters/npc-character_wu_boss-idle.png'],
+  ['character_awei', 'asset_character_awei_idle', 'characters/npc-character_awei-idle.png'],
+  ['character_niu_er', 'asset_character_niu_er_idle', 'characters/npc-character_niu_er-idle.png'],
+  ['character_su_grandma', 'asset_character_su_grandma_idle', 'characters/npc-character_su_grandma-idle.png'],
+  ['character_village_chief', 'asset_character_village_chief_idle', 'characters/npc-character_village_chief-idle.png'],
+  ['character_chief_son', 'asset_character_chief_son_idle', 'characters/npc-character_chief_son-idle.png'],
+  ['character_li_ping', 'asset_character_li_ping_idle', 'characters/npc-character_li_ping-idle.png'],
+  ['character_hu_qinghai', 'asset_character_hu_qinghai_idle', 'characters/npc-character_hu_qinghai-idle.png'],
+  ['character_wang_boss', 'asset_character_wang_boss_idle', 'characters/npc-character_wang_boss-idle.png'],
 ];
 
 export function ensurePresentationDb() {
@@ -157,12 +169,12 @@ function seedDefaults(database) {
     metadata: { label: '临时 NPC 默认站位图', fallback: true },
   });
 
-  upsertEntityBinding(database, 'character_elena', FALLBACK_CHARACTER_ASSET_ID, 'auto', 1);
-  seedSevenDayCrownAssets(database);
+  upsertEntityBinding(database, 'player', FALLBACK_CHARACTER_ASSET_ID, 'auto', 1);
+  seedMaDashuaiAssets(database);
 }
 
-function seedSevenDayCrownAssets(database) {
-  for (const [sceneEntityId, assetId, assetPath] of SEVEN_DAY_CROWN_SCENE_ASSETS) {
+function seedMaDashuaiAssets(database) {
+  for (const [sceneEntityId, assetId, assetPath] of MA_DASHUAI_SCENE_ASSETS) {
     if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
     upsertAsset(database, {
       id: assetId,
@@ -178,7 +190,7 @@ function seedSevenDayCrownAssets(database) {
     upsertSceneBinding(database, sceneEntityId, assetId);
   }
 
-  for (const [entityId, assetId, assetPath] of SEVEN_DAY_CROWN_CHARACTER_ASSETS) {
+  for (const [entityId, assetId, assetPath] of MA_DASHUAI_CHARACTER_ASSETS) {
     if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
     upsertAsset(database, {
       id: assetId,

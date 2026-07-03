@@ -3,9 +3,9 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SAVE_DB_FILE } from './saveManager.js';
 import {
-  ensureSevenDayCrownPlayableState,
-  getSevenDayCrownPlayerStats,
-  seedSevenDayCrownWorld,
+  ensureMaDashuaiPlayableState,
+  getMaDashuaiPlayerStats,
+  seedMaDashuaiWorld,
 } from './defaultWorld.js';
 import {
   isEntityKind,
@@ -131,7 +131,7 @@ export function seedWorldIfEmpty() {
   if (Number(row.count) > 0) return;
 
   withTransaction(() => {
-    seedSevenDayCrownWorld({
+    seedMaDashuaiWorld({
       upsertEntity,
       setAliases,
       upsertComponent,
@@ -144,7 +144,7 @@ export function seedWorldIfEmpty() {
 
 export function ensurePlayableCharacterStats() {
   withTransaction(() => {
-    ensureSevenDayCrownPlayableState({
+    ensureMaDashuaiPlayableState({
       getEntity,
       upsertEntity,
       setAliases,
@@ -157,7 +157,7 @@ export function ensurePlayableCharacterStats() {
 }
 
 function getDefaultPlayerStats() {
-  return getSevenDayCrownPlayerStats();
+  return getMaDashuaiPlayerStats();
 }
 
 function applyStatsProfile(entityId, defaults, profileId, preserveKeys = []) {
@@ -568,7 +568,7 @@ export function setCurrentLocation(entityId, sceneId, source = 'world') {
 
 export function getCurrentScene() {
   const playerId = getMeta('playerId', 'player');
-  const sceneId = getCurrentLocationId(playerId) || getMeta('currentSceneId', 'scene_ash_chapel');
+  const sceneId = getCurrentLocationId(playerId) || getMeta('currentSceneId', 'scene_majia_baozi');
   const scene = getEntity(sceneId);
   const sceneComponent = scene ? getComponent(scene.id, 'scene') : null;
   const located = listRelationships({ direction: 'in', entityId: sceneId, type: 'located_in' })
