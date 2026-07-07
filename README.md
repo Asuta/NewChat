@@ -100,10 +100,12 @@ Agent 可用规则工具：
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
 - `enter_scene`：校验出口并切换玩家当前场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。移动实体位置时使用 `set_location` 子操作；普通关系才使用 `set_relationship`。
+- `dm_speak`：输出普通 DM 叙事、动作描写、环境变化、规则结果或说明。
+- `npc_speak`：让某个 NPC 以独立气泡说出纯对白。
 
 配置真实模型时，World Agent 使用 API 原生 `tools/tool_calls/tool` 消息链；模型不再调用工具并返回普通 assistant 内容时，本轮自然结束。DeepSeek 思考模式开启时会在同一轮工具循环内回传 `reasoning_content`；Mock 或缺少模型配置时只使用本地 fallback 规划。
 
-读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 叙事直接使用 assistant 正文，NPC 独立发言使用 `<npc-speech entityId="...">...</npc-speech>` 标签，不再使用顶层 `say` 字段或旧发言工具。标签内只写 NPC 实际说出口的纯对白，`entityId` 必须来自已有实体。NPC 标签只是最终展示协议，不能替代读取、搜索、掷骰、规则裁定或世界数据写入。
+读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 叙事使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段或 `<npc-speech>` 标签。`npc_speak.content` 只写 NPC 实际说出口的纯对白，`npcEntityId` 必须来自已有实体。`dm_speak` / `npc_speak` 只是最终展示工具，不能替代读取、搜索、掷骰、规则裁定或世界数据写入。
 
 前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
 

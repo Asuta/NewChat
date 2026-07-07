@@ -25,19 +25,19 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '当前后端使用 API 原生工具调用模式。',
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
   '只处理最后一条 role=user 的当前任务；更早的 user/assistant/tool 消息只是历史上下文。',
-  '读取、搜索、掷骰、写库、切换场景默认静默；普通叙事、规则结果和说明直接写在 assistant 正文里。',
-  'NPC 实际说出口的直接对白写在 <npc-speech entityId="...">...</npc-speech> 标签里；标签内只写纯对白，标签外写 DM 叙事。',
-  'NPC 标签只是最终展示协议，不是行动协议；它不能替代读取、搜索、掷骰、规则裁定、写库或切换场景工具。',
+  '读取、搜索、掷骰、写库、切换场景默认静默；玩家可见 DM 叙事、规则结果和说明必须通过 dm_speak 工具输出。',
+  'NPC 实际说出口的直接对白必须调用 npc_speak，并且 content 只写 NPC 说出口的话。',
+  'dm_speak 和 npc_speak 只是最终展示工具，不是行动工具；它们不能替代读取、搜索、掷骰、规则裁定、写库或切换场景工具。',
   '不确定 NPC 实体 id 时，先调用搜索或读取工具确认，不要编造 entityId。',
 ].join('\n');
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '当前玩家请求附加提醒：需要使用工具命令调用时，一定要使用 tool_calls 调用对应工具。',
-  '如果本轮涉及世界事实、人物关系、规则裁定、随机结果、HP/状态/位置/物品/关系变化或切换场景，不要只用 assistant 正文或 NPC 标签回答；先调用读取、搜索、掷骰、写库或切换场景工具。',
+  '如果本轮涉及世界事实、人物关系、规则裁定、随机结果、HP/状态/位置/物品/关系变化或切换场景，不要只用 dm_speak 或 npc_speak 回答；先调用读取、搜索、掷骰、写库或切换场景工具。',
   '移动玩家、NPC、队友、物品或其他实体位置时，调用 apply_world_patch，并在 operations 中使用 set_location；不要用 set_relationship 写 located_in。',
-  'NPC 问答特别规则：当玩家向某个 NPC 提问时，不要因为需要用 NPC 口吻回答就跳过工具。NPC 的 <npc-speech> 只是最终展示方式，不代表已经知道答案。',
+  'NPC 问答特别规则：当玩家向某个 NPC 提问时，不要因为需要用 NPC 口吻回答就跳过工具。npc_speak 只是最终展示方式，不代表已经知道答案。',
   '如果玩家的问题涉及已有世界事实、当前场景、其他角色、地点、物品、阵营、关系、历史事件、状态、位置、任务线索、规则结果或 NPC 是否知道某事，必须先通过工具查询相关世界数据，再决定 NPC 是否知道、如何回答、是否隐瞒或误导。',
   '常见工具选择：问这里还有谁、场景里有哪些重要角色、附近有什么，先用 get_current_scene 或 get_scene_entities；问某个人、组织、地点、物品、旧事，先用 search_entities，再按需 get_entity_bundle；问两者关系、血缘、敌友、从属或认识程度，用 get_relationships，必要时读取双方实体详情。',
-  '例子：玩家问 NPC“这个场景中还有哪些重要角色？”错误做法是直接让 NPC 编造或泛泛回答；正确做法是先调用 get_current_scene 或 get_scene_entities 确认当前场景人物，必要时读取重要角色详情，然后再用 assistant 正文或 <npc-speech> 让 NPC 按性格回答。',
+  '例子：玩家问 NPC“这个场景中还有哪些重要角色？”错误做法是直接让 NPC 编造或泛泛回答；正确做法是先调用 get_current_scene 或 get_scene_entities 确认当前场景人物，必要时读取重要角色详情，然后再用 dm_speak 或 npc_speak 按性格回答。',
   '只有当最近上下文里已经有明确、未过期的工具结果时，才可以直接用这些结果回答；否则不要编造，也不要只凭叙事直觉回答。',
 ].join('\n');
 const WORLD_AGENT_TOOL_NAMES = new Set([
@@ -50,6 +50,8 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_rules',
   'get_rule_section',
   'roll_dice',
+  'dm_speak',
+  'npc_speak',
   'enter_scene',
   'apply_world_patch',
 ]);
@@ -91,6 +93,13 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     expression: { type: 'string', description: '骰子表达式，例如 1d20+5、1d8+3。' },
     reason: { type: 'string', description: '本次掷骰原因。' },
   }, ['expression']),
+  createToolSchema('dm_speak', '输出玩家可见的 DM 叙事、动作描写、规则结果、环境变化或说明。', {
+    content: { type: 'string', description: '要显示给玩家的 DM 正文；不要写 NPC 逐字对白。' },
+  }, ['content']),
+  createToolSchema('npc_speak', '让一个已存在实体以独立 NPC 对话气泡发言。', {
+    npcEntityId: { type: 'string', description: 'NPC 实体 id。' },
+    content: { type: 'string', description: 'NPC 实际说出口的话，不包含旁白、动作描写、引号或说话人前缀。' },
+  }, ['npcEntityId', 'content']),
   createToolSchema('enter_scene', '校验出口并切换玩家当前场景。', {
     sceneId: { type: 'string', description: '目标场景实体 id，优先使用。' },
     exitId: { type: 'number', description: '当前场景 exits 中的出口关系 id。' },
@@ -435,6 +444,45 @@ async function applyExecutedAgentTool({
   });
   state.stepIndex += 1;
 
+  if (result.ok !== false && decision.tool === 'dm_speak') {
+    await appendDmSpeakToolResult({
+      args,
+      result,
+      runId,
+      state,
+      handlers,
+      signal: input.signal,
+    });
+  }
+
+  if (result.ok !== false && decision.tool === 'npc_speak') {
+    await appendNpcSpeakToolResult({
+      args,
+      result,
+      runId,
+      state,
+      handlers,
+      signal: input.signal,
+    });
+  }
+
+  if ((decision.tool === 'dm_speak' || decision.tool === 'npc_speak') && result.ok === false) {
+    return {
+      step,
+      response: await finishSuccessfulRun({
+        runId,
+        steps,
+        visibleAnswer: state.visibleAnswer,
+        assistantText: state.assistantText,
+        fallbackText: `发言工具调用失败：${result.error || '未知错误'}。`,
+        requestLog,
+        modelTranscript: state.modelTranscript,
+        handlers,
+        signal: input.signal,
+      }),
+    };
+  }
+
   if (isRepeatedToolFailure(steps)) {
     return {
       step,
@@ -473,6 +521,25 @@ function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers
 function compactToolResultForAgentStep(tool, result) {
   if (!isRecord(result) || result.ok === false) return result;
 
+  if (tool === 'dm_speak') {
+    return {
+      ok: true,
+      summary: 'DM 发言成功。',
+    };
+  }
+
+  if (tool === 'npc_speak') {
+    const npc = isRecord(result.npc) ? result.npc : {};
+    return {
+      ok: true,
+      npc: {
+        id: typeof npc.id === 'string' ? npc.id : '',
+        name: typeof npc.name === 'string' ? npc.name : '',
+      },
+      summary: 'NPC 发言成功。',
+    };
+  }
+
   if (tool === 'enter_scene') {
     const scene = result.scene?.scene;
     const sceneId = typeof scene?.id === 'string' ? scene.id : '';
@@ -508,6 +575,36 @@ function compactToolResultForAgentStep(tool, result) {
   return result;
 }
 
+async function appendDmSpeakToolResult({ args, result, runId, state, handlers, signal }) {
+  const content = String(result.content || result.answer || args.content || args.text || args.message || '').trim();
+  if (!content) return;
+  state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
+  state.assistantText = appendVisibleAnswer(state.assistantText, content);
+  handlers.onAssistantTextStart?.({ runId });
+  await streamTextDeltas(content, handlers.onAssistantTextDelta, signal);
+}
+
+async function appendNpcSpeakToolResult({ args, result, runId, state, handlers, signal }) {
+  const content = String(result.content || result.answer || args.content || args.text || args.message || '').trim();
+  const npc = isRecord(result.npc) ? result.npc : {};
+  const entityId = typeof npc.id === 'string' ? npc.id : '';
+  const npcName = typeof npc.name === 'string' ? npc.name : '';
+  if (!content || !entityId || !npcName) return;
+  state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
+  addConversation('npc', entityId, npcName, content);
+  const event = {
+    runId,
+    npcEntityId: entityId,
+    npcName,
+  };
+  handlers.onNpcSpeechStart?.(event);
+  await streamTextDeltas(
+    content,
+    (delta) => handlers.onNpcSpeechDelta?.({ ...event, delta }),
+    signal,
+  );
+}
+
 async function appendAssistantReasoningText({ text, runId, handlers, signal }) {
   const content = String(text || '').trim();
   if (!content) return;
@@ -516,99 +613,16 @@ async function appendAssistantReasoningText({ text, runId, handlers, signal }) {
 }
 
 async function appendAssistantVisibleText({ parts, text, runId, state, handlers, signal }) {
-  const visibleParts = Array.isArray(parts) ? parts : [{ text, parseNpcSpeech: true }];
+  const visibleParts = Array.isArray(parts) ? parts : [{ text }];
 
   for (const part of visibleParts) {
-    const content = String(part?.text || '').trim();
+    const content = stripNpcSpeechTags(String(part?.text || '')).trim();
     if (!content) continue;
-    const segments = part.parseNpcSpeech === false
-      ? [{ type: 'assistant_text', content }]
-      : parseAssistantVisibleSegments(content);
-
-    for (const segment of segments) {
-      if (segment.type === 'npc_speech') {
-        state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, segment.content);
-        addConversation('npc', segment.entityId, segment.npcName, segment.content);
-        const event = {
-          runId,
-          npcEntityId: segment.entityId,
-          npcName: segment.npcName,
-        };
-        handlers.onNpcSpeechStart?.(event);
-        await streamTextDeltas(
-          segment.content,
-          (delta) => handlers.onNpcSpeechDelta?.({ ...event, delta }),
-          signal,
-        );
-        continue;
-      }
-
-      state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, segment.content);
-      state.assistantText = appendVisibleAnswer(state.assistantText, segment.content);
-      handlers.onAssistantTextStart?.({ runId });
-      await streamTextDeltas(segment.content, handlers.onAssistantTextDelta, signal);
-    }
+    state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
+    state.assistantText = appendVisibleAnswer(state.assistantText, content);
+    handlers.onAssistantTextStart?.({ runId });
+    await streamTextDeltas(content, handlers.onAssistantTextDelta, signal);
   }
-}
-
-function parseAssistantVisibleSegments(text) {
-  const source = String(text || '');
-  const segments = [];
-  const openTagPattern = /<npc-speech\b([^>]*)>/gi;
-  let cursor = 0;
-  let match;
-
-  while ((match = openTagPattern.exec(source)) !== null) {
-    const openStart = match.index;
-    const openEnd = openTagPattern.lastIndex;
-    pushAssistantTextSegment(segments, source.slice(cursor, openStart));
-
-    const closeMatch = /<\/npc-speech\s*>/i.exec(source.slice(openEnd));
-    if (!closeMatch) {
-      pushAssistantTextSegment(segments, stripNpcSpeechTags(source.slice(openEnd)));
-      cursor = source.length;
-      break;
-    }
-
-    const closeStart = openEnd + closeMatch.index;
-    const closeEnd = closeStart + closeMatch[0].length;
-    const innerContent = stripNpcSpeechTags(source.slice(openEnd, closeStart)).trim();
-    const entityId = parseNpcSpeechEntityId(match[1]);
-    const entity = entityId ? getEntity(entityId) : null;
-
-    if (entity && innerContent) {
-      segments.push({
-        type: 'npc_speech',
-        entityId: entity.id,
-        npcName: entity.name,
-        content: innerContent,
-      });
-    } else {
-      pushAssistantTextSegment(segments, innerContent);
-    }
-
-    cursor = closeEnd;
-    openTagPattern.lastIndex = closeEnd;
-  }
-
-  pushAssistantTextSegment(segments, source.slice(cursor));
-  return segments;
-}
-
-function pushAssistantTextSegment(segments, content) {
-  const text = stripNpcSpeechTags(content).trim();
-  if (!text) return;
-  segments.push({
-    type: 'assistant_text',
-    content: text,
-  });
-}
-
-function parseNpcSpeechEntityId(attributes) {
-  const raw = String(attributes || '');
-  const doubleQuoted = /\bentityId\s*=\s*"([^"]+)"/i.exec(raw);
-  const singleQuoted = /\bentityId\s*=\s*'([^']+)'/i.exec(raw);
-  return String(doubleQuoted?.[1] || singleQuoted?.[1] || '').trim();
 }
 
 function stripNpcSpeechTags(text) {
@@ -624,7 +638,7 @@ function getAssistantReasoningText(message, thinkingMode) {
 
 function getAssistantVisibleParts(message) {
   const content = String(message.content || '').trim();
-  return content ? [{ text: content, parseNpcSpeech: true }] : [];
+  return content ? [{ text: content }] : [];
 }
 
 async function finishSuccessfulRun({
@@ -754,6 +768,55 @@ export function executeWorldTool(tool, args, prompt = '') {
       expression: String(args.expression || args.dice || '1d20'),
       reason: String(args.reason || ''),
     });
+  }
+
+  if (tool === 'dm_speak') {
+    const content = String(args.content || args.text || args.message || args.answer || '').trim();
+    return content
+      ? {
+          ok: true,
+          content,
+          answer: content,
+          summary: 'DM 发言成功。',
+        }
+      : {
+          ok: false,
+          error: 'dm_speak.content 不能为空。',
+        };
+  }
+
+  if (tool === 'npc_speak') {
+    const npcEntityId = String(args.npcEntityId || args.entityId || args.id || '').trim();
+    const content = String(args.content || args.text || args.message || '').trim();
+    if (!npcEntityId) {
+      return {
+        ok: false,
+        error: 'npc_speak.npcEntityId 不能为空。',
+      };
+    }
+    if (!content) {
+      return {
+        ok: false,
+        error: 'npc_speak.content 不能为空。',
+      };
+    }
+    const npc = getEntity(npcEntityId);
+    if (!npc) {
+      return {
+        ok: false,
+        error: `NPC 实体 ${npcEntityId} 不存在。`,
+      };
+    }
+    return {
+      ok: true,
+      npc: {
+        id: npc.id,
+        name: npc.name,
+      },
+      content,
+      answer: content,
+      summary: `${npc.name} 发言成功。`,
+    };
   }
 
   if (tool === 'enter_scene') {
@@ -1228,6 +1291,8 @@ function normalizeToolCall(raw) {
     'search_rules',
     'get_rule_section',
     'roll_dice',
+    'dm_speak',
+    'npc_speak',
     'enter_scene',
     'apply_world_patch',
   ]);
