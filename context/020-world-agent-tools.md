@@ -12,7 +12,7 @@
 - get_rule_section：读取具体规则段落正文。
 - roll_dice：掷骰并返回随机结果、明细和总值。
 - enter_scene：校验出口并切换玩家当前场景。参数优先使用 `sceneId`（目标场景实体 id，例如 `scene_outer_gate`）；如果只有当前场景 exits 里的出口关系 id，也可以使用 `exitId`。
-- apply_world_patch：创建或修改长期世界事实。
+- apply_world_patch：创建或修改长期世界事实。移动玩家、NPC、物品或其他实体位置时，使用 `set_location` 操作；不要用 `set_relationship` 写 `located_in`。
 
 这些工具由后端通过 API 原生工具调用协议执行。读取、搜索、掷骰、写库、切换场景等工具默认静默，不附带可见文字。
 

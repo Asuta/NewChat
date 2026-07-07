@@ -26,7 +26,7 @@
 
 攻击命中后，必须根据攻击者 stats 和武器数据直接计算伤害；如果已有 longswordDamageDice、longswordVersatileDamageDice、longswordDamageBonus 或 strengthMod，使用这些字段调用 roll_dice 掷伤害，不要询问玩家力量值、力量调整值或伤害加值。
 
-攻击、法术、治疗或状态效果导致 HP、状态、位置、物品归属、关系或其他世界状态变化时，必须先调用 apply_world_patch 写入数据库，再用 assistant 正文或 NPC 标签输出可见结果。不要只在叙事文本里说 HP 改变。
+攻击、法术、治疗或状态效果导致 HP、状态、位置、物品归属、关系或其他世界状态变化时，必须先调用 apply_world_patch 写入数据库，再用 assistant 正文或 NPC 标签输出可见结果。移动玩家、NPC、物品或其他实体位置时，使用 `set_location`；不要用 `set_relationship` 写 `located_in`。不要只在叙事文本里说 HP 改变。
 
 玩家对 NPC、敌人、守卫、旁观者或重要环境做出攻击、威胁、偷窃、破坏、挑衅、施法等会引发即时后果的行动后，必须判断受影响对象是否会立即反应。反应可以是 NPC 台词、反击、逃跑、求饶、呼救、防御、交涉、改变关系、触发守卫或环境变化；不要把 NPC 当作只等待玩家继续输入的背景板。
 

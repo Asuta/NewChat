@@ -554,7 +554,7 @@ export function getCurrentLocationId(entityId) {
   return listRelationships({ entityId, direction: 'out', type: 'located_in' })[0]?.targetEntityId ?? null;
 }
 
-export function setCurrentLocation(entityId, sceneId, source = 'world') {
+export function setCurrentLocation(entityId, sceneId, source = 'world', summary = '') {
   for (const relationship of listRelationships({ entityId, direction: 'out', type: 'located_in' })) {
     if (relationship.targetEntityId !== sceneId) {
       deleteRelationship(relationship.sourceEntityId, relationship.targetEntityId, relationship.type);
@@ -562,7 +562,7 @@ export function setCurrentLocation(entityId, sceneId, source = 'world') {
   }
   upsertRelationship(entityId, sceneId, 'located_in', null, {
     source,
-    summary: `${entityId} 当前位于 ${sceneId}。`,
+    summary: summary || `${entityId} 当前位于 ${sceneId}。`,
   });
 }
 
@@ -658,13 +658,15 @@ export function getWorldOverview() {
 export function applyWorldPatch({ operations = [], confirmedTargetIds = [], dryRun = false, prompt = '' }) {
   if (!Array.isArray(operations) || !operations.length) throw new Error('world patch 需要 operations 数组。');
   if (operations.length > 12) throw new Error('单次最多执行 12 个 operations。');
+  const normalizedOperations = operations.map(normalizeWorldPatchOperation).filter(Boolean);
+  if (!normalizedOperations.length) throw new Error('world patch 没有可执行的 operation。');
   const confirmed = new Set(Array.isArray(confirmedTargetIds) ? confirmedTargetIds.filter(Boolean) : []);
   const diffs = [];
   const undoOperations = [];
   const applied = [];
 
   const execute = () => {
-    for (const [index, operation] of operations.entries()) {
+    for (const [index, operation] of normalizedOperations.entries()) {
       const result = applyOperation(operation, index, confirmed, prompt);
       applied.push(result.applied);
       diffs.push(result.diff);
@@ -695,6 +697,57 @@ export function applyWorldPatch({ operations = [], confirmedTargetIds = [], dryR
 }
 
 class DryRunRollback extends Error {}
+
+function normalizeWorldPatchOperation(operation) {
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) return operation;
+
+  const op = firstString(operation.op, operation.operation, operation.type);
+  if (['move_entity', 'move_character', 'move_npc'].includes(op)) {
+    return normalizeLocationPatchOperation(operation);
+  }
+
+  if (op === 'set_location') {
+    return normalizeLocationPatchOperation(operation);
+  }
+
+  if (op === 'set_relationship') {
+    const relationshipType = firstString(operation.relationshipType, operation.relationType, operation.type);
+    if (relationshipType === 'located_in') {
+      return normalizeLocationPatchOperation(operation);
+    }
+  }
+
+  if (['replace', 'add', 'set', 'upsert'].includes(op)) {
+    return normalizeJsonPatchOperation(operation);
+  }
+
+  return operation;
+}
+
+function normalizeLocationPatchOperation(operation) {
+  return {
+    op: 'set_location',
+    entityId: firstString(operation.entityId, operation.sourceEntityId, operation.sourceId),
+    sceneId: firstString(operation.sceneId, operation.targetSceneId, operation.targetEntityId, operation.targetId, operation.locationId),
+    summary: firstString(operation.summary, operation.data?.summary),
+  };
+}
+
+function normalizeJsonPatchOperation(operation) {
+  const path = normalizePath(operation.path);
+  const value = operation.value;
+  if (path.length === 2 && path[0] === 'relationships' && path[1] === '-' && isRecord(value)) {
+    return normalizeWorldPatchOperation({
+      op: 'set_relationship',
+      sourceEntityId: value.sourceEntityId || value.sourceId || value.source,
+      targetEntityId: value.targetEntityId || value.targetId || value.target,
+      relationshipType: value.relationshipType || value.relationType || value.type,
+      value: value.value,
+      data: isRecord(value.data) ? value.data : {},
+    });
+  }
+  return operation;
+}
 
 function applyOperation(operation, index, confirmed, prompt) {
   if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
@@ -771,6 +824,32 @@ function applyOperation(operation, index, confirmed, prompt) {
       applied: { op, entityId, componentType, summary: `删除 ${entityId}.${componentType}` },
       diff: { op, summary: `删除 ${entityId}.${componentType}`, before, after: null },
       undoOperations: [{ op: 'set_component', entityId, componentType, data: before }],
+    };
+  }
+
+  if (op === 'set_location') {
+    const entityId = firstString(operation.entityId, operation.sourceEntityId, operation.sourceId);
+    const sceneId = firstString(operation.sceneId, operation.targetSceneId, operation.targetEntityId, operation.targetId, operation.locationId);
+    assertLocationConfirmed(confirmed, [entityId, sceneId], index);
+    if (!entityId) throw new Error(`operation #${index + 1} set_location 需要 entityId。`);
+    if (!sceneId) throw new Error(`operation #${index + 1} set_location 需要 sceneId。`);
+    const entity = getEntity(entityId);
+    if (!entity) throw new Error(`实体 ${entityId} 不存在。`);
+    const scene = getEntity(sceneId);
+    if (!scene) throw new Error(`场景 ${sceneId} 不存在。`);
+    if (scene.kind !== 'scene') throw new Error(`${sceneId} 不是场景实体。`);
+
+    const previousSceneId = getCurrentLocationId(entityId);
+    const before = getEntityBundle(entityId);
+    const summary = firstString(operation.summary, operation.data?.summary, `${entity.name} 当前位于 ${scene.name}。`);
+    setCurrentLocation(entityId, sceneId, 'world.patch', summary);
+    const after = getEntityBundle(entityId);
+    return {
+      applied: { op, entityId, sceneId, previousSceneId, summary: `移动 ${entityId} 到 ${sceneId}` },
+      diff: { op, summary: `移动 ${entityId} 到 ${sceneId}`, before, after },
+      undoOperations: previousSceneId
+        ? [{ op: 'set_location', entityId, sceneId: previousSceneId }]
+        : [{ op: 'delete_relationship', sourceEntityId: entityId, targetEntityId: sceneId, relationshipType: 'located_in' }],
     };
   }
 
@@ -859,6 +938,13 @@ function assertConfirmed(confirmed, ids, index, prompt) {
   throw new Error(`operation #${index + 1} 目标不匹配：任务提到了 ${mentioned[0].name}(${mentioned[0].id})。`);
 }
 
+function assertLocationConfirmed(confirmed, ids, index) {
+  const cleanIds = ids.filter(Boolean);
+  if (confirmed.size > 0 && !cleanIds.some((id) => confirmed.has(id))) {
+    throw new Error(`operation #${index + 1} 目标不匹配：已确认目标 ${Array.from(confirmed).join(', ')}，本次目标 ${cleanIds.join(', ') || '(empty)'}。`);
+  }
+}
+
 export function rebuildSearchIndex() {
   db.prepare('DELETE FROM entity_search_fts').run();
   for (const entity of listEntities()) {
@@ -916,7 +1002,13 @@ function firstString(...values) {
 
 function normalizePath(path) {
   if (Array.isArray(path)) return path.map((item) => String(item).trim()).filter(Boolean);
-  if (typeof path === 'string' && path.trim()) return path.split('.').map((item) => item.trim()).filter(Boolean);
+  if (typeof path === 'string' && path.trim()) {
+    return path
+      .replace(/^\/+/, '')
+      .split(/[/.]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
   return [];
 }
 

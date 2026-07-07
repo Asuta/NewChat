@@ -33,6 +33,7 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '当前玩家请求附加提醒：需要使用工具命令调用时，一定要使用 tool_calls 调用对应工具。',
   '如果本轮涉及世界事实、人物关系、规则裁定、随机结果、HP/状态/位置/物品/关系变化或切换场景，不要只用 assistant 正文或 NPC 标签回答；先调用读取、搜索、掷骰、写库或切换场景工具。',
+  '移动玩家、NPC、队友、物品或其他实体位置时，调用 apply_world_patch，并在 operations 中使用 set_location；不要用 set_relationship 写 located_in。',
   'NPC 问答特别规则：当玩家向某个 NPC 提问时，不要因为需要用 NPC 口吻回答就跳过工具。NPC 的 <npc-speech> 只是最终展示方式，不代表已经知道答案。',
   '如果玩家的问题涉及已有世界事实、当前场景、其他角色、地点、物品、阵营、关系、历史事件、状态、位置、任务线索、规则结果或 NPC 是否知道某事，必须先通过工具查询相关世界数据，再决定 NPC 是否知道、如何回答、是否隐瞒或误导。',
   '常见工具选择：问这里还有谁、场景里有哪些重要角色、附近有什么，先用 get_current_scene 或 get_scene_entities；问某个人、组织、地点、物品、旧事，先用 search_entities，再按需 get_entity_bundle；问两者关系、血缘、敌友、从属或认识程度，用 get_relationships，必要时读取双方实体详情。',
@@ -94,7 +95,7 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     sceneId: { type: 'string', description: '目标场景实体 id，优先使用。' },
     exitId: { type: 'number', description: '当前场景 exits 中的出口关系 id。' },
   }),
-  createToolSchema('apply_world_patch', '创建或修改长期世界事实。', {
+  createToolSchema('apply_world_patch', '创建或修改长期世界事实。移动实体位置必须使用 set_location，不要用 set_relationship 写 located_in。', {
     operations: {
       type: 'array',
       items: { type: 'object' },
@@ -482,7 +483,7 @@ function compactToolResultForAgentStep(tool, result) {
         id: sceneId,
         name: sceneName,
       },
-      summary: '场景切换成功。',
+      summary: '场景切换成功。请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
     };
   }
 
@@ -1345,6 +1346,10 @@ function normalizeWorldPatchOperation(operation) {
       'create_owned_item',
       'set_component',
       'delete_component',
+      'set_location',
+      'move_entity',
+      'move_character',
+      'move_npc',
       'set_relationship',
       'delete_relationship',
       'delete_entity',
