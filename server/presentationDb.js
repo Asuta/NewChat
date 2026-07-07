@@ -1,11 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DATA_DIR } from './saveManager.js';
+import { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR } from './saveManager.js';
 
-export const PRESENTATION_DIR = join(DATA_DIR, 'presentation');
-export const PRESENTATION_ASSETS_DIR = join(PRESENTATION_DIR, 'assets');
-export const PRESENTATION_DB_FILE = join(PRESENTATION_DIR, 'presentation.sqlite');
+export { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR };
 
 const nowSql = "datetime('now')";
 const FALLBACK_CHARACTER_ASSET_ID = 'asset_character_placeholder';

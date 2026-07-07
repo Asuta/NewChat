@@ -29,9 +29,11 @@ import {
   PRESENTATION_ASSETS_DIR,
 } from './presentationDb.js';
 import {
+  cleanupPresentationImport,
   createSaveExportBundle,
   ensureTemplateDbFromSaveIfMissing,
   ensureTemplatePlayableDefaults,
+  finalizePresentationImport,
   importSaveBundle,
   resetSaveToTemplate,
   restoreTemplateFromFactoryDefaults,
@@ -60,7 +62,7 @@ const FIXED_CONTEXT_PREFIX = '以下是固定上下文。';
 const COMPACT_SYSTEM_PROMPT =
   '你是一个对话上下文压缩助手。请用中文总结给定聊天记录，保留用户目标、关键事实、已达成结论、未解决问题、重要偏好和后续需要延续的上下文。不要添加原对话没有的信息。输出一段清晰、紧凑、可直接作为后续大模型上下文的摘要。';
 
-app.use(express.json({ limit: '64mb' }));
+app.use(express.json({ limit: '256mb' }));
 app.use('/api/presentation/assets', express.static(PRESENTATION_ASSETS_DIR));
 
 app.get('/api/health', (_req, res) => {
@@ -139,6 +141,10 @@ app.post('/api/save/import', (req, res) => {
     const result = importSaveBundle(req.body);
     ensureTemplatePlayableDefaults();
     restoreWorldDbFromFile(result.saveDbFile);
+    if (result.presentationImportStaged) {
+      finalizePresentationImport();
+      ensurePresentationDb();
+    }
     refreshWorldRuntime();
     res.json({
       world: getWorldOverview(),
@@ -146,6 +152,7 @@ app.post('/api/save/import', (req, res) => {
       conversations: result.conversations,
     });
   } catch (error) {
+    cleanupPresentationImport();
     res.status(400).json({ error: error.message || '导入世界包失败。' });
   }
 });

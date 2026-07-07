@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'fs';
-import { basename, dirname, join, resolve } from 'path';
+import { basename, dirname, extname, join, resolve } from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
@@ -34,12 +34,19 @@ export const SAVE_RULES_DIR = join(SAVE_DIR, 'rules');
 export const TEMPLATE_DB_FILE = join(TEMPLATE_DIR, 'newchat.sqlite');
 export const SAVE_DB_FILE = join(SAVE_DIR, 'newchat.sqlite');
 export const SAVE_IMPORT_DB_FILE = join(SAVE_DIR, 'newchat.import.sqlite');
+export const PRESENTATION_DIR = join(DATA_DIR, 'presentation');
+export const PRESENTATION_ASSETS_DIR = join(PRESENTATION_DIR, 'assets');
+export const PRESENTATION_DB_FILE = join(PRESENTATION_DIR, 'presentation.sqlite');
 export const LEGACY_DB_FILE = join(DATA_DIR, 'newchat.sqlite');
 export const USER_CONTEXT_FILE_NAME = '001-user-fixed-context.md';
 export const SAVE_USER_CONTEXT_FILE = join(SAVE_CONTEXT_DIR, USER_CONTEXT_FILE_NAME);
 export const GENERATED_SCHEMA_CONTEXT_FILE_NAME = '025-world-schema.generated.md';
 
 const SQLITE_COMPANION_SUFFIXES = ['', '-wal', '-shm'];
+const PRESENTATION_IMPORT_DIR = join(DATA_DIR, 'presentation.import');
+const PRESENTATION_IMPORT_DB_FILE = join(PRESENTATION_IMPORT_DIR, 'presentation.sqlite');
+const PRESENTATION_IMPORT_ASSETS_DIR = join(PRESENTATION_IMPORT_DIR, 'assets');
+const RASTER_ASSET_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 
 export function ensureDataLayout() {
   mkdirSync(DATA_DIR, { recursive: true });
@@ -213,6 +220,7 @@ export function createSaveExportBundle(mode) {
       contextFiles: readContextFiles(TEMPLATE_CONTEXT_DIR),
       ruleFiles: readPackFiles(TEMPLATE_RULES_DIR),
     },
+    presentation: readPresentationBundle(),
   };
 
   if (exportMode === 'full') {
@@ -237,6 +245,7 @@ export function importSaveBundle(bundle) {
     ? bundle.template.ruleFiles
     : readPackFiles(FACTORY_RULES_DIR);
   const saveRuleFiles = Array.isArray(savePart.ruleFiles) ? savePart.ruleFiles : templateRuleFiles;
+  const presentationImportStaged = stagePresentationImport(bundle.presentation);
 
   writeDbBase64(TEMPLATE_DB_FILE, bundle.template.worldDbBase64);
   writeContextFiles(TEMPLATE_CONTEXT_DIR, bundle.template.contextFiles);
@@ -253,7 +262,21 @@ export function importSaveBundle(bundle) {
   return {
     conversations: Array.isArray(savePart.conversations) ? savePart.conversations : null,
     saveDbFile: SAVE_IMPORT_DB_FILE,
+    presentationImportStaged,
   };
+}
+
+export function finalizePresentationImport() {
+  removeSqliteFamily(PRESENTATION_DB_FILE);
+  rmSync(PRESENTATION_ASSETS_DIR, { recursive: true, force: true });
+  mkdirSync(PRESENTATION_DIR, { recursive: true });
+  copySqliteFamily(PRESENTATION_IMPORT_DB_FILE, PRESENTATION_DB_FILE);
+  copyDirectoryContents(PRESENTATION_IMPORT_ASSETS_DIR, PRESENTATION_ASSETS_DIR, { clear: true });
+  cleanupPresentationImport();
+}
+
+export function cleanupPresentationImport() {
+  rmSync(PRESENTATION_IMPORT_DIR, { recursive: true, force: true });
 }
 
 export function syncGeneratedWorldSchemaContext(contextDir = SAVE_CONTEXT_DIR) {
@@ -603,6 +626,44 @@ function readPackFiles(rootDir) {
   return files.sort((left, right) => left.path.localeCompare(right.path, undefined, { numeric: true }));
 }
 
+function readPresentationBundle() {
+  return {
+    dbBase64: readDbBase64(PRESENTATION_DB_FILE),
+    assetFiles: readPresentationAssetFiles(PRESENTATION_ASSETS_DIR),
+  };
+}
+
+function readPresentationAssetFiles(rootDir) {
+  if (!existsSync(rootDir)) {
+    return [];
+  }
+
+  const files = [];
+  collectPresentationAssetFiles(rootDir, rootDir, files);
+  return files.sort((left, right) => left.path.localeCompare(right.path, undefined, { numeric: true }));
+}
+
+function collectPresentationAssetFiles(rootDir, currentDir, files) {
+  for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+    const filePath = join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      collectPresentationAssetFiles(rootDir, filePath, files);
+      continue;
+    }
+    if (!entry.isFile()) {
+      continue;
+    }
+    const relativePath = filePath.slice(rootDir.length + 1).replace(/\\/g, '/');
+    if (!isSafePresentationAssetPath(relativePath)) {
+      continue;
+    }
+    files.push({
+      path: relativePath,
+      contentBase64: readFileSync(filePath).toString('base64'),
+    });
+  }
+}
+
 function collectPackFiles(rootDir, currentDir, files) {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     const filePath = join(currentDir, entry.name);
@@ -660,6 +721,68 @@ function writePackFiles(rootDir, files) {
   }
 }
 
+function stagePresentationImport(presentation) {
+  if (!presentation) {
+    return false;
+  }
+  if (!isRecord(presentation)) {
+    throw new Error('Save bundle presentation payload is invalid.');
+  }
+
+  rmSync(PRESENTATION_IMPORT_DIR, { recursive: true, force: true });
+  mkdirSync(PRESENTATION_IMPORT_ASSETS_DIR, { recursive: true });
+
+  try {
+    writeDbBase64(PRESENTATION_IMPORT_DB_FILE, presentation.dbBase64);
+    writePresentationAssetFiles(PRESENTATION_IMPORT_ASSETS_DIR, presentation.assetFiles);
+    validatePresentationDatabase(PRESENTATION_IMPORT_DB_FILE);
+  } catch (error) {
+    cleanupPresentationImport();
+    throw error;
+  }
+
+  return true;
+}
+
+function writePresentationAssetFiles(rootDir, files) {
+  if (!Array.isArray(files)) {
+    throw new Error('Save bundle is missing presentation asset files.');
+  }
+
+  rmSync(rootDir, { recursive: true, force: true });
+  mkdirSync(rootDir, { recursive: true });
+
+  for (const file of files) {
+    const path = typeof file?.path === 'string' ? file.path.replace(/\\/g, '/') : '';
+    if (!isSafePresentationAssetPath(path)) {
+      continue;
+    }
+    if (typeof file.contentBase64 !== 'string' || !file.contentBase64) {
+      continue;
+    }
+    const targetPath = join(rootDir, ...path.split('/'));
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, Buffer.from(file.contentBase64, 'base64'));
+  }
+}
+
+function validatePresentationDatabase(filePath) {
+  let database = null;
+  try {
+    database = new DatabaseSync(filePath);
+    const tables = new Set(
+      database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name),
+    );
+    for (const tableName of ['presentation_assets', 'presentation_scene_bindings', 'presentation_entity_bindings']) {
+      if (!tables.has(tableName)) {
+        throw new Error('Save bundle presentation database is invalid.');
+      }
+    }
+  } finally {
+    database?.close();
+  }
+}
+
 function isSafeContextFileName(name) {
   return typeof name === 'string' && basename(name) === name && name.endsWith('.md');
 }
@@ -671,6 +794,19 @@ function isSafePackFilePath(path) {
 
   const parts = path.split('/');
   return parts.every(Boolean) && !parts.includes('..') && (path.endsWith('.md') || path.endsWith('.json'));
+}
+
+function isSafePresentationAssetPath(path) {
+  if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes(':')) {
+    return false;
+  }
+
+  const parts = path.split('/');
+  return parts.every(Boolean) && !parts.includes('..') && RASTER_ASSET_EXTENSIONS.has(extname(path).toLowerCase());
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 ensureDataLayout();
