@@ -1,21 +1,12 @@
 import {
-  Backpack,
-  Check,
   ChevronUp,
   Compass,
-  Crown,
-  Eye,
-  Gem,
   ImageOff,
   Loader2,
   MapPinned,
-  MessageCircle,
-  Package,
   ScrollText,
-  Search,
   Send,
   Shield,
-  Sparkles,
   UserRound,
 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -253,11 +244,10 @@ function PlayableStageHud({
   const [input, setInput] = useState('');
   const primaryCharacter = visibleSpeaker || stageCharacters[0] || null;
   const currentScene = world?.currentScene;
-  const items = currentScene?.items || [];
   const exits = currentScene?.exits || [];
   const residents = currentScene?.residents || [];
+  const items = currentScene?.items || [];
   const relatedLore = currentScene?.relatedLore || [];
-  const actions = buildSuggestedActions(sceneName, primaryCharacter?.name, exits[0]?.scene.name);
   const canSubmit = Boolean(onSubmitAction && (canSubmitActions ?? isMainAppConnected) && !isActionPending);
   const statusLabel = actionStatusLabel || (isMainAppConnected ? '已连接' : '展示模式');
 
@@ -275,47 +265,6 @@ function PlayableStageHud({
 
   return (
     <div className="playable-stage-hud">
-      <section className="hud-player-plate" aria-label="玩家状态">
-        <div className="hud-avatar">
-          {primaryCharacter?.portraitUrl ? <img src={primaryCharacter.portraitUrl} alt="" /> : <Shield size={34} />}
-        </div>
-        <div className="hud-player-copy">
-          <span>Lv.12</span>
-          <strong>流亡的旅者</strong>
-          <div className="hud-bars" aria-hidden="true">
-            <i className="health" />
-            <i className="will" />
-          </div>
-        </div>
-      </section>
-
-      <aside className="hud-quest-panel hud-panel" aria-label="当前目标">
-        <header>
-          <Crown size={15} />
-          <strong>当前目标</strong>
-        </header>
-        <div className="hud-quest-main">
-          <Gem size={18} />
-          <div>
-            <strong>王冠的沉默</strong>
-            <p>探索{sceneName}，寻找七天后王冠仪式所需的线索。</p>
-          </div>
-        </div>
-        <ul>
-          {[
-            `调查${sceneName}`,
-            primaryCharacter ? `询问${primaryCharacter.name}` : '寻找同行者',
-            '确认仪式线索',
-            exits[0]?.scene.name ? `前往${exits[0].scene.name}` : '寻找新的出口',
-          ].map((task, index) => (
-            <li className={index < 2 ? 'done' : index === 2 ? 'active' : ''} key={task}>
-              {index < 2 ? <Check size={14} /> : <span />}
-              {task}
-            </li>
-          ))}
-        </ul>
-      </aside>
-
       {activeStageSpeech ? (
         <aside
           className={`hud-speech-card ${visibleSpeaker ? `slot-${visibleSpeaker.slot}` : ''}`}
@@ -349,24 +298,6 @@ function PlayableStageHud({
           </dl>
         </section>
 
-        <section className="hud-inventory-panel hud-panel">
-          <header>
-            <Backpack size={15} />
-            <strong>背包</strong>
-          </header>
-          <div className="hud-inventory-grid">
-            {items.slice(0, 6).map((item) => (
-              <div className="hud-inventory-slot filled" key={item.id}>
-                <Package size={18} />
-                <span>{item.name}</span>
-              </div>
-            ))}
-            {Array.from({ length: Math.max(0, 6 - items.length) }).map((_, index) => (
-              <div className="hud-inventory-slot" key={`empty-${index}`} />
-            ))}
-          </div>
-        </section>
-
         <section className="hud-log-panel hud-panel">
           <header>
             <ScrollText size={15} />
@@ -383,22 +314,6 @@ function PlayableStageHud({
           </ol>
         </section>
       </aside>
-
-      <section className="hud-action-deck" aria-label="快捷行动">
-        {actions.map((action, index) => (
-          <button
-            className="hud-action-card"
-            disabled={!canSubmit}
-            key={action.label}
-            type="button"
-            onClick={() => submitAction(action.prompt)}
-          >
-            <action.icon size={24} />
-            <strong>{action.label}</strong>
-            <span>{index + 1}</span>
-          </button>
-        ))}
-      </section>
 
       <section className="hud-bottom-bar" aria-label="玩家输入">
         <aside className="hud-dm-card hud-panel">
@@ -458,17 +373,6 @@ function StageHudMap({ worldMap }: { worldMap: WorldMapState | null }) {
       <span>{currentScene?.name || '未知场景'}</span>
     </div>
   );
-}
-
-function buildSuggestedActions(sceneName: string, characterName?: string, exitName?: string) {
-  return [
-    { label: '观察环境', prompt: `仔细观察${sceneName}，寻找值得注意的线索。`, icon: Eye },
-    { label: characterName ? `询问${characterName}` : '询问同伴', prompt: characterName ? `询问${characterName}关于王冠仪式的事。` : '询问附近的人关于当前局势。', icon: MessageCircle },
-    { label: '关于王冠', prompt: '追问七天后王冠仪式的来龙去脉。', icon: Crown },
-    { label: '请求指引', prompt: '请求对方给出下一步行动建议。', icon: Compass },
-    { label: '展示物品', prompt: '检查身上物品，看看有没有能派上用场的东西。', icon: Package },
-    { label: '深入探索', prompt: exitName ? `前往${exitName}继续探索。` : `深入探索${sceneName}的隐蔽角落。`, icon: Search },
-  ];
 }
 
 function useGameStageScale() {
