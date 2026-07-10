@@ -1,5 +1,6 @@
 import {
   ChevronUp,
+  Clock3,
   Compass,
   ImageOff,
   Loader2,
@@ -106,6 +107,12 @@ export function GameStageCanvas({
                 <div>
                   <MapPinned size={17} />
                   <strong>{sceneName}</strong>
+                  {world?.time ? (
+                    <span className="game-stage-time">
+                      <Clock3 size={14} />
+                      {world.time.clock.fullLabel}
+                    </span>
+                  ) : null}
                 </div>
                 {isLoading ? (
                   <span className="game-stage-loading">
@@ -280,6 +287,7 @@ function PlayableStageHud({
           <header>
             <Compass size={15} />
             <strong>{sceneName}</strong>
+            {world?.time ? <span>{world.time.clock.fullLabel}</span> : null}
           </header>
           <StageHudMap worldMap={worldMap} />
         </section>

@@ -23,6 +23,8 @@ export interface ChatMessage {
     fromSceneName: string;
     toSceneId?: string | null;
     toSceneName: string;
+    elapsedMinutes?: number;
+    timeLabel?: string;
   };
   actionResult?: ActionResult;
   agentStep?: AgentStep;
@@ -111,8 +113,50 @@ export interface WorldSceneState {
   relatedLore: WorldEntity[];
 }
 
+export interface WorldClockState {
+  absoluteMinutes: number;
+  day: number;
+  minuteOfDay: number;
+  label: string;
+  dayLabel: string;
+  fullLabel: string;
+}
+
+export interface SceneVisitState {
+  id: string;
+  sceneId: string;
+  sceneName: string;
+  enteredAt: number;
+  enteredAtLabel: string;
+  elapsedMinutes: number;
+  previousVisitId?: string | null;
+  leftAt?: number;
+  leftAtLabel?: string;
+  summary?: string;
+  reason?: string;
+}
+
+export interface WorldTimeCheckpointState {
+  absoluteMinutes: number;
+  conversationCursor: number;
+  sceneId: string;
+  sceneName: string;
+  reason: string;
+  summary: string;
+  updatedAt: string;
+  clock: WorldClockState;
+}
+
+export interface WorldTimeState {
+  clock: WorldClockState;
+  checkpoint: WorldTimeCheckpointState;
+  pendingEventCount: number;
+  currentSceneVisit: SceneVisitState;
+}
+
 export interface WorldOverview {
   currentScene: WorldSceneState;
+  time?: WorldTimeState;
   counts: {
     entities: number;
     scenes: number;
@@ -261,6 +305,8 @@ export type AgentContextEvent =
       fromSceneName?: string;
       toSceneId?: string | null;
       toSceneName?: string;
+      elapsedMinutes?: number;
+      timeLabel?: string;
     }
   | {
       type: 'action_result';

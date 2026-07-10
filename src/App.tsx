@@ -1125,8 +1125,8 @@ export default function App() {
     const toSceneName = targetScene?.name || sceneId;
     const prompt = [
       `我想从「${fromSceneName}」前往「${toSceneName}」。`,
-      `请作为 AI DM 判定这次场景移动是否能够成功。`,
-      `如果成功，请调用 enter_scene 工具应用场景移动到目标场景（sceneId: ${sceneId}）；如果失败，请保持当前位置并说明原因。`,
+      `请作为 AI DM 根据动态时间上下文，从上个时间检查点开始回顾尚未结算的剧情。`,
+      `如果这次场景移动能够成功，请调用 transition_scene 工具（sceneId: ${sceneId}）：用 sceneTimeSegments 分项列出上一场景尚未结算的剧情耗时，用 travelMinutes 和 travelReason 单独计算赶路时间，并提供动态时间上下文中的 throughConversationId 与 previousSceneSummary；如果失败，请保持当前位置并说明原因。`,
     ].join('');
 
     await sendMessage(prompt, {
@@ -1240,6 +1240,7 @@ export default function App() {
         {displayMode === 'game' ? (
           <GameView
             stage={presentationStage}
+            world={world}
             worldMap={worldMap}
             activeStageSpeech={activeStageSpeech}
             activeStageNarration={activeStageNarration}
@@ -1504,7 +1505,7 @@ function getCompletedSceneTransition(
   if (!pendingTransition) return null;
 
   const completedStep = steps.find((step) => {
-    if (step.tool !== 'enter_scene' || step.result?.ok !== true) return false;
+    if (step.tool !== 'transition_scene' || step.result?.ok !== true) return false;
     const argsSceneId = typeof step.args?.sceneId === 'string' ? step.args.sceneId : '';
     const resultScene = getStepResultScene(step);
     return argsSceneId === pendingTransition.toSceneId || resultScene?.id === pendingTransition.toSceneId;
@@ -1516,6 +1517,7 @@ function getCompletedSceneTransition(
     ...pendingTransition,
     toSceneId: resultScene?.id || pendingTransition.toSceneId,
     toSceneName: resultScene?.name || pendingTransition.toSceneName,
+    ...getStepTransitionTiming(completedStep),
   };
 }
 
@@ -1547,6 +1549,20 @@ function getStepResultScene(step: AgentStep): { id?: string; name?: string } | n
   if (!scene || typeof scene !== 'object') return null;
 
   return scene as { id?: string; name?: string };
+}
+
+function getStepTransitionTiming(step: AgentStep): Pick<PendingSceneTransition, 'elapsedMinutes' | 'timeLabel'> {
+  const elapsedMinutes = typeof step.result?.elapsedMinutes === 'number' && Number.isFinite(step.result.elapsedMinutes)
+    ? step.result.elapsedMinutes
+    : undefined;
+  const clockAfter = step.result?.clockAfter;
+  const timeLabel = clockAfter && typeof clockAfter === 'object' && 'fullLabel' in clockAfter
+    ? String((clockAfter as { fullLabel?: unknown }).fullLabel || '')
+    : '';
+  return {
+    ...(typeof elapsedMinutes === 'number' ? { elapsedMinutes } : {}),
+    ...(timeLabel ? { timeLabel } : {}),
+  };
 }
 
 function getInitialThinkingMode(): ThinkingMode {

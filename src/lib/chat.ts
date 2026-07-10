@@ -48,12 +48,18 @@ export function createSceneTransitionMessage({
   fromSceneName,
   toSceneId,
   toSceneName,
+  elapsedMinutes,
+  timeLabel,
 }: NonNullable<ChatMessage['sceneTransition']>): ChatMessage {
+  const timeSuffix = [
+    typeof elapsedMinutes === 'number' && Number.isFinite(elapsedMinutes) ? `耗时 ${elapsedMinutes} 分钟` : '',
+    timeLabel ? `当前时间 ${timeLabel}` : '',
+  ].filter(Boolean).join('，');
   return {
     id: createId('scene'),
     role: 'system',
     kind: 'scene-transition',
-    content: `当前玩家从 ${fromSceneName} 移动到 ${toSceneName}`,
+    content: `当前玩家从 ${fromSceneName} 移动到 ${toSceneName}${timeSuffix ? `，${timeSuffix}` : ''}`,
     createdAt: Date.now(),
     status: 'done',
     sceneTransition: {
@@ -61,6 +67,8 @@ export function createSceneTransitionMessage({
       fromSceneName,
       toSceneId,
       toSceneName,
+      elapsedMinutes,
+      timeLabel,
     },
   };
 }
@@ -431,6 +439,8 @@ function createSceneTransitionContextEvent(message: ChatMessage): AgentContextEv
           fromSceneName: transition.fromSceneName,
           toSceneId: transition.toSceneId,
           toSceneName: transition.toSceneName,
+          elapsedMinutes: transition.elapsedMinutes,
+          timeLabel: transition.timeLabel,
         }
       : {}),
   };
@@ -534,7 +544,13 @@ function formatSceneTransitionForContext(message: ChatMessage): string {
   if (!transition) {
     return `${SCENE_TRANSITION_CONTEXT_PREFIX}\n\n场景变更：${message.content}。`;
   }
-  return `${SCENE_TRANSITION_CONTEXT_PREFIX}\n\n场景变更：当前玩家从「${transition.fromSceneName}」移动到「${transition.toSceneName}」。`;
+  const timeText = [
+    typeof transition.elapsedMinutes === 'number' && Number.isFinite(transition.elapsedMinutes)
+      ? `本次移动前上一场景估算耗时 ${transition.elapsedMinutes} 分钟`
+      : '',
+    transition.timeLabel ? `移动后当前世界时间为 ${transition.timeLabel}` : '',
+  ].filter(Boolean).join('；');
+  return `${SCENE_TRANSITION_CONTEXT_PREFIX}\n\n场景变更：当前玩家从「${transition.fromSceneName}」移动到「${transition.toSceneName}」${timeText ? `。${timeText}` : ''}。`;
 }
 
 function createSeedMessage(role: ChatMessage['role'], content: string, createdAt: number): ChatMessage {

@@ -8,12 +8,14 @@
 
 - 搜索实体：调用 `search_entities`，参数如 `query`、`kind`、`sceneId`、`limit`。
 - 读取当前场景：调用 `get_current_scene`，无参数。
+- 读取时间结算上下文：调用 `get_time_state`，无参数；读取后仍需调用 `update_time`。
+- 查询时间时提交结算：调用 `update_time`，参数为 `timeSegments`、`throughConversationId`、`reason` 和 `summary`。
 - DM 叙事：调用 `dm_speak`，参数 `content` 会显示在聊天流并投影为舞台旁白。
 - NPC 气泡发言：调用 `npc_speak`，参数 `npcEntityId` 使用已有 NPC 实体 id，`content` 只写纯对白。
 - 查询规则：调用 `search_rules`，再按需调用 `get_rule_section`。
 - 掷骰：调用 `roll_dice`，参数 `expression` 和 `reason`。
 - 写入世界：调用 `apply_world_patch`，必须使用 `operations` 数组。
-- 切换场景：调用 `enter_scene`，优先传 `sceneId`，只有只知道当前出口关系 id 时才传 `exitId`。
+- 推进时间并切换场景：调用 `transition_scene`，优先传 `sceneId`，只有只知道当前出口关系 id 时才传 `exitId`；同时提供 `sceneTimeSegments`、`travelMinutes`、`travelReason`、`throughConversationId` 和 `previousSceneSummary`。
 
 `dm_speak` 会作为普通 DM 叙事显示在聊天流里，并在游戏视图中投影为舞台旁白。适合写当前画面、行动结果、环境变化或 DM 说明；保持自然叙事即可，不要输出工具名或内部流程。不要在这里写 NPC 的逐字直接对白、引号内台词或拟声式台词。
 
@@ -47,7 +49,7 @@
 }
 ```
 
-移动玩家、NPC、物品或其他实体位置时，`apply_world_patch` 使用：
+移动 NPC、物品或其他非玩家实体位置时，`apply_world_patch` 使用；玩家进入新场景只能调用 `transition_scene`：
 
 ```json
 {

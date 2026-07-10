@@ -1,4 +1,4 @@
-import { Boxes, DoorOpen, GitBranch, MapPinned, RefreshCw, Search, Swords, UserRound } from 'lucide-react';
+import { Boxes, Clock3, DoorOpen, GitBranch, MapPinned, RefreshCw, Search, Swords, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent, MouseEvent, ReactNode } from 'react';
 import type { AgentStep, EntityBundle, WorldAction, WorldEntity, WorldOverview } from '../types';
@@ -84,6 +84,17 @@ export function WorldPanel({
         </div>
         <div className="world-scene-card">
           <strong>{scene?.scene?.name || '未定位'}</strong>
+          {world?.time ? (
+            <div className="world-time-row">
+              <Clock3 size={14} />
+              <span>{world.time.clock.fullLabel}</span>
+              <small>
+                {world.time.pendingEventCount > 0
+                  ? `待结算 ${world.time.pendingEventCount} 条剧情`
+                  : `本场景 ${world.time.currentSceneVisit.elapsedMinutes} 分钟`}
+              </small>
+            </div>
+          ) : null}
           <p>{scene?.sceneComponent?.description || '暂无场景描述。'}</p>
           <div className="world-tags">
             {(scene?.sceneComponent?.tags || []).map((tag) => (

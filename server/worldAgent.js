@@ -4,16 +4,19 @@ import {
   addEvent,
   applyWorldPatch,
   createAgentRun,
-  enterScene,
   finishAgentRun,
   getCurrentScene,
   getEntity,
   getEntityBundle,
+  getWorldTimeContext,
+  getWorldTimeState,
   getWorldOverview,
   listAgentRuns,
   listAgentSteps,
   listRelationships,
   searchEntities,
+  transitionScene,
+  updateWorldTime,
 } from './worldDb.js';
 import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
@@ -33,7 +36,12 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '当前玩家请求附加提醒：需要使用工具命令调用时，一定要使用 tool_calls 调用对应工具。',
   '如果本轮涉及世界事实、人物关系、规则裁定、随机结果、HP/状态/位置/物品/关系变化或切换场景，不要只用 dm_speak 或 npc_speak 回答；先调用读取、搜索、掷骰、写库或切换场景工具。',
-  '移动玩家、NPC、队友、物品或其他实体位置时，调用 apply_world_patch，并在 operations 中使用 set_location；不要用 set_relationship 写 located_in。',
+  '玩家询问当前时间、几点、时辰或让 NPC 判断时间时：先调用 get_time_state 读取权威检查点和未结算剧情，再按未结算剧情生成 timeSegments 并调用 update_time；update_time 成功后才能用 dm_speak 或 npc_speak 回答时间。',
+  '如果 get_time_state 返回 hasMorePendingEvents=true，先结算当前批次，再次调用 get_time_state 继续结算；直到 hasMorePendingEvents=false 才能回答时间或切换场景。',
+  '时间证据优先级：明确绝对时间（例如睡到 22:00）高于明确持续时间，高于行为类型估算。每个分项必须提供 evidence；明确时刻必须规范为 HH:MM，minutes 必须等于检查点到目标时刻的分钟差。纯粹复述、确认或时间回答本身可以计为 0 分钟。',
+  '玩家请求进入或切换场景时，必须调用 transition_scene：sceneTimeSegments 要覆盖检查点之后上一场景中所有尚未结算的剧情，travelMinutes 单独表示赶路时间，并使用动态时间上下文给出的 throughConversationId。',
+  '没有明确时间证据时才参考：简短问答 5-10 分钟；仔细调查 10-30 分钟；战斗 5-30 分钟；治疗或准备 30-120 分钟。睡眠、等待到指定时刻等长事件必须按明确时间锚点计算，不受该参考区间限制。',
+  '玩家进入新场景只能调用 transition_scene。移动 NPC、队友、物品或其他非玩家实体时，调用 apply_world_patch，并在 operations 中使用 set_location；不要用 set_relationship 写 located_in。',
   'NPC 问答特别规则：当玩家向某个 NPC 提问时，不要因为需要用 NPC 口吻回答就跳过工具。npc_speak 只是最终展示方式，不代表已经知道答案。',
   '如果玩家的问题涉及已有世界事实、当前场景、其他角色、地点、物品、阵营、关系、历史事件、状态、位置、任务线索、规则结果或 NPC 是否知道某事，必须先通过工具查询相关世界数据，再决定 NPC 是否知道、如何回答、是否隐瞒或误导。',
   '常见工具选择：问这里还有谁、场景里有哪些重要角色、附近有什么，先用 get_current_scene 或 get_scene_entities；问某个人、组织、地点、物品、旧事，先用 search_entities，再按需 get_entity_bundle；问两者关系、血缘、敌友、从属或认识程度，用 get_relationships，必要时读取双方实体详情。',
@@ -44,6 +52,8 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
   'get_entity_bundle',
   'get_current_scene',
+  'get_time_state',
+  'update_time',
   'get_scene_entities',
   'get_relationships',
   'get_rule_toc',
@@ -52,7 +62,7 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'roll_dice',
   'dm_speak',
   'npc_speak',
-  'enter_scene',
+  'transition_scene',
   'apply_world_patch',
 ]);
 const WORLD_AGENT_TOOL_SCHEMAS = [
@@ -66,6 +76,25 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     entityId: { type: 'string', description: '目标实体 id。' },
   }, ['entityId']),
   createToolSchema('get_current_scene', '读取玩家当前所在场景及其中人物、道具、出口。', {}),
+  createToolSchema('get_time_state', '读取权威时间检查点、检查点之后尚未结算的剧情事件和可结算游标。返回的检查点不是无需计算的当前时间；必须分析 pendingEvents 后调用 update_time。', {}),
+  createToolSchema('update_time', '在玩家查询时间时，根据检查点之后的未结算剧情分项计算耗时，推进世界时间并提交新的剧情游标。', {
+    timeSegments: {
+      type: 'array',
+      description: '尚未结算剧情的耗时分项。明确绝对时间优先；无新增耗时可传空数组。',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: '行为或时间段名称。' },
+          minutes: { type: 'number', description: '该分项分钟数，必须为非负整数。' },
+          evidence: { type: 'string', description: '来自剧情的时间证据或估算依据。若有明确时刻，必须写成 HH:MM，后端会校验 minutes。' },
+        },
+        required: ['label', 'minutes', 'evidence'],
+      },
+    },
+    throughConversationId: { type: 'number', description: 'get_time_state 返回的 latestConversationId，表示已分析到此剧情事件。' },
+    reason: { type: 'string', description: '本次时间结算的整体依据。' },
+    summary: { type: 'string', description: '本次已结算剧情的简短摘要。' },
+  }, ['timeSegments', 'throughConversationId', 'reason', 'summary']),
   createToolSchema('get_scene_entities', '读取指定场景中的实体。', {
     sceneId: { type: 'string', description: '场景实体 id。' },
     limit: { type: 'number', description: '返回数量上限。' },
@@ -100,10 +129,27 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     npcEntityId: { type: 'string', description: 'NPC 实体 id。' },
     content: { type: 'string', description: 'NPC 实际说出口的话，不包含旁白、动作描写、引号或说话人前缀。' },
   }, ['npcEntityId', 'content']),
-  createToolSchema('enter_scene', '校验出口并切换玩家当前场景。', {
+  createToolSchema('transition_scene', '根据上一场景行动估算耗时，原子地推进世界时间并切换玩家当前场景。普通场景移动必须使用此工具。', {
     sceneId: { type: 'string', description: '目标场景实体 id，优先使用。' },
     exitId: { type: 'number', description: '当前场景 exits 中的出口关系 id。' },
-  }),
+    sceneTimeSegments: {
+      type: 'array',
+      description: '上个时间检查点之后、上一场景中所有尚未结算剧情的耗时分项；没有新增剧情耗时可传空数组。',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: '行为或时间段名称。' },
+          minutes: { type: 'number', description: '该分项分钟数，必须为非负整数。' },
+          evidence: { type: 'string', description: '来自剧情的时间证据或估算依据。若有明确时刻，必须写成 HH:MM，后端会校验 minutes。' },
+        },
+        required: ['label', 'minutes', 'evidence'],
+      },
+    },
+    travelMinutes: { type: 'number', description: '从上一场景前往目标场景的赶路分钟数，范围 1-480。' },
+    travelReason: { type: 'string', description: '赶路时间的路线或剧情依据。' },
+    throughConversationId: { type: 'number', description: '动态时间上下文中的 latestConversationId，表示已分析到此剧情事件。' },
+    previousSceneSummary: { type: 'string', description: '玩家离开上一场景前完成了什么。' },
+  }, ['sceneTimeSegments', 'travelMinutes', 'travelReason', 'throughConversationId', 'previousSceneSummary']),
   createToolSchema('apply_world_patch', '创建或修改长期世界事实。移动实体位置必须使用 set_location，不要用 set_relationship 写 located_in。', {
     operations: {
       type: 'array',
@@ -139,6 +185,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
   const baseContextEvents = Array.isArray(input.contextEvents)
     ? input.contextEvents
     : legacyMessagesToContextEvents(input.conversationContext);
+  getWorldTimeState();
   addConversation(taskRole, taskRole === 'user' ? 'player' : null, taskRole === 'user' ? '玩家' : '系统', prompt);
   addEvent('agent.started', 'player', null, { summary: `Agent 开始处理：${prompt}` });
   handlers.onStart?.({ runId });
@@ -540,17 +587,35 @@ function compactToolResultForAgentStep(tool, result) {
     };
   }
 
-  if (tool === 'enter_scene') {
+  if (tool === 'transition_scene') {
     const scene = result.scene?.scene;
     const sceneId = typeof scene?.id === 'string' ? scene.id : '';
     const sceneName = typeof scene?.name === 'string' ? scene.name : sceneId;
+    const clockAfter = isRecord(result.clockAfter) ? result.clockAfter : null;
     return {
       ok: true,
       scene: {
         id: sceneId,
         name: sceneName,
       },
-      summary: '场景切换成功。请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
+      ...(Number.isFinite(result.elapsedMinutes) ? { elapsedMinutes: result.elapsedMinutes } : {}),
+      ...(clockAfter ? { clockAfter } : {}),
+      summary: [
+        Number.isFinite(result.elapsedMinutes)
+          ? `场景切换成功，世界时间推进 ${result.elapsedMinutes} 分钟，当前时间 ${String(clockAfter?.fullLabel || clockAfter?.label || '')}。`
+          : '场景切换成功。',
+        '请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
+      ].filter(Boolean).join(''),
+    };
+  }
+
+  if (tool === 'update_time') {
+    const clockAfter = isRecord(result.clockAfter) ? result.clockAfter : null;
+    return {
+      ok: true,
+      elapsedMinutes: Number.isFinite(result.elapsedMinutes) ? result.elapsedMinutes : 0,
+      ...(clockAfter ? { clockAfter } : {}),
+      summary: `时间结算成功，推进 ${Number(result.elapsedMinutes || 0)} 分钟，当前时间 ${String(clockAfter?.fullLabel || clockAfter?.label || '')}。`,
     };
   }
 
@@ -719,6 +784,38 @@ export function executeWorldTool(tool, args, prompt = '') {
     };
   }
 
+  if (tool === 'get_time_state') {
+    const timeContext = getWorldTimeContext();
+    return {
+      ok: true,
+      time: getWorldTimeState(),
+      timeContext,
+      summary: `权威时间检查点：${timeContext.checkpoint.clock.fullLabel}；有 ${timeContext.pendingEventCount} 条剧情尚未结算。请分析 pendingEvents 后调用 update_time。`,
+    };
+  }
+
+  if (tool === 'update_time') {
+    try {
+      const result = updateWorldTime({
+        timeSegments: args.timeSegments,
+        throughConversationId: args.throughConversationId,
+        reason: args.reason,
+        summary: args.summary,
+      });
+      return {
+        ok: true,
+        ...result,
+        answer: `当前时间：${result.clockAfter.fullLabel}。`,
+        summary: `世界时间推进 ${result.elapsedMinutes} 分钟至 ${result.clockAfter.fullLabel}。`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   if (tool === 'get_scene_entities') {
     const sceneId = String(args.sceneId || args.entityId || '');
     const scene = getEntity(sceneId);
@@ -819,15 +916,21 @@ export function executeWorldTool(tool, args, prompt = '') {
     };
   }
 
-  if (tool === 'enter_scene') {
+  if (tool === 'transition_scene') {
     try {
       const targetSceneId = resolveEnterSceneTargetId(args);
-      const scene = enterScene(targetSceneId);
+      const result = transitionScene(targetSceneId, {
+        sceneTimeSegments: args.sceneTimeSegments,
+        travelMinutes: args.travelMinutes,
+        travelReason: args.travelReason,
+        throughConversationId: args.throughConversationId,
+        previousSceneSummary: args.previousSceneSummary,
+      });
       return {
         ok: true,
-        scene,
-        answer: `你进入了${scene.scene?.name ?? '新的场景'}。${scene.sceneComponent?.description ?? ''}`,
-        summary: `玩家进入 ${scene.scene?.name ?? targetSceneId}。`,
+        ...result,
+        answer: `你进入了${result.scene.scene?.name ?? '新的场景'}。当前时间：${result.clockAfter.fullLabel}。${result.scene.sceneComponent?.description ?? ''}`,
+        summary: `玩家进入 ${result.scene.scene?.name ?? targetSceneId}，时间推进 ${result.elapsedMinutes} 分钟至 ${result.clockAfter.fullLabel}。`,
       };
     } catch (error) {
       return {
@@ -840,6 +943,7 @@ export function executeWorldTool(tool, args, prompt = '') {
   if (tool === 'apply_world_patch') {
     try {
       const operations = normalizeWorldPatchOperations(args);
+      assertNoPlayerLocationPatch(operations);
       const patch = applyWorldPatch({
         operations,
         confirmedTargetIds: Array.isArray(args.confirmedTargetIds) ? args.confirmedTargetIds : [],
@@ -884,6 +988,21 @@ function resolveEnterSceneTargetId(args) {
   return exit?.scene?.id ?? '';
 }
 
+function assertNoPlayerLocationPatch(operations) {
+  const playerId = getCurrentScene().playerId;
+  const attemptsPlayerMove = operations.some((operation) => {
+    if (!isRecord(operation)) return false;
+    const op = String(operation.op || operation.operation || operation.type || '').trim();
+    const entityId = firstNonEmptyString(operation.entityId, operation.sourceEntityId, operation.sourceId);
+    if (op === 'set_location') return entityId === playerId;
+    const relationshipType = firstNonEmptyString(operation.relationshipType, operation.relationType, operation.type);
+    return op === 'delete_relationship' && relationshipType === 'located_in' && entityId === playerId;
+  });
+  if (attemptsPlayerMove) {
+    throw new Error('玩家进入新场景必须使用 transition_scene，不能通过 apply_world_patch 修改玩家位置。');
+  }
+}
+
 function firstNonEmptyString(...values) {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -901,6 +1020,7 @@ export function getAgentHistory() {
 function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction, useNativeModelMessages = false }) {
   const fixedContext = readFixedContextBundle().content;
   const events = Array.isArray(contextEvents) ? contextEvents : [];
+  const timeContext = getWorldTimeContext();
   const messages = [
     {
       role: 'system',
@@ -909,6 +1029,10 @@ function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction,
     {
       role: 'system',
       content: modeInstruction,
+    },
+    {
+      role: 'system',
+      content: formatWorldTimeContextForAgent(timeContext),
     },
     ...contextEventsToModelMessages(events, { useNativeModelMessages }),
   ];
@@ -1144,6 +1268,16 @@ function createNativeToolResultMessage(toolCall, result) {
 function parseNativeToolCall(toolCall) {
   const toolName = getNativeToolCallName(toolCall);
   const fallbackTool = toolName || 'unknown_tool';
+  if (!WORLD_AGENT_TOOL_NAMES.has(toolName)) {
+    return {
+      ok: false,
+      error: `未知工具：${fallbackTool}`,
+      toolCall: {
+        tool: 'unknown_tool',
+        args: {},
+      },
+    };
+  }
   const rawArgs = isRecord(toolCall?.function) ? toolCall.function.arguments : toolCall?.arguments;
   const parsedArgs = parseNativeToolArguments(rawArgs);
   if (!parsedArgs.ok) {
@@ -1160,7 +1294,7 @@ function parseNativeToolCall(toolCall) {
   return {
     ok: true,
     toolCall: {
-      tool: WORLD_AGENT_TOOL_NAMES.has(toolName) ? toolName : fallbackTool,
+      tool: toolName,
       args: parsedArgs.args,
     },
   };
@@ -1281,23 +1415,8 @@ function normalizeToolCall(raw) {
         ? raw.name
         : 'unknown_tool').trim() || 'unknown_tool';
 
-  const valid = new Set([
-    'search_entities',
-    'get_entity_bundle',
-    'get_current_scene',
-    'get_scene_entities',
-    'get_relationships',
-    'get_rule_toc',
-    'search_rules',
-    'get_rule_section',
-    'roll_dice',
-    'dm_speak',
-    'npc_speak',
-    'enter_scene',
-    'apply_world_patch',
-  ]);
   return {
-    tool: valid.has(tool) ? tool : tool,
+    tool: WORLD_AGENT_TOOL_NAMES.has(tool) ? tool : 'unknown_tool',
     args,
   };
 }
@@ -1405,6 +1524,13 @@ function normalizeWorldPatchOperation(operation) {
   if (!isRecord(operation)) return null;
 
   const op = String(operation.op || operation.operation || operation.type || '').trim();
+  const relationshipType = firstNonEmptyString(operation.relationshipType, operation.relationType, operation.type);
+  if (['set_location', 'move_entity', 'move_character', 'move_npc'].includes(op)) {
+    return normalizeAgentLocationPatchOperation(operation);
+  }
+  if (op === 'set_relationship' && relationshipType === 'located_in') {
+    return normalizeAgentLocationPatchOperation(operation);
+  }
   if (
     [
       'create_entity',
@@ -1424,7 +1550,8 @@ function normalizeWorldPatchOperation(operation) {
   }
 
   if (['replace', 'add', 'set', 'upsert'].includes(op)) {
-    return normalizeJsonPatchOperation(operation);
+    const normalized = normalizeJsonPatchOperation(operation);
+    return normalized === operation ? operation : normalizeWorldPatchOperation(normalized);
   }
 
   if (operation.entityId && (operation.componentType || operation.component) && (operation.path || 'value' in operation || operation.data)) {
@@ -1439,6 +1566,52 @@ function normalizeWorldPatchOperation(operation) {
   }
 
   return operation;
+}
+
+function formatWorldTimeContextForAgent(timeContext) {
+  const pendingEvents = Array.isArray(timeContext.pendingEvents) ? timeContext.pendingEvents : [];
+  const eventLines = pendingEvents.length
+    ? pendingEvents.map((event) => {
+        const base = [
+          `#${event.id}`,
+          event.role,
+          event.speakerName,
+          String(event.content || ''),
+        ].filter(Boolean).join(' | ');
+        const evidence = Array.isArray(event.timeEvidence) && event.timeEvidence.length
+          ? `\n  时间证据：${event.timeEvidence.join(' / ')}`
+          : '';
+        return `${base}${evidence}`;
+      })
+    : ['（没有尚未结算的剧情事件）'];
+  return [
+    '【动态世界时间上下文】',
+    `权威时间检查点：${timeContext.checkpoint.clock.fullLabel}`,
+    `检查点场景：${timeContext.checkpoint.sceneName || timeContext.checkpoint.sceneId || '未知场景'}`,
+    `已结算至 conversation #${timeContext.checkpoint.conversationCursor}`,
+    `本批可结算至 conversation #${timeContext.latestConversationId}`,
+    `尚未结算剧情数量：${timeContext.pendingEventCount}`,
+    `是否还有下一批未展示事件：${timeContext.hasMorePendingEvents ? '是' : '否'}`,
+    '尚未结算剧情：',
+    ...eventLines,
+    '规则：数据库时钟只代表上个检查点。询问时间时必须先 get_time_state，再根据未结算剧情调用 update_time。若 hasMorePendingEvents=true，必须分批结算至 false。切换场景时 sceneTimeSegments 只计算未结算剧情，travelMinutes 单独计算赶路。不得重复计算检查点之前的内容。',
+    '时间证据优先级：明确绝对时间 > 明确持续时间 > 行为类型估算。每个分项都要提供 evidence；明确时刻必须写成 HH:MM，后端会校验 minutes。',
+  ].join('\n');
+}
+
+function normalizeAgentLocationPatchOperation(operation) {
+  return {
+    op: 'set_location',
+    entityId: firstNonEmptyString(operation.entityId, operation.sourceEntityId, operation.sourceId),
+    sceneId: firstNonEmptyString(
+      operation.sceneId,
+      operation.targetSceneId,
+      operation.targetEntityId,
+      operation.targetId,
+      operation.locationId,
+    ),
+    summary: firstNonEmptyString(operation.summary, operation.data?.summary),
+  };
 }
 
 function normalizeJsonPatchOperation(operation) {

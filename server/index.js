@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import {
   applyWorldPatch,
   checkpointWorldDb,
-  enterScene,
   getCurrentScene,
   getEntityBundle,
   getWorldMap,
@@ -17,6 +16,7 @@ import {
   restoreWorldDbFromFile,
   searchEntities,
   seedWorldIfEmpty,
+  transitionScene,
 } from './worldDb.js';
 import { executeWorldTool, getAgentHistory, runWorldAgentTask, runWorldAgentTaskStream } from './worldAgent.js';
 import { executeWorldAction, listWorldActions } from './worldActions.js';
@@ -234,7 +234,13 @@ app.post('/api/world/actions/execute', (req, res) => {
 
 app.post('/api/world/scene/enter', (req, res) => {
   try {
-    res.json(enterScene(String(req.body?.sceneId || '')));
+    res.json(transitionScene(String(req.body?.sceneId || ''), {
+      sceneTimeSegments: req.body?.sceneTimeSegments,
+      travelMinutes: req.body?.travelMinutes,
+      travelReason: req.body?.travelReason,
+      throughConversationId: req.body?.throughConversationId,
+      previousSceneSummary: req.body?.previousSceneSummary,
+    }));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : '场景切换失败。' });
   }
@@ -637,6 +643,8 @@ function sanitizeContextEvent(event) {
       fromSceneName: sanitizeOptionalString(event.fromSceneName, 400),
       toSceneId: sanitizeOptionalString(event.toSceneId, 400),
       toSceneName: sanitizeOptionalString(event.toSceneName, 400),
+      ...(Number.isFinite(event.elapsedMinutes) ? { elapsedMinutes: event.elapsedMinutes } : {}),
+      timeLabel: sanitizeOptionalString(event.timeLabel, 100),
     };
   }
 

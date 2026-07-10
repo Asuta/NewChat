@@ -236,6 +236,487 @@ export function getMeta(key, fallback = '') {
   return row?.value ?? fallback;
 }
 
+const WORLD_CLOCK_META_KEY = 'worldClock.absoluteMinutes';
+const CURRENT_SCENE_VISIT_META_KEY = 'worldClock.currentSceneVisit';
+const WORLD_TIME_CHECKPOINT_META_KEY = 'worldClock.checkpoint';
+const DEFAULT_WORLD_START_MINUTES = 12 * 60;
+const MAX_SCENE_TRANSITION_MINUTES = 8 * 60;
+const MAX_TIME_UPDATE_MINUTES = 7 * 24 * 60;
+const MAX_PENDING_TIME_EVENTS = 40;
+
+export function getWorldTimeState() {
+  const clock = getWorldClock();
+  const currentScene = getCurrentScene();
+  const visit = getCurrentSceneVisit(currentScene.scene);
+  const checkpoint = getWorldTimeCheckpoint(currentScene.scene);
+  const pendingEventCount = countPendingTimeEvents(checkpoint.conversationCursor);
+  return {
+    clock,
+    checkpoint,
+    pendingEventCount,
+    currentSceneVisit: visit,
+  };
+}
+
+export function getWorldTimeContext() {
+  const currentScene = getCurrentScene();
+  const checkpoint = getWorldTimeCheckpoint(currentScene.scene);
+  const pendingEventCount = countPendingTimeEvents(checkpoint.conversationCursor);
+  const pendingEvents = listPendingTimeEvents(checkpoint.conversationCursor, MAX_PENDING_TIME_EVENTS);
+  const latestConversationId = pendingEvents.at(-1)?.id ?? checkpoint.conversationCursor;
+  return {
+    clock: getWorldClock(),
+    checkpoint,
+    currentSceneVisit: getCurrentSceneVisit(currentScene.scene),
+    pendingEvents,
+    pendingEventCount,
+    latestConversationId,
+    hasMorePendingEvents: pendingEventCount > pendingEvents.length,
+  };
+}
+
+export function updateWorldTime(options = {}) {
+  return withTransaction(() => {
+    const currentScene = getCurrentScene();
+    const context = getWorldTimeContext();
+    const clockBefore = getWorldClock();
+    const timeSegments = normalizeTimeSegments(
+      options.timeSegments,
+      'timeSegments',
+      clockBefore.absoluteMinutes,
+    );
+    const elapsedMinutes = sumTimeSegments(timeSegments);
+    const throughConversationId = requireConversationCursor(
+      options.throughConversationId,
+      context.checkpoint.conversationCursor,
+      context.latestConversationId,
+    );
+    const reason = requireTransitionText(options.reason, 'reason');
+    const summary = requireTransitionText(options.summary, 'summary');
+    assertPendingAbsoluteTimeSatisfied({
+      fromConversationId: context.checkpoint.conversationCursor,
+      throughConversationId,
+      startingAbsoluteMinutes: clockBefore.absoluteMinutes,
+      elapsedMinutes,
+      fieldName: 'timeSegments',
+    });
+    if (throughConversationId === context.checkpoint.conversationCursor && elapsedMinutes > 0) {
+      throw new Error('This conversation cursor is already settled; nonzero time cannot be applied twice.');
+    }
+    const clockAfter = createClockState(clockBefore.absoluteMinutes + elapsedMinutes);
+    const checkpoint = createWorldTimeCheckpoint({
+      absoluteMinutes: clockAfter.absoluteMinutes,
+      conversationCursor: throughConversationId,
+      scene: currentScene.scene,
+      reason,
+      summary,
+    });
+
+    setWorldClock(clockAfter.absoluteMinutes);
+    setWorldTimeCheckpoint(checkpoint);
+    addEvent('world.time.updated', currentScene.playerId, currentScene.scene?.id ?? null, {
+      summary: `世界时间推进 ${elapsedMinutes} 分钟至 ${clockAfter.fullLabel}。`,
+      elapsedMinutes,
+      timeSegments,
+      reason,
+      eventSummary: summary,
+      throughConversationId,
+      clockBefore,
+      clockAfter,
+      checkpoint,
+    });
+
+    return {
+      elapsedMinutes,
+      timeSegments,
+      reason,
+      summary,
+      throughConversationId,
+      clockBefore,
+      clockAfter,
+      checkpoint: decorateWorldTimeCheckpoint(checkpoint),
+    };
+  });
+}
+
+function getWorldClock() {
+  const absoluteMinutes = parseStoredInteger(getMeta(WORLD_CLOCK_META_KEY, ''), DEFAULT_WORLD_START_MINUTES);
+  return createClockState(absoluteMinutes);
+}
+
+function setWorldClock(absoluteMinutes) {
+  setMeta(WORLD_CLOCK_META_KEY, String(Math.max(0, Math.round(Number(absoluteMinutes) || 0))));
+}
+
+function getWorldTimeCheckpoint(scene = null) {
+  const stored = parseJsonMeta(WORLD_TIME_CHECKPOINT_META_KEY);
+  if (
+    stored
+    && Number.isInteger(stored.absoluteMinutes)
+    && stored.absoluteMinutes >= 0
+    && Number.isInteger(stored.conversationCursor)
+    && stored.conversationCursor >= 0
+  ) {
+    return decorateWorldTimeCheckpoint(stored);
+  }
+
+  const checkpoint = createWorldTimeCheckpoint({
+    absoluteMinutes: getWorldClock().absoluteMinutes,
+    conversationCursor: getLatestConversationId(),
+    scene,
+    reason: '初始化世界时间检查点。',
+    summary: '从当前存档状态开始记录尚未结算的剧情时间。',
+  });
+  setWorldTimeCheckpoint(checkpoint);
+  return decorateWorldTimeCheckpoint(checkpoint);
+}
+
+function createWorldTimeCheckpoint({ absoluteMinutes, conversationCursor, scene, reason, summary }) {
+  return {
+    absoluteMinutes: Math.max(0, Math.round(Number(absoluteMinutes) || 0)),
+    conversationCursor: Math.max(0, Math.round(Number(conversationCursor) || 0)),
+    sceneId: scene?.id || '',
+    sceneName: scene?.name || scene?.id || '未知场景',
+    reason: String(reason || '').trim(),
+    summary: String(summary || '').trim(),
+    updatedAt: nowIso(),
+  };
+}
+
+function decorateWorldTimeCheckpoint(checkpoint) {
+  return {
+    ...checkpoint,
+    clock: createClockState(checkpoint.absoluteMinutes),
+  };
+}
+
+function setWorldTimeCheckpoint(checkpoint) {
+  const { clock: _clock, ...stored } = checkpoint;
+  setMeta(WORLD_TIME_CHECKPOINT_META_KEY, JSON.stringify(stored));
+}
+
+function getLatestConversationId() {
+  const row = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM conversations').get();
+  return Number(row?.id || 0);
+}
+
+function countPendingTimeEvents(conversationCursor) {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM conversations WHERE id > ?').get(conversationCursor);
+  return Number(row?.count || 0);
+}
+
+function listPendingTimeEvents(conversationCursor, limit) {
+  return db.prepare(`
+    SELECT id, speaker_id as speakerId, speaker_name as speakerName, role, content, created_at as createdAt
+    FROM conversations
+    WHERE id > ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(conversationCursor, limit).map((row) => {
+    const content = String(row.content || '').replace(/\s+/g, ' ').trim();
+    const timeEvidence = extractTimeEvidence(content);
+    return {
+      ...row,
+      content: compactPendingEventContent(content),
+      ...(content.length > 2400 ? { contentTruncated: true } : {}),
+      ...(timeEvidence.length ? { timeEvidence } : {}),
+    };
+  });
+}
+
+function compactPendingEventContent(content) {
+  if (content.length <= 2400) return content;
+  return `${content.slice(0, 1200)} ...[middle omitted]... ${content.slice(-1200)}`;
+}
+
+function extractTimeEvidence(content) {
+  const evidence = [];
+  const patterns = [
+    /(?:[01]?\d|2[0-3])[:：][0-5]\d/g,
+    /(?:凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)?\s*(?:\d{1,2}|[一二三四五六七八九十两]+)\s*点(?:半|钟|\d{1,2}\s*分)?/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of content.matchAll(pattern)) {
+      const start = Math.max(0, Number(match.index || 0) - 80);
+      const end = Math.min(content.length, Number(match.index || 0) + match[0].length + 80);
+      const snippet = content.slice(start, end).trim();
+      if (snippet && !evidence.includes(snippet)) evidence.push(snippet);
+      if (evidence.length >= 32) return evidence;
+    }
+  }
+  return evidence;
+}
+
+function createClockState(absoluteMinutes) {
+  const normalized = Math.max(0, Math.round(Number(absoluteMinutes) || 0));
+  const day = Math.floor(normalized / 1440) + 1;
+  const minuteOfDay = normalized % 1440;
+  return {
+    absoluteMinutes: normalized,
+    day,
+    minuteOfDay,
+    label: formatMinuteOfDay(minuteOfDay),
+    dayLabel: `第 ${day} 日`,
+    fullLabel: `第 ${day} 日 ${formatMinuteOfDay(minuteOfDay)}`,
+  };
+}
+
+function formatMinuteOfDay(minuteOfDay) {
+  const hour = Math.floor(minuteOfDay / 60);
+  const minute = minuteOfDay % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function parseStoredInteger(value, fallback) {
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function getCurrentSceneVisit(scene = null) {
+  const stored = parseJsonMeta(CURRENT_SCENE_VISIT_META_KEY);
+  const clock = getWorldClock();
+  const sceneMatches = !scene?.id || stored?.sceneId === scene.id;
+  if (stored && typeof stored.sceneId === 'string' && stored.sceneId && sceneMatches) {
+    return {
+      ...stored,
+      elapsedMinutes: Math.max(0, clock.absoluteMinutes - Number(stored.enteredAt || clock.absoluteMinutes)),
+    };
+  }
+
+  const visit = createSceneVisit({
+    scene,
+    enteredAt: clock.absoluteMinutes,
+    previousVisitId: stored?.id || null,
+  });
+  setCurrentSceneVisit(visit);
+  return visit;
+}
+
+function setCurrentSceneVisit(visit) {
+  setMeta(CURRENT_SCENE_VISIT_META_KEY, JSON.stringify(visit));
+}
+
+function parseJsonMeta(key) {
+  const raw = getMeta(key, '');
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function createSceneVisit({ scene, enteredAt, previousVisitId = null }) {
+  const clock = createClockState(enteredAt);
+  return {
+    id: `visit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    sceneId: scene?.id || '',
+    sceneName: scene?.name || scene?.id || '未知场景',
+    enteredAt: clock.absoluteMinutes,
+    enteredAtLabel: clock.fullLabel,
+    elapsedMinutes: 0,
+    previousVisitId,
+  };
+}
+
+function completeSceneVisit(visit, { leftAt, elapsedMinutes, summary, reason }) {
+  const leftClock = createClockState(leftAt);
+  return {
+    ...visit,
+    leftAt: leftClock.absoluteMinutes,
+    leftAtLabel: leftClock.fullLabel,
+    elapsedMinutes,
+    summary,
+    reason,
+  };
+}
+
+function requireElapsedMinutes(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SCENE_TRANSITION_MINUTES) {
+    throw new Error(`elapsedMinutes 必须是 1-${MAX_SCENE_TRANSITION_MINUTES} 之间的整数。`);
+  }
+  return parsed;
+}
+
+function normalizeTimeSegments(value, fieldName, startingAbsoluteMinutes) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} 必须是数组。`);
+  }
+  let runningAbsoluteMinutes = startingAbsoluteMinutes;
+  const segments = value.map((segment, index) => {
+    if (!segment || typeof segment !== 'object' || Array.isArray(segment)) {
+      throw new Error(`${fieldName}[${index}] 必须是对象。`);
+    }
+    const label = requireTransitionText(segment.label, `${fieldName}[${index}].label`);
+    const evidence = requireTransitionText(segment.evidence, `${fieldName}[${index}].evidence`);
+    const minutes = Number(segment.minutes);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_TIME_UPDATE_MINUTES) {
+      throw new Error(`${fieldName}[${index}].minutes 必须是 0-${MAX_TIME_UPDATE_MINUTES} 之间的整数。`);
+    }
+    const segmentEvidence = `${label} ${evidence}`;
+    const explicitClockTarget = findLastExplicitClockTarget(segmentEvidence, runningAbsoluteMinutes);
+    if (!explicitClockTarget && hasUnnormalizedClockTarget(segmentEvidence)) {
+      throw new Error(`${fieldName}[${index}] contains an explicit clock target; evidence must include it as HH:MM.`);
+    }
+    if (explicitClockTarget && minutes !== explicitClockTarget.elapsedMinutes) {
+      throw new Error(
+        `${fieldName}[${index}] declares explicit clock target ${explicitClockTarget.label}; `
+        + `minutes must be ${explicitClockTarget.elapsedMinutes}, not ${minutes}.`,
+      );
+    }
+    runningAbsoluteMinutes += minutes;
+    return {
+      label,
+      minutes,
+      evidence,
+    };
+  });
+  if (sumTimeSegments(segments) > MAX_TIME_UPDATE_MINUTES) {
+    throw new Error(`单次时间结算不能超过 ${MAX_TIME_UPDATE_MINUTES} 分钟。`);
+  }
+  return segments;
+}
+
+function findLastExplicitClockTarget(text, currentAbsoluteMinutes) {
+  const source = String(text || '');
+  const clockMatches = [...source.matchAll(/(?:^|\D)([01]?\d|2[0-3])[:：]([0-5]\d)(?!\d)/g)].map((match) => ({
+    index: Number(match.index || 0),
+    hour: Number(match[1]),
+    minute: Number(match[2]),
+  }));
+  const pointMatches = [...source.matchAll(/(?:凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)?\s*(?:\d{1,2}|[一二三四五六七八九十两]+)\s*点(?:半|\d{1,2}\s*分)?/g)]
+    .map((match) => parsePointClockMatch(match))
+    .filter(Boolean);
+  const matches = [...clockMatches, ...pointMatches].sort((left, right) => left.index - right.index);
+  const match = matches.length >= 2
+    ? matches.at(-1)
+    : matches.find((candidate) => hasClockTargetCue(
+        source.slice(Math.max(0, candidate.index - 40), candidate.index),
+      ));
+  if (!match) return null;
+  const { hour, minute } = match;
+  const minuteOfDay = hour * 60 + minute;
+  const currentDayStart = Math.floor(currentAbsoluteMinutes / 1440) * 1440;
+  const prefix = source.slice(Math.max(0, match.index - 40), match.index);
+  const dayOffset = getExplicitDayOffset(prefix);
+  let targetAbsoluteMinutes = currentDayStart + minuteOfDay + (dayOffset ?? 0) * 1440;
+  if (dayOffset === null && targetAbsoluteMinutes < currentAbsoluteMinutes) targetAbsoluteMinutes += 1440;
+  return {
+    label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    targetAbsoluteMinutes,
+    elapsedMinutes: targetAbsoluteMinutes - currentAbsoluteMinutes,
+  };
+}
+
+function parsePointClockMatch(match) {
+  const raw = String(match[0] || '').replace(/\s+/g, '');
+  const hourToken = raw.match(/(\d{1,2}|[一二三四五六七八九十两]+)点/)?.[1];
+  if (!hourToken) return null;
+  let hour = parseChineseClockNumber(hourToken);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  const minute = raw.includes('点半') ? 30 : Number(raw.match(/点(\d{1,2})分/)?.[1] || 0);
+  if (minute < 0 || minute > 59) return null;
+  if (/(下午|傍晚|晚上|夜里)/.test(raw) && hour < 12) hour += 12;
+  if (/中午/.test(raw) && hour < 11) hour += 12;
+  if (/凌晨/.test(raw) && hour === 12) hour = 0;
+  return { index: Number(match.index || 0), hour, minute };
+}
+
+function parseChineseClockNumber(token) {
+  if (/^\d+$/.test(token)) return Number(token);
+  const digits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 两: 2 };
+  if (token === '十') return 10;
+  if (token.startsWith('十')) return 10 + Number(digits[token.slice(1)] || 0);
+  if (token.includes('十')) {
+    const [tens, ones] = token.split('十');
+    return Number(digits[tens] || 0) * 10 + Number(digits[ones] || 0);
+  }
+  return Number(digits[token] || NaN);
+}
+
+function hasClockTargetCue(prefix) {
+  return /(?:到|至|直到|睡到|等到|醒于|叫醒|目标|当前时间|现在|时间为|until|wake\s+at|target)/i.test(prefix);
+}
+
+function getExplicitDayOffset(prefix) {
+  if (/(?:后天|day\s+after\s+tomorrow)/i.test(prefix)) return 2;
+  if (/(?:明天|次日|翌日|tomorrow|next\s+day)/i.test(prefix)) return 1;
+  if (/(?:今天|今晚|today|tonight)/i.test(prefix)) return 0;
+  return null;
+}
+
+function hasUnnormalizedClockTarget(text) {
+  return /(?:到|至|直到|睡到|等到|醒于|叫醒|until|wake\s+at)[^。！？.!?\n]{0,24}(?:凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)?\s*(?:\d{1,2}|[一二三四五六七八九十两]+)\s*点/i.test(String(text || ''));
+}
+
+function assertPendingAbsoluteTimeSatisfied({
+  fromConversationId,
+  throughConversationId,
+  startingAbsoluteMinutes,
+  elapsedMinutes,
+  fieldName,
+}) {
+  if (throughConversationId <= fromConversationId) return;
+  const events = db.prepare(`
+    SELECT id, role, content
+    FROM conversations
+    WHERE id > ? AND id <= ?
+    ORDER BY id ASC
+  `).all(fromConversationId, throughConversationId);
+  const requiredTargets = extractRequiredAbsoluteTimeTargets(events, startingAbsoluteMinutes);
+  const requiredTarget = requiredTargets.reduce((latest, target) => (
+    !latest || target.targetAbsoluteMinutes > latest.targetAbsoluteMinutes ? target : latest
+  ), null);
+  if (!requiredTarget) return;
+  const requiredElapsedMinutes = requiredTarget.targetAbsoluteMinutes - startingAbsoluteMinutes;
+  if (elapsedMinutes < requiredElapsedMinutes) {
+    throw new Error(
+      `${fieldName} does not cover pending absolute-time action ${requiredTarget.label}; `
+      + `at least ${requiredElapsedMinutes} minutes are required, received ${elapsedMinutes}.`,
+    );
+  }
+}
+
+function extractRequiredAbsoluteTimeTargets(events, startingAbsoluteMinutes) {
+  let targets = [];
+  for (const event of events) {
+    if (event.role !== 'user') continue;
+    let content = String(event.content || '');
+    const cancellations = [...content.matchAll(/(?:算了|取消|不睡了|不等了|现在(?:就|立刻)?(?:走|出发)|never\s+mind|cancel|leave\s+now|go\s+now)/gi)];
+    const cancellation = cancellations.at(-1);
+    if (cancellation) {
+      targets = [];
+      content = content.slice(Number(cancellation.index || 0) + cancellation[0].length);
+    }
+    if (!/(?:睡|等|休息|治疗|昏迷|叫醒|sleep|wait|rest|nap|wake)/i.test(content)) continue;
+    const target = findLastExplicitClockTarget(content, startingAbsoluteMinutes);
+    if (target) targets.push({ ...target, conversationId: event.id });
+  }
+  return targets;
+}
+
+function sumTimeSegments(segments) {
+  return segments.reduce((total, segment) => total + segment.minutes, 0);
+}
+
+function requireConversationCursor(value, minimum, maximum) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`throughConversationId 必须位于 ${minimum}-${maximum} 之间。`);
+  }
+  return parsed;
+}
+
+function requireTransitionText(value, fieldName) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${fieldName} 不能为空。`);
+  }
+  return value.trim();
+}
+
 export function upsertEntity(id, kind, name) {
   if (!id || !kind || !name) throw new Error('entity 需要 id、kind、name。');
   if (!isEntityKind(kind)) throw new Error(`未知 EntityKind：${kind}`);
@@ -620,7 +1101,138 @@ export function getWorldMap() {
   };
 }
 
+export function transitionScene(sceneId, options = {}) {
+  return withTransaction(() => {
+    const playerId = getMeta('playerId', 'player');
+    const previousSceneState = getCurrentScene();
+    const previousScene = previousSceneState.scene;
+    const target = validateSceneEntry(sceneId);
+    if (previousScene?.id === target.id) {
+      throw new Error(`玩家已经位于 ${target.name}。`);
+    }
+    if (!Array.isArray(options.sceneTimeSegments)) {
+      throw new Error('sceneTimeSegments 必须是数组；旧版 elapsedMinutes 场景切换协议已停用。');
+    }
+    const clockBefore = getWorldClock();
+    const sceneTimeSegments = normalizeTimeSegments(
+      options.sceneTimeSegments,
+      'sceneTimeSegments',
+      clockBefore.absoluteMinutes,
+    );
+    const sceneElapsedMinutes = sumTimeSegments(sceneTimeSegments);
+    const travelMinutes = requireElapsedMinutes(options.travelMinutes);
+    const elapsedMinutes = sceneElapsedMinutes + travelMinutes;
+    const reason = requireTransitionText(
+      options.travelReason,
+      'travelReason',
+    );
+    const summary = requireTransitionText(options.previousSceneSummary ?? options.summary, 'previousSceneSummary');
+    const timeContext = getWorldTimeContext();
+    const throughConversationId = options.throughConversationId === undefined
+      ? timeContext.latestConversationId
+      : requireConversationCursor(
+          options.throughConversationId,
+          timeContext.checkpoint.conversationCursor,
+          timeContext.latestConversationId,
+        );
+    if (timeContext.hasMorePendingEvents || throughConversationId !== timeContext.latestConversationId) {
+      throw new Error('切换场景前必须先结算当前批次的全部未结算剧情。');
+    }
+    assertPendingAbsoluteTimeSatisfied({
+      fromConversationId: timeContext.checkpoint.conversationCursor,
+      throughConversationId,
+      startingAbsoluteMinutes: clockBefore.absoluteMinutes,
+      elapsedMinutes: sceneElapsedMinutes,
+      fieldName: 'sceneTimeSegments',
+    });
+    if (timeContext.pendingEventCount === 0 && sceneElapsedMinutes > 0) {
+      throw new Error('There are no pending story events; nonzero scene time would double count settled events.');
+    }
+    const clockAfter = createClockState(clockBefore.absoluteMinutes + elapsedMinutes);
+    const currentVisit = getCurrentSceneVisit(previousScene);
+    const completedVisit = completeSceneVisit(currentVisit, {
+      leftAt: clockAfter.absoluteMinutes,
+      elapsedMinutes: Math.max(0, clockAfter.absoluteMinutes - currentVisit.enteredAt),
+      summary,
+      reason,
+    });
+    const nextVisit = createSceneVisit({
+      scene: target,
+      enteredAt: clockAfter.absoluteMinutes,
+      previousVisitId: completedVisit.id,
+    });
+
+    setWorldClock(clockAfter.absoluteMinutes);
+    movePlayerToScene(playerId, target.id, 'transition_scene');
+    setCurrentSceneVisit(nextVisit);
+    const checkpoint = createWorldTimeCheckpoint({
+      absoluteMinutes: clockAfter.absoluteMinutes,
+      conversationCursor: throughConversationId,
+      scene: target,
+      reason,
+      summary,
+    });
+    setWorldTimeCheckpoint(checkpoint);
+    addEvent('scene.transition', playerId, target.id, {
+      summary: `${previousScene?.name ?? '未知场景'} -> ${target.name}，耗时 ${elapsedMinutes} 分钟，当前时间 ${clockAfter.fullLabel}。`,
+      fromSceneId: previousScene?.id ?? null,
+      fromSceneName: previousScene?.name ?? '未知场景',
+      toSceneId: target.id,
+      toSceneName: target.name,
+      elapsedMinutes,
+      sceneElapsedMinutes,
+      sceneTimeSegments,
+      travelMinutes,
+      travelReason: reason,
+      throughConversationId,
+      elapsedReason: reason,
+      previousSceneSummary: summary,
+      clockBefore,
+      clockAfter,
+      completedVisit,
+      currentSceneVisit: nextVisit,
+    });
+    addEvent('scene.entered', playerId, target.id, { summary: `玩家进入 ${target.name}。`, clock: clockAfter });
+
+    return {
+      scene: getCurrentScene(),
+      fromScene: previousScene,
+      toScene: target,
+      elapsedMinutes,
+      sceneElapsedMinutes,
+      sceneTimeSegments,
+      travelMinutes,
+      travelReason: reason,
+      throughConversationId,
+      elapsedReason: reason,
+      previousSceneSummary: summary,
+      clockBefore,
+      clockAfter,
+      completedVisit,
+      currentSceneVisit: nextVisit,
+      checkpoint: decorateWorldTimeCheckpoint(checkpoint),
+    };
+  });
+}
+
 export function enterScene(sceneId) {
+  return withTransaction(() => {
+    const playerId = getMeta('playerId', 'player');
+    const target = validateSceneEntry(sceneId);
+    movePlayerToScene(playerId, target.id, 'enter_scene');
+    const clock = getWorldClock();
+    const nextVisit = createSceneVisit({
+      scene: target,
+      enteredAt: clock.absoluteMinutes,
+      previousVisitId: getCurrentSceneVisit().id,
+    });
+    setCurrentSceneVisit(nextVisit);
+    addEvent('scene.entered', playerId, target.id, { summary: `玩家进入 ${target.name}。`, clock });
+    return getCurrentScene();
+  });
+}
+
+function validateSceneEntry(sceneId) {
   const playerId = getMeta('playerId', 'player');
   const currentSceneId = getCurrentLocationId(playerId);
   const target = getEntity(sceneId);
@@ -634,16 +1246,19 @@ export function enterScene(sceneId) {
       throw new Error(`当前场景不能直接前往 ${target.name}。`);
     }
   }
-  setCurrentLocation(playerId, sceneId, 'enter_scene');
+  return target;
+}
+
+function movePlayerToScene(playerId, sceneId, source) {
+  setCurrentLocation(playerId, sceneId, source || 'enter_scene');
   setMeta('currentSceneId', sceneId);
-  addEvent('scene.entered', playerId, sceneId, { summary: `玩家进入 ${target.name}。` });
-  return getCurrentScene();
 }
 
 export function getWorldOverview() {
   const entities = listEntities();
   return {
     currentScene: getCurrentScene(),
+    time: getWorldTimeState(),
     counts: {
       entities: entities.length,
       scenes: entities.filter((entity) => entity.kind === 'scene').length,

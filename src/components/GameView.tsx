@@ -1,9 +1,18 @@
-import type { Conversation, FixedContext, PresentationStage, StageNarration, StageSpeech, WorldMapState } from '../types';
+import type {
+  Conversation,
+  FixedContext,
+  PresentationStage,
+  StageNarration,
+  StageSpeech,
+  WorldMapState,
+  WorldOverview,
+} from '../types';
 import { ChatThread } from './ChatThread';
 import { GameStageCanvas } from './GameStageCanvas';
 
 interface GameViewProps {
   stage: PresentationStage | null;
+  world: WorldOverview | null;
   worldMap: WorldMapState | null;
   activeStageSpeech: StageSpeech | null;
   activeStageNarration: StageNarration | null;
@@ -19,6 +28,7 @@ interface GameViewProps {
 
 export function GameView({
   stage,
+  world,
   worldMap,
   activeStageSpeech,
   activeStageNarration,
@@ -35,6 +45,7 @@ export function GameView({
     <div className="game-view">
       <GameStageCanvas
         stage={stage}
+        world={world}
         worldMap={worldMap}
         activeStageSpeech={activeStageSpeech}
         activeStageNarration={activeStageNarration}

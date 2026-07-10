@@ -98,7 +98,9 @@ Agent 可用规则工具：
 - `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
 - `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
-- `enter_scene`：校验出口并切换玩家当前场景。
+- `get_time_state`：读取权威时间检查点和检查点之后尚未结算的剧情。
+- `update_time`：玩家查询时间时，按剧情分项结算耗时并推进检查点游标。
+- `transition_scene`：分别结算上一场景尚未结算的剧情耗时与赶路耗时，再原子推进时间和切换场景。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。移动实体位置时使用 `set_location` 子操作；普通关系才使用 `set_relationship`。
 - `dm_speak`：输出普通 DM 叙事、动作描写、环境变化、规则结果或说明。
 - `npc_speak`：让某个 NPC 以独立气泡说出纯对白。
