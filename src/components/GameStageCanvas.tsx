@@ -13,6 +13,7 @@ import type {
   PresentationStage,
   PresentationStageCharacter,
   StageDialogueEntry,
+  WorldActionMenuTarget,
   WorldMapState,
   WorldOverview,
 } from '../types';
@@ -35,10 +36,12 @@ interface GameStageCanvasProps {
   worldMap: WorldMapState | null;
   dialogueKey: string;
   dialogueEntries: StageDialogueEntry[];
+  actionMenuEntityId?: string | null;
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
   onEnterScene: (sceneId: string) => void;
+  onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
 
 export function GameStageCanvas({
@@ -47,10 +50,12 @@ export function GameStageCanvas({
   worldMap,
   dialogueKey,
   dialogueEntries,
+  actionMenuEntityId = null,
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
   onEnterScene,
+  onOpenEntityActions,
 }: GameStageCanvasProps) {
   const sceneName = stage?.scene?.name || '未知场景';
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
@@ -134,9 +139,21 @@ export function GameStageCanvas({
                   `slot-${character.slot}`,
                   character.isFallbackPortrait ? 'fallback-character' : '',
                   character.entityId === dialogue.activeEntry.speakerId ? 'speaking-character' : '',
+                  onOpenEntityActions ? 'has-actions' : '',
+                  character.entityId === actionMenuEntityId ? 'action-menu-open' : '',
                 ].filter(Boolean).join(' ')}
                 key={character.entityId}
                 style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
+                onContextMenu={onOpenEntityActions ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onOpenEntityActions({
+                    entityId: character.entityId,
+                    entityName: character.name,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                  });
+                } : undefined}
               >
                 {character.portraitUrl ? (
                   <img src={character.portraitUrl} alt={character.name} />

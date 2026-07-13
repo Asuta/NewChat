@@ -232,6 +232,13 @@ export interface WorldMapState {
   links: WorldMapLink[];
 }
 
+export interface WorldActionMenuTarget {
+  entityId: string;
+  entityName: string;
+  clientX: number;
+  clientY: number;
+}
+
 export interface WorldAction {
   id: string;
   kind: 'attack.weapon';

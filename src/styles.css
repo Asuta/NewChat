@@ -412,49 +412,168 @@ button {
   position: fixed;
   z-index: 50;
   display: grid;
-  min-width: 210px;
-  gap: 5px;
-  border: 1px solid var(--border);
+  width: min(264px, calc(100vw - 24px));
+  min-width: 232px;
+  max-height: calc(100vh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  padding: 7px;
-  background: #ffffff;
-  box-shadow: 0 18px 44px rgba(22, 35, 55, 0.18);
+  background: rgba(12, 18, 27, 0.8);
+  color: rgba(248, 250, 252, 0.96);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  transform-origin: top left;
+  animation: world-action-menu-enter 140ms ease-out;
 }
 
-.world-action-menu > strong {
-  padding: 5px 7px 3px;
-  color: #273041;
+.world-action-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 12px 10px;
+}
+
+.world-action-menu-target,
+.world-action-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 211, 145, 0.22);
+  border-radius: 6px;
+  background: rgba(240, 179, 90, 0.12);
+  color: #ffd391;
+}
+
+.world-action-menu-target {
+  width: 30px;
+  height: 30px;
+}
+
+.world-action-menu-title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.world-action-menu-title strong {
+  overflow: hidden;
+  color: #ffffff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
+  font-weight: 760;
+  line-height: 1.25;
+  letter-spacing: 0;
 }
 
-.world-action-menu > span {
-  padding: 5px 7px;
-  color: var(--muted);
+.world-action-menu-title small {
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.world-action-menu-content {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.world-action-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 9px;
+  color: rgba(226, 232, 240, 0.7);
   font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0;
 }
 
 .world-action-menu .world-action-error {
-  color: var(--danger);
+  color: #ffb9b4;
 }
 
 .world-action-menu button {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   width: 100%;
-  border: 0;
+  min-height: 42px;
+  border: 1px solid transparent;
   border-radius: 7px;
-  padding: 9px 8px;
+  padding: 6px 8px 6px 7px;
   background: transparent;
-  color: #263043;
+  color: rgba(248, 250, 252, 0.92);
   text-align: left;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 680;
+  letter-spacing: 0;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .world-action-menu button:hover {
-  background: #edf5ff;
-  color: var(--accent);
+  border-color: rgba(255, 211, 145, 0.18);
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+}
+
+.world-action-menu button:focus-visible {
+  outline: 2px solid rgba(255, 211, 145, 0.7);
+  outline-offset: -2px;
+}
+
+.world-action-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.world-action-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.world-action-chevron {
+  flex: 0 0 auto;
+  color: rgba(226, 232, 240, 0.44);
+  transition: color 120ms ease;
+}
+
+.world-action-menu button:hover .world-action-chevron {
+  color: #ffd391;
+}
+
+@keyframes world-action-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-action-menu {
+    animation: none;
+  }
 }
 
 .world-list-row span,
@@ -1529,6 +1648,24 @@ button {
   max-height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 24px 26px rgba(0, 0, 0, 0.36));
+  transform: translateY(0) scale(1);
+  transform-origin: bottom center;
+  transition:
+    filter 220ms ease,
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: filter, transform;
+}
+
+.game-character.has-actions img,
+.game-character.has-actions .game-character-missing,
+.game-character.has-actions figcaption {
+  pointer-events: auto;
+  cursor: context-menu;
+}
+
+.game-character.has-actions figcaption {
+  transform: translateY(-52px);
 }
 
 .game-character.fallback-character img,
@@ -1545,6 +1682,14 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 50% 50% 8px 8px;
   background: linear-gradient(180deg, rgba(210, 216, 224, 0.58), rgba(128, 138, 150, 0.34));
+  transform: translateY(0) scale(1);
+  transform-origin: bottom center;
+  transition:
+    border-color 180ms ease,
+    filter 220ms ease,
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: filter, transform;
 }
 
 .game-character figcaption {
@@ -1562,6 +1707,12 @@ button {
   font-size: 13px;
   font-weight: 700;
   backdrop-filter: blur(10px);
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .game-character.fallback-character figcaption {
@@ -1585,6 +1736,75 @@ button {
   border-color: rgba(255, 232, 174, 0.42);
   background: rgba(34, 25, 15, 0.72);
   color: #fff3ce;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+    filter:
+      brightness(1.08)
+      saturate(1.08)
+      drop-shadow(0 0 16px rgba(255, 220, 160, 0.34))
+      drop-shadow(0 28px 30px rgba(0, 0, 0, 0.42));
+    transform: translateY(-7px) scale(1.035);
+  }
+
+  .game-character.has-actions.fallback-character:is(.action-menu-open, :has(> img:hover, > figcaption:hover)) > img,
+  .game-character.has-actions:is(.action-menu-open, :has(> .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+    opacity: 0.9;
+    filter:
+      grayscale(0.72)
+      brightness(1.08)
+      drop-shadow(0 0 14px rgba(255, 220, 160, 0.28))
+      drop-shadow(0 26px 28px rgba(0, 0, 0, 0.38));
+  }
+
+  .game-character.has-actions.speaking-character:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions.speaking-character:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+    filter:
+      brightness(1.1)
+      saturate(1.08)
+      drop-shadow(0 0 22px rgba(255, 232, 174, 0.54))
+      drop-shadow(0 28px 30px rgba(0, 0, 0, 0.42));
+  }
+
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
+    border-color: rgba(255, 220, 160, 0.58);
+    background: rgba(28, 22, 16, 0.78);
+    color: #fff3d5;
+    box-shadow:
+      0 8px 22px rgba(0, 0, 0, 0.3),
+      0 0 14px rgba(255, 214, 143, 0.14);
+    transform: translateY(-57px) scale(1.03);
+  }
+
+  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > img,
+  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > .game-character-missing {
+    transform: translateY(-2px) scale(1.015);
+    transition-duration: 80ms;
+  }
+
+  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > figcaption {
+    transform: translateY(-53px) scale(0.99);
+    transition-duration: 80ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-character img,
+  .game-character-missing,
+  .game-character figcaption {
+    transition: none;
+  }
+
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+    transform: none;
+  }
+
+  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
+    transform: translateY(-52px);
+  }
 }
 
 .game-stage-empty {

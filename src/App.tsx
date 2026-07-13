@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { GameView } from './components/GameView';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
+import { WorldActionMenu } from './components/WorldActionMenu';
+import type { WorldActionMenuState } from './components/WorldActionMenu';
 import { WorldPanel } from './components/WorldPanel';
 import {
   buildCompactMessages,
@@ -37,6 +39,7 @@ import type {
   SaveExportMode,
   WorldAgentStreamEvent,
   WorldAction,
+  WorldActionMenuTarget,
   WorldEntity,
   WorldMapState,
   WorldOverview,
@@ -92,17 +95,28 @@ export default function App() {
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [worldActionMenu, setWorldActionMenu] = useState<WorldActionMenuState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
   const queueMessageRef = useRef<((content: string) => QueuedMessage | null) | null>(null);
   const resetDialogRef = useRef<HTMLElement | null>(null);
   const resetCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const worldActionMenuRequestRef = useRef(0);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
     [activeId, conversations],
   );
+
+  useEffect(() => {
+    const preventBrowserContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    window.addEventListener('contextmenu', preventBrowserContextMenu);
+    return () => window.removeEventListener('contextmenu', preventBrowserContextMenu);
+  }, []);
 
   useEffect(() => {
     saveConversations(conversations);
@@ -1019,6 +1033,39 @@ export default function App() {
     return Array.isArray(data.actions) ? data.actions : [];
   }
 
+  const closeWorldActionMenu = useCallback(() => {
+    worldActionMenuRequestRef.current += 1;
+    setWorldActionMenu(null);
+  }, []);
+
+  async function openWorldActionMenu(target: WorldActionMenuTarget) {
+    const requestId = worldActionMenuRequestRef.current + 1;
+    worldActionMenuRequestRef.current = requestId;
+    setWorldActionMenu({
+      ...target,
+      actions: [],
+      isLoading: true,
+    });
+
+    try {
+      const actions = await requestWorldActions(target.entityId);
+      if (worldActionMenuRequestRef.current !== requestId) return;
+      setWorldActionMenu({
+        ...target,
+        actions,
+        isLoading: false,
+      });
+    } catch (caught) {
+      if (worldActionMenuRequestRef.current !== requestId) return;
+      setWorldActionMenu({
+        ...target,
+        actions: [],
+        error: caught instanceof Error ? caught.message : '动作读取失败。',
+        isLoading: false,
+      });
+    }
+  }
+
   async function executeWorldAction(action: WorldAction) {
     if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy) return;
     setError(null);
@@ -1113,6 +1160,7 @@ export default function App() {
             stage={presentationStage}
             world={world}
             worldMap={worldMap}
+            actionMenuEntityId={worldActionMenu?.entityId || null}
             isLoading={isPresentationLoading}
             isWorldMapLoading={isWorldMapLoading}
             isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
@@ -1120,6 +1168,7 @@ export default function App() {
             error={error}
             fixedContext={fixedContext}
             onEnterScene={enterWorldScene}
+            onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         ) : (
@@ -1146,7 +1195,11 @@ export default function App() {
         onEnterScene={enterWorldScene}
         onSearch={searchWorld}
         onSelectEntity={selectWorldEntity}
-        onRequestEntityActions={requestWorldActions}
+        onOpenEntityActions={openWorldActionMenu}
+      />
+      <WorldActionMenu
+        menu={worldActionMenu}
+        onClose={closeWorldActionMenu}
         onExecuteWorldAction={executeWorldAction}
       />
       {isResetConfirmOpen ? (

@@ -5,6 +5,7 @@ import type {
   FixedContext,
   PresentationStage,
   StageDialogueEntry,
+  WorldActionMenuTarget,
   WorldMapState,
   WorldOverview,
 } from '../types';
@@ -15,6 +16,7 @@ interface GameViewProps {
   stage: PresentationStage | null;
   world: WorldOverview | null;
   worldMap: WorldMapState | null;
+  actionMenuEntityId: string | null;
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
@@ -22,6 +24,7 @@ interface GameViewProps {
   error: string | null;
   fixedContext: FixedContext;
   onEnterScene: (sceneId: string) => void;
+  onOpenEntityActions: (target: WorldActionMenuTarget) => void;
   onOpenSettings: () => void;
 }
 
@@ -29,6 +32,7 @@ export function GameView({
   stage,
   world,
   worldMap,
+  actionMenuEntityId,
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
@@ -36,6 +40,7 @@ export function GameView({
   error,
   fixedContext,
   onEnterScene,
+  onOpenEntityActions,
   onOpenSettings,
 }: GameViewProps) {
   const dialogueEntries = useMemo(
@@ -51,10 +56,12 @@ export function GameView({
         worldMap={worldMap}
         dialogueKey={conversation.id}
         dialogueEntries={dialogueEntries}
+        actionMenuEntityId={actionMenuEntityId}
         isLoading={isLoading}
         isWorldMapLoading={isWorldMapLoading}
         isNavigationDisabled={isNavigationDisabled}
         onEnterScene={onEnterScene}
+        onOpenEntityActions={onOpenEntityActions}
       />
 
       <ChatThread

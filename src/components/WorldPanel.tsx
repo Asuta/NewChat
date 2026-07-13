@@ -1,7 +1,7 @@
-import { Boxes, Clock3, DoorOpen, GitBranch, MapPinned, RefreshCw, Search, Swords, UserRound } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Boxes, Clock3, DoorOpen, GitBranch, MapPinned, RefreshCw, Search, UserRound } from 'lucide-react';
+import { useState } from 'react';
 import type { FormEvent, MouseEvent, ReactNode } from 'react';
-import type { AgentStep, EntityBundle, WorldAction, WorldEntity, WorldOverview } from '../types';
+import type { AgentStep, EntityBundle, WorldActionMenuTarget, WorldEntity, WorldOverview } from '../types';
 
 interface WorldPanelProps {
   world: WorldOverview | null;
@@ -12,8 +12,7 @@ interface WorldPanelProps {
   onEnterScene: (sceneId: string) => void;
   onSearch: (query: string) => void;
   onSelectEntity: (entityId: string) => void;
-  onRequestEntityActions: (entityId: string) => Promise<WorldAction[]>;
-  onExecuteWorldAction: (action: WorldAction) => void | Promise<void>;
+  onOpenEntityActions: (target: WorldActionMenuTarget) => void;
 }
 
 export function WorldPanel({
@@ -25,23 +24,10 @@ export function WorldPanel({
   onEnterScene,
   onSearch,
   onSelectEntity,
-  onRequestEntityActions,
-  onExecuteWorldAction,
+  onOpenEntityActions,
 }: WorldPanelProps) {
   const [query, setQuery] = useState('');
-  const [actionMenu, setActionMenu] = useState<ActionMenuState | null>(null);
   const scene = world?.currentScene;
-
-  useEffect(() => {
-    if (!actionMenu) return undefined;
-    const close = () => setActionMenu(null);
-    window.addEventListener('click', close);
-    window.addEventListener('blur', close);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('blur', close);
-    };
-  }, [actionMenu]);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -109,38 +95,15 @@ export function WorldPanel({
         icon={<UserRound size={16} />}
         entities={scene?.residents || []}
         onSelectEntity={onSelectEntity}
-        onOpenActions={async (event, entity) => {
+        onOpenActions={(event, entity) => {
           event.preventDefault();
           event.stopPropagation();
-          setActionMenu({
-            x: event.clientX,
-            y: event.clientY,
+          onOpenEntityActions({
             entityId: entity.id,
             entityName: entity.name,
-            actions: [],
-            isLoading: true,
+            clientX: event.clientX,
+            clientY: event.clientY,
           });
-          try {
-            const actions = await onRequestEntityActions(entity.id);
-            setActionMenu({
-              x: event.clientX,
-              y: event.clientY,
-              entityId: entity.id,
-              entityName: entity.name,
-              actions,
-              isLoading: false,
-            });
-          } catch (error) {
-            setActionMenu({
-              x: event.clientX,
-              y: event.clientY,
-              entityId: entity.id,
-              entityName: entity.name,
-              actions: [],
-              error: error instanceof Error ? error.message : '动作读取失败。',
-              isLoading: false,
-            });
-          }
         }}
       />
       <WorldEntityList title="道具" icon={<Boxes size={16} />} entities={scene?.items || []} onSelectEntity={onSelectEntity} />
@@ -201,43 +164,8 @@ export function WorldPanel({
         </div>
       </section>
 
-      {actionMenu ? (
-        <div
-          className="world-action-menu"
-          style={{ left: actionMenu.x, top: actionMenu.y }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <strong>{actionMenu.entityName}</strong>
-          {actionMenu.isLoading ? <span>读取动作...</span> : null}
-          {actionMenu.error ? <span className="world-action-error">{actionMenu.error}</span> : null}
-          {!actionMenu.isLoading && !actionMenu.error && !actionMenu.actions.length ? <span>暂无可用动作</span> : null}
-          {actionMenu.actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => {
-                setActionMenu(null);
-                void onExecuteWorldAction(action);
-              }}
-            >
-              <Swords size={15} />
-              <span>{action.label}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </aside>
   );
-}
-
-interface ActionMenuState {
-  x: number;
-  y: number;
-  entityId: string;
-  entityName: string;
-  actions: WorldAction[];
-  isLoading: boolean;
-  error?: string;
 }
 
 function WorldEntityList({
