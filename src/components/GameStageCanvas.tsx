@@ -5,6 +5,8 @@ import {
   ImageOff,
   Loader2,
   MapPinned,
+  Maximize2,
+  Minimize2,
   ScrollText,
   Send,
   Shield,
@@ -79,8 +81,17 @@ export function GameStageCanvas({
   const visibleSpeaker = visibleCharacters.find((character) => character.entityId === activeStageSpeech?.entityId) || null;
   const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
   const stageNarration = activeStageNarration?.content.trim() || '';
-  const { frameRef, stageScale } = useGameStageScale();
+  const {
+    frameRef,
+    stageScale,
+    isFullscreen,
+    isFullscreenSupported,
+    toggleFullscreen,
+  } = useGameStageScale();
   const isPlayable = variant === 'playable';
+  const fullscreenLabel = isFullscreenSupported
+    ? (isFullscreen ? '退出全屏' : '进入全屏')
+    : '当前浏览器不支持全屏';
 
   return (
     <div className="game-stage-frame" ref={frameRef}>
@@ -92,6 +103,19 @@ export function GameStageCanvas({
           height: GAME_STAGE_BASE_HEIGHT * stageScale,
         } as CSSProperties}
       >
+        {!isPlayable ? (
+          <button
+            className="game-stage-fullscreen"
+            type="button"
+            aria-label={fullscreenLabel}
+            aria-pressed={isFullscreen}
+            disabled={!isFullscreenSupported}
+            title={fullscreenLabel}
+            onClick={() => void toggleFullscreen()}
+          >
+            {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
+        ) : null}
         <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
           {stage?.backgroundUrl ? (
             <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
@@ -104,7 +128,7 @@ export function GameStageCanvas({
           {!isPlayable ? (
             <>
               <header className="game-stage-header">
-                <div>
+                <div className="game-stage-heading">
                   <MapPinned size={17} />
                   <strong>{sceneName}</strong>
                   {world?.time ? (
@@ -386,6 +410,10 @@ function StageHudMap({ worldMap }: { worldMap: WorldMapState | null }) {
 function useGameStageScale() {
   const frameRef = useRef<HTMLDivElement>(null);
   const [stageScale, setStageScale] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isFullscreenSupported = typeof document !== 'undefined'
+    && typeof document.documentElement.requestFullscreen === 'function'
+    && typeof document.exitFullscreen === 'function';
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -402,11 +430,15 @@ function useGameStageScale() {
       const chatMinHeight = readCssPx(gameViewStyles, '--game-stage-chat-min-height');
       const frameTop = frame.getBoundingClientRect().top;
       const widthBudget = Math.max(0, frame.clientWidth - paddingX);
-      const heightBudget = Math.max(0, window.innerHeight - frameTop - composerHeight - chatMinHeight - paddingY);
+      const frameIsFullscreen = document.fullscreenElement === frame;
+      const heightBudget = frameIsFullscreen
+        ? Math.max(0, frame.clientHeight - paddingY)
+        : Math.max(0, window.innerHeight - frameTop - composerHeight - chatMinHeight - paddingY);
+      const maximumScale = frameIsFullscreen ? Number.POSITIVE_INFINITY : 1;
       const nextScale = clamp(
-        Math.min(1, widthBudget / GAME_STAGE_BASE_WIDTH, heightBudget / GAME_STAGE_BASE_HEIGHT),
+        Math.min(maximumScale, widthBudget / GAME_STAGE_BASE_WIDTH, heightBudget / GAME_STAGE_BASE_HEIGHT),
         GAME_STAGE_MIN_SCALE,
-        1,
+        maximumScale,
       );
 
       setStageScale((currentScale) => (
@@ -419,19 +451,42 @@ function useGameStageScale() {
       animationFrame = requestAnimationFrame(measure);
     };
 
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === frame);
+      scheduleMeasure();
+    };
+
     const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(frame);
     window.addEventListener('resize', scheduleMeasure);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    setIsFullscreen(document.fullscreenElement === frame);
     measure();
 
     return () => {
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
       window.removeEventListener('resize', scheduleMeasure);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
 
-  return { frameRef, stageScale };
+  async function toggleFullscreen() {
+    const frame = frameRef.current;
+    if (!frame || !isFullscreenSupported) return;
+
+    try {
+      if (document.fullscreenElement === frame) {
+        await document.exitFullscreen();
+      } else if (!document.fullscreenElement) {
+        await frame.requestFullscreen();
+      }
+    } catch {
+      // A browser or host window can reject fullscreen without changing the stage state.
+    }
+  }
+
+  return { frameRef, stageScale, isFullscreen, isFullscreenSupported, toggleFullscreen };
 }
 
 function readCssPx(styles: CSSStyleDeclaration, propertyName: string) {
