@@ -2130,6 +2130,14 @@ button {
 }
 
 .stage-dialogue-box {
+  --dialogue-panel-start: rgba(35, 17, 14, 0.96);
+  --dialogue-panel-end: rgba(58, 29, 20, 0.92);
+  --dialogue-panel-hover-start: rgba(44, 20, 15, 0.97);
+  --dialogue-panel-hover-end: rgba(70, 34, 22, 0.94);
+  --dialogue-border: rgba(239, 188, 114, 0.54);
+  --dialogue-border-hover: rgba(255, 211, 143, 0.72);
+  --dialogue-accent: #f2bd68;
+  --dialogue-speaker: #ffe0a3;
   z-index: 6;
   left: 48px;
   right: 48px;
@@ -2139,25 +2147,38 @@ button {
   grid-template-rows: 30px minmax(0, 1fr);
   gap: 7px;
   overflow: hidden;
-  border: 1px solid rgba(210, 225, 240, 0.34);
+  border: 1px solid var(--dialogue-border);
   border-radius: 6px;
   padding: 17px 58px 18px 22px;
   appearance: none;
   background:
-    linear-gradient(100deg, rgba(7, 12, 19, 0.94), rgba(11, 20, 31, 0.88)),
-    rgba(7, 12, 19, 0.94);
+    linear-gradient(100deg, var(--dialogue-panel-start), var(--dialogue-panel-end)),
+    var(--dialogue-panel-start);
   color: #f8fafc;
-  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.38);
+  box-shadow:
+    inset 4px 0 0 var(--dialogue-accent),
+    0 20px 46px rgba(0, 0, 0, 0.38);
   text-align: left;
   backdrop-filter: blur(16px);
   cursor: pointer;
 }
 
 .stage-dialogue-box:hover {
-  border-color: rgba(222, 234, 246, 0.52);
+  border-color: var(--dialogue-border-hover);
   background:
-    linear-gradient(100deg, rgba(8, 14, 22, 0.96), rgba(13, 24, 37, 0.91)),
-    rgba(8, 14, 22, 0.96);
+    linear-gradient(100deg, var(--dialogue-panel-hover-start), var(--dialogue-panel-hover-end)),
+    var(--dialogue-panel-hover-start);
+}
+
+.stage-dialogue-box.narration {
+  --dialogue-panel-start: rgba(5, 20, 35, 0.97);
+  --dialogue-panel-end: rgba(7, 39, 55, 0.93);
+  --dialogue-panel-hover-start: rgba(6, 27, 46, 0.98);
+  --dialogue-panel-hover-end: rgba(8, 49, 68, 0.95);
+  --dialogue-border: rgba(112, 196, 228, 0.58);
+  --dialogue-border-hover: rgba(143, 220, 247, 0.78);
+  --dialogue-accent: #6fcbe9;
+  --dialogue-speaker: #bfeaff;
 }
 
 .stage-dialogue-box:focus-visible {
@@ -2167,16 +2188,12 @@ button {
 
 .stage-dialogue-speaker {
   overflow: hidden;
-  color: #ffe4a3;
+  color: var(--dialogue-speaker);
   font-size: 18px;
   font-weight: 800;
   line-height: 30px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.stage-dialogue-box.narration .stage-dialogue-speaker {
-  color: #bcdcff;
 }
 
 .stage-dialogue-text {
