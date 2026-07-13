@@ -160,7 +160,32 @@ export function GameStageCanvas({
                 ) : (
                   <div className="game-character-missing" />
                 )}
-                <figcaption>{character.name}</figcaption>
+                <figcaption className={character.health ? 'has-health' : undefined}>
+                  <span className="game-character-caption-row">
+                    <span className="game-character-name">{character.name}</span>
+                    {character.health ? (
+                      <span className="game-character-health-value" aria-hidden="true">
+                        {character.health.currentHitPoints}/{character.health.maxHitPoints}
+                      </span>
+                    ) : null}
+                  </span>
+                  {character.health ? (
+                    <span
+                      className="game-character-health-track"
+                      role="meter"
+                      aria-label={`${character.name} 生命值`}
+                      aria-valuemin={0}
+                      aria-valuemax={character.health.maxHitPoints}
+                      aria-valuenow={character.health.currentHitPoints}
+                      aria-valuetext={`${character.health.currentHitPoints}/${character.health.maxHitPoints}`}
+                    >
+                      <span
+                        className={`game-character-health-fill ${getHealthTone(character.health.currentHitPoints, character.health.maxHitPoints)}`}
+                        style={{ width: `${getHealthPercentage(character.health.currentHitPoints, character.health.maxHitPoints)}%` }}
+                      />
+                    </span>
+                  ) : null}
+                </figcaption>
               </figure>
             ))}
           </div>
@@ -530,4 +555,14 @@ function getVisibleCharacters(
       ? character.position
       : slots[index] || 'center',
   }));
+}
+function getHealthPercentage(currentHitPoints: number, maxHitPoints: number) {
+  return clamp((currentHitPoints / maxHitPoints) * 100, 0, 100);
+}
+
+function getHealthTone(currentHitPoints: number, maxHitPoints: number) {
+  const ratio = currentHitPoints / maxHitPoints;
+  if (ratio <= 0.25) return 'is-critical';
+  if (ratio <= 0.5) return 'is-wounded';
+  return 'is-healthy';
 }

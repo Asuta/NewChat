@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR } from './saveManager.js';
+import { getComponent } from './worldDb.js';
 
 export { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR };
 
@@ -115,6 +116,7 @@ export function getCurrentPresentationStage(sceneState) {
         entityId: entity.id,
         name: entity.name,
         kind: entity.kind,
+        health: getPresentationHealth(entity.id),
         portraitUrl: portraitUrl || fallbackPortraitUrl,
         position: binding?.position || 'auto',
         scale: typeof binding?.scale === 'number' ? binding.scale : 1,
@@ -137,6 +139,25 @@ export function getCurrentPresentationStage(sceneState) {
   } finally {
     database.close();
   }
+}
+
+function getPresentationHealth(entityId) {
+  const stats = getComponent(entityId, 'stats');
+  const currentHitPoints = toFiniteNumber(stats?.currentHitPoints);
+  const maxHitPoints = toFiniteNumber(stats?.maxHitPoints);
+  if (currentHitPoints === null || maxHitPoints === null || maxHitPoints <= 0) {
+    return null;
+  }
+  return {
+    currentHitPoints: Math.min(maxHitPoints, Math.max(0, currentHitPoints)),
+    maxHitPoints,
+  };
+}
+
+function toFiniteNumber(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function openPresentationDatabase() {

@@ -171,6 +171,10 @@ export interface PresentationStageCharacter {
   entityId: string;
   name: string;
   kind: EntityKind;
+  health: {
+    currentHitPoints: number;
+    maxHitPoints: number;
+  } | null;
   portraitUrl: string | null;
   position: string;
   slot: 'left' | 'center' | 'right' | string;

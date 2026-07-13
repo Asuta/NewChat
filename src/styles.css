@@ -1695,15 +1695,11 @@ button {
 .game-character figcaption {
   min-width: 92px;
   max-width: 190px;
-  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 8px;
   padding: 6px 10px;
   background: rgba(8, 14, 22, 0.62);
   color: #fff;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
   backdrop-filter: blur(10px);
@@ -1713,6 +1709,65 @@ button {
     box-shadow 180ms ease,
     color 180ms ease,
     transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.game-character figcaption.has-health {
+  display: grid;
+  width: min(100%, 160px);
+  gap: 5px;
+}
+
+.game-character-caption-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.game-character-name {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-character-health-value {
+  flex: 0 0 auto;
+  color: rgba(248, 250, 252, 0.72);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.game-character-health-track {
+  display: block;
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.game-character-health-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 360ms ease-out, background-color 180ms ease-out;
+}
+
+.game-character-health-fill.is-healthy {
+  background: #55a66b;
+}
+
+.game-character-health-fill.is-wounded {
+  background: #d29a43;
+}
+
+.game-character-health-fill.is-critical {
+  background: #d75a5a;
 }
 
 .game-character.fallback-character figcaption {
@@ -1804,6 +1859,10 @@ button {
 
   .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
     transform: translateY(-52px);
+  }
+
+  .game-character-health-fill {
+    transition: none;
   }
 }
 
