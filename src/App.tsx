@@ -1162,11 +1162,15 @@ export default function App() {
             worldMap={worldMap}
             actionMenuEntityId={worldActionMenu?.entityId || null}
             isLoading={isPresentationLoading}
+            isStreaming={isStreaming}
             isWorldMapLoading={isWorldMapLoading}
             isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
+            isInputDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
             conversation={activeConversation}
             error={error}
             fixedContext={fixedContext}
+            onSend={sendMessage}
+            onStop={stopStreaming}
             onEnterScene={enterWorldScene}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -1179,12 +1183,14 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
-        <Composer
-          isStreaming={isStreaming}
-          isDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
-          onSend={sendMessage}
-          onStop={stopStreaming}
-        />
+        {displayMode === 'game' ? null : (
+          <Composer
+            isStreaming={isStreaming}
+            isDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
+            onSend={sendMessage}
+            onStop={stopStreaming}
+          />
+        )}
       </section>
       <WorldPanel
         world={world}

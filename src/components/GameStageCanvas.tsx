@@ -8,7 +8,7 @@ import {
   Minimize2,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type {
   PresentationStage,
   PresentationStageCharacter,
@@ -40,6 +40,7 @@ interface GameStageCanvasProps {
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
+  actionComposer?: ReactNode;
   onEnterScene: (sceneId: string) => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
@@ -54,6 +55,7 @@ export function GameStageCanvas({
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
+  actionComposer,
   onEnterScene,
   onOpenEntityActions,
 }: GameStageCanvasProps) {
@@ -95,7 +97,14 @@ export function GameStageCanvas({
         >
           {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </button>
-        <section className={`game-stage ${stage?.backgroundUrl ? 'has-background' : ''}`} aria-label="游戏表现层">
+        <section
+          className={[
+            'game-stage',
+            stage?.backgroundUrl ? 'has-background' : '',
+            actionComposer ? 'has-action-composer' : '',
+          ].filter(Boolean).join(' ')}
+          aria-label="游戏表现层"
+        >
           {stage?.backgroundUrl ? (
             <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
           ) : (
@@ -200,6 +209,12 @@ export function GameStageCanvas({
           {hiddenCharacterCount > 0 ? (
             <div className="game-stage-overflow" aria-label={`还有 ${hiddenCharacterCount} 名人物未显示`}>
               +{hiddenCharacterCount}
+            </div>
+          ) : null}
+
+          {actionComposer ? (
+            <div className="game-stage-action-slot">
+              {actionComposer}
             </div>
           ) : null}
 
@@ -462,14 +477,13 @@ function useGameStageScale() {
       const paddingX = parseCssPx(frameStyles.paddingLeft) + parseCssPx(frameStyles.paddingRight);
       const paddingY = parseCssPx(frameStyles.paddingTop) + parseCssPx(frameStyles.paddingBottom);
       const gameViewStyles = getComputedStyle(frame.closest('.game-view') || frame);
-      const composerHeight = readCssPx(gameViewStyles, '--game-stage-composer-height');
       const chatMinHeight = readCssPx(gameViewStyles, '--game-stage-chat-min-height');
       const frameTop = frame.getBoundingClientRect().top;
       const widthBudget = Math.max(0, frame.clientWidth - paddingX);
       const frameIsFullscreen = document.fullscreenElement === frame;
       const heightBudget = frameIsFullscreen
         ? Math.max(0, frame.clientHeight - paddingY)
-        : Math.max(0, window.innerHeight - frameTop - composerHeight - chatMinHeight - paddingY);
+        : Math.max(0, window.innerHeight - frameTop - chatMinHeight - paddingY);
       const maximumScale = frameIsFullscreen ? Number.POSITIVE_INFINITY : 1;
       const nextScale = clamp(
         Math.min(maximumScale, widthBudget / GAME_STAGE_BASE_WIDTH, heightBudget / GAME_STAGE_BASE_HEIGHT),

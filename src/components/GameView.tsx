@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { Send, Square } from 'lucide-react';
+import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
 import type {
   ChatMessage,
   Conversation,
@@ -18,11 +19,15 @@ interface GameViewProps {
   worldMap: WorldMapState | null;
   actionMenuEntityId: string | null;
   isLoading: boolean;
+  isStreaming: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
+  isInputDisabled: boolean;
   conversation: Conversation;
   error: string | null;
   fixedContext: FixedContext;
+  onSend: (content: string) => void;
+  onStop: () => void;
   onEnterScene: (sceneId: string) => void;
   onOpenEntityActions: (target: WorldActionMenuTarget) => void;
   onOpenSettings: () => void;
@@ -34,11 +39,15 @@ export function GameView({
   worldMap,
   actionMenuEntityId,
   isLoading,
+  isStreaming,
   isWorldMapLoading,
   isNavigationDisabled,
+  isInputDisabled,
   conversation,
   error,
   fixedContext,
+  onSend,
+  onStop,
   onEnterScene,
   onOpenEntityActions,
   onOpenSettings,
@@ -60,6 +69,14 @@ export function GameView({
         isLoading={isLoading}
         isWorldMapLoading={isWorldMapLoading}
         isNavigationDisabled={isNavigationDisabled}
+        actionComposer={(
+          <GameActionComposer
+            isStreaming={isStreaming}
+            isDisabled={isInputDisabled}
+            onSend={onSend}
+            onStop={onStop}
+          />
+        )}
         onEnterScene={onEnterScene}
         onOpenEntityActions={onOpenEntityActions}
       />
@@ -71,6 +88,64 @@ export function GameView({
         onOpenSettings={onOpenSettings}
       />
     </div>
+  );
+}
+
+interface GameActionComposerProps {
+  isStreaming: boolean;
+  isDisabled: boolean;
+  onSend: (content: string) => void;
+  onStop: () => void;
+}
+
+function GameActionComposer({ isStreaming, isDisabled, onSend, onStop }: GameActionComposerProps) {
+  const [value, setValue] = useState('');
+  const canSend = Boolean(value.trim()) && !isStreaming && !isDisabled;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const content = value.trim();
+    if (!content || isStreaming || isDisabled) return;
+    setValue('');
+    onSend(content);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      submit(event);
+    }
+  }
+
+  return (
+    <form className="game-action-composer" onSubmit={submit}>
+      <label className="game-action-label" htmlFor="game-action-input">
+        你的行动
+      </label>
+      <textarea
+        id="game-action-input"
+        aria-label="输入你的游戏行动"
+        placeholder="你想怎么做？例如：询问艾蕾娜关于王冠，或检查黑石棺。"
+        rows={2}
+        disabled={isDisabled}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+      <div className="game-action-footer">
+        <span>Enter 发送 / Shift + Enter 换行</span>
+        {isStreaming ? (
+          <button className="game-action-submit stop" type="button" onClick={onStop} aria-label="停止生成">
+            <Square size={18} />
+            <span>停止</span>
+          </button>
+        ) : (
+          <button className="game-action-submit" type="submit" disabled={!canSend} aria-label="发送行动">
+            <Send size={18} />
+            <span>发送</span>
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
 

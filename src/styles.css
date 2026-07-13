@@ -1434,7 +1434,6 @@ button {
 
 .game-view {
   --game-stage-topbar-height: 90px;
-  --game-stage-composer-height: 160px;
   --game-stage-chat-min-height: 180px;
   --game-stage-frame-padding: 12px;
   --game-stage-base-width: 1280px;
@@ -2222,6 +2221,11 @@ button {
   cursor: pointer;
 }
 
+.game-stage.has-action-composer .stage-dialogue-box {
+  bottom: 118px;
+  height: 150px;
+}
+
 .stage-dialogue-box:hover {
   border-color: var(--dialogue-border-hover);
   background:
@@ -2296,6 +2300,117 @@ button {
 .game-view .thread-scroll {
   background: rgba(255, 255, 255, 0.62);
   padding-top: 18px;
+}
+
+.game-stage-action-slot {
+  position: absolute;
+  z-index: 7;
+  right: 48px;
+  bottom: 24px;
+  left: 48px;
+}
+
+.game-action-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgba(116, 160, 210, 0.42);
+  border-radius: 7px;
+  padding: 9px;
+  background:
+    linear-gradient(180deg, rgba(12, 24, 38, 0.96), rgba(7, 16, 27, 0.96)),
+    #0b1625;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+.game-action-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.game-action-composer textarea {
+  grid-column: 1;
+  min-width: 0;
+  height: 54px;
+  resize: none;
+  border: 1px solid rgba(190, 208, 228, 0.24);
+  border-radius: 7px;
+  padding: 13px 15px;
+  outline: 0;
+  background: rgba(2, 8, 15, 0.66);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.game-action-composer textarea:focus {
+  border-color: rgba(119, 196, 255, 0.64);
+  box-shadow: 0 0 0 3px rgba(55, 143, 220, 0.18);
+}
+
+.game-action-composer textarea::placeholder {
+  color: rgba(205, 220, 238, 0.52);
+}
+
+.game-action-composer textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.game-action-footer {
+  display: contents;
+}
+
+.game-action-footer > span {
+  display: none;
+}
+
+.game-action-submit {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 54px;
+  border: 1px solid rgba(123, 194, 255, 0.48);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 50% 100%, rgba(87, 162, 235, 0.32), transparent 60%),
+    linear-gradient(180deg, rgba(18, 43, 69, 0.96), rgba(11, 29, 48, 0.96));
+  color: #eef8ff;
+  font-size: 16px;
+  font-weight: 850;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+.game-action-submit:hover {
+  border-color: rgba(156, 213, 255, 0.68);
+  background:
+    radial-gradient(circle at 50% 100%, rgba(99, 181, 255, 0.42), transparent 60%),
+    linear-gradient(180deg, rgba(22, 55, 88, 0.98), rgba(12, 36, 60, 0.98));
+}
+
+.game-action-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.game-action-submit.stop {
+  border-color: rgba(248, 113, 113, 0.44);
+  background:
+    radial-gradient(circle at 50% 100%, rgba(248, 113, 113, 0.24), transparent 60%),
+    rgba(50, 20, 24, 0.94);
 }
 
 .stage-only-root {
