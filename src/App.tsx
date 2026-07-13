@@ -20,14 +20,6 @@ import {
   saveConversations,
   titleFromMessage,
 } from './lib/chat';
-import {
-  STAGE_COMMAND_ACK_TIMEOUT_MS,
-  publishStageCommandAck,
-  publishStageSnapshot,
-  subscribeStageCommand,
-  writeStageSourceHeartbeat,
-  type StageLogEntry,
-} from './lib/stageSync';
 import type {
   AgentStep,
   ExecuteWorldActionResponse,
@@ -43,8 +35,6 @@ import type {
   PresentationStage,
   SaveDataResponse,
   SaveExportMode,
-  StageNarration,
-  StageSpeech,
   WorldAgentStreamEvent,
   WorldAction,
   WorldEntity,
@@ -91,8 +81,6 @@ export default function App() {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [worldMap, setWorldMap] = useState<WorldMapState | null>(null);
   const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
-  const [stageSpeechByConversation, setStageSpeechByConversation] = useState<Record<string, StageSpeech>>({});
-  const [stageNarrationByConversation, setStageNarrationByConversation] = useState<Record<string, StageNarration>>({});
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -108,7 +96,6 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
   const queueMessageRef = useRef<((content: string) => QueuedMessage | null) | null>(null);
-  const handledStageCommandIdsRef = useRef<Set<string>>(new Set());
   const resetDialogRef = useRef<HTMLElement | null>(null);
   const resetCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -116,8 +103,6 @@ export default function App() {
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
     [activeId, conversations],
   );
-  const activeStageSpeech = activeConversation ? stageSpeechByConversation[activeConversation.id] || null : null;
-  const activeStageNarration = activeConversation ? stageNarrationByConversation[activeConversation.id] || null : null;
 
   useEffect(() => {
     saveConversations(conversations);
@@ -179,63 +164,6 @@ export default function App() {
     void refreshPresentationStage();
     void refreshWorldMap();
   }, [world]);
-
-  useEffect(() => {
-    writeStageSourceHeartbeat();
-    const heartbeatTimer = window.setInterval(writeStageSourceHeartbeat, 2_000);
-    return () => window.clearInterval(heartbeatTimer);
-  }, []);
-
-  useEffect(() => subscribeStageCommand((command) => {
-    const content = command.content.trim();
-    const expiresAt = command.expiresAt || command.createdAt + STAGE_COMMAND_ACK_TIMEOUT_MS;
-    if (!content || handledStageCommandIdsRef.current.has(command.id)) return;
-    if (expiresAt <= Date.now()) return;
-
-    handledStageCommandIdsRef.current.add(command.id);
-    const queuedMessage = queueMessageRef.current?.(content) || null;
-    if (!queuedMessage) {
-      publishStageCommandAck(command.id, 'rejected', 'busy');
-      if (handledStageCommandIdsRef.current.size > 80) {
-        handledStageCommandIdsRef.current = new Set([...handledStageCommandIdsRef.current].slice(-40));
-      }
-      return;
-    }
-
-    publishStageCommandAck(command.id, 'accepted');
-    void queuedMessage.streamPromise;
-    if (handledStageCommandIdsRef.current.size > 80) {
-      handledStageCommandIdsRef.current = new Set([...handledStageCommandIdsRef.current].slice(-40));
-    }
-  }), []);
-
-  useEffect(() => {
-    publishStageSnapshot({
-      stage: presentationStage,
-      world,
-      worldMap,
-      activeStageSpeech,
-      activeStageNarration,
-      recentLogEntries: activeConversation ? buildStageLogEntries(activeConversation.messages) : [],
-      isActionPending: isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy,
-      isLoading: isPresentationLoading,
-      isWorldMapLoading,
-      updatedAt: Date.now(),
-    });
-  }, [
-    presentationStage,
-    world,
-    worldMap,
-    activeStageSpeech,
-    activeStageNarration,
-    activeConversation,
-    isStreaming,
-    isCompressing,
-    isFixedContextSaving,
-    isSaveDataBusy,
-    isPresentationLoading,
-    isWorldMapLoading,
-  ]);
 
   function createNewChat() {
     if (isCompressing) return;
@@ -425,15 +353,6 @@ export default function App() {
             activeAssistantMessageId = assistantMessageId;
             activeAssistantContent = '';
           }
-          setStageNarrationByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              content: '',
-              createdAt: Date.now(),
-              runId,
-              messageId: activeAssistantMessageId,
-            },
-          }));
           return;
         }
 
@@ -444,15 +363,6 @@ export default function App() {
           updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
             agentRunId: runId,
           });
-          setStageNarrationByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              content: activeAssistantContent,
-              createdAt: Date.now(),
-              runId,
-              messageId: activeAssistantMessageId,
-            },
-          }));
           return;
         }
 
@@ -463,15 +373,6 @@ export default function App() {
             content: '',
             status: 'streaming',
           });
-          setStageSpeechByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              entityId: event.npcEntityId,
-              name: event.npcName,
-              content: '',
-              createdAt: Date.now(),
-            },
-          }));
           if (streamedAnswer) streamedAnswer += '\n\n';
 
           if (!activeAssistantContent && activeAssistantMessageId === assistantMessageId && runAssistantMessageIds.length === 1) {
@@ -505,15 +406,6 @@ export default function App() {
           streamedAnswer += event.delta;
           activeAssistantContent += event.delta;
           hasVisibleAssistantContent = true;
-          setStageSpeechByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              entityId: event.npcEntityId,
-              name: event.npcName,
-              content: activeAssistantContent,
-              createdAt: current[conversationId]?.createdAt || Date.now(),
-            },
-          }));
           updateAssistantMessage(conversationId, activeAssistantMessageId, activeAssistantContent, 'streaming', {
             agentRunId: runId,
           });
@@ -527,15 +419,6 @@ export default function App() {
             content: event.content,
             status: 'streaming',
           });
-          setStageSpeechByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              entityId: event.npcEntityId,
-              name: event.npcName,
-              content: event.content,
-              createdAt: Date.now(),
-            },
-          }));
           streamedAnswer = streamedAnswer ? `${streamedAnswer}\n\n${event.content}` : event.content;
           hasVisibleAssistantContent = true;
 
@@ -869,16 +752,6 @@ export default function App() {
       messages: [],
       contextSummary: undefined,
     }));
-    setStageSpeechByConversation((current) => {
-      const next = { ...current };
-      delete next[conversationId];
-      return next;
-    });
-    setStageNarrationByConversation((current) => {
-      const next = { ...current };
-      delete next[conversationId];
-      return next;
-    });
     setError(null);
   }
 
@@ -1024,8 +897,6 @@ export default function App() {
     setSelectedEntity(null);
     setAgentSteps([]);
     setLastRequestLog(null);
-    setStageSpeechByConversation({});
-    setStageNarrationByConversation({});
 
     if (options.resetConversations) {
       const next = options.openingConversation || createConversation();
@@ -1242,8 +1113,6 @@ export default function App() {
             stage={presentationStage}
             world={world}
             worldMap={worldMap}
-            activeStageSpeech={activeStageSpeech}
-            activeStageNarration={activeStageNarration}
             isLoading={isPresentationLoading}
             isWorldMapLoading={isWorldMapLoading}
             isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
@@ -1519,26 +1388,6 @@ function getCompletedSceneTransition(
     toSceneName: resultScene?.name || pendingTransition.toSceneName,
     ...getStepTransitionTiming(completedStep),
   };
-}
-
-function buildStageLogEntries(messages: ChatMessage[]): StageLogEntry[] {
-  return messages
-    .filter((message) => message.role !== 'system' && message.content.trim())
-    .slice(-8)
-    .map((message) => {
-      const role: StageLogEntry['role'] = message.role === 'user'
-        ? 'player'
-        : message.kind === 'npc-speech'
-          ? 'npc'
-          : message.kind === 'agent-step'
-            ? 'system'
-            : 'dm';
-      return {
-        id: message.id,
-        role,
-        text: message.content.trim().replace(/\s+/g, ' ').slice(0, 72),
-      };
-    });
 }
 
 function getStepResultScene(step: AgentStep): { id?: string; name?: string } | null {

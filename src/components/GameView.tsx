@@ -1,9 +1,10 @@
+import { useMemo } from 'react';
 import type {
+  ChatMessage,
   Conversation,
   FixedContext,
   PresentationStage,
-  StageNarration,
-  StageSpeech,
+  StageDialogueEntry,
   WorldMapState,
   WorldOverview,
 } from '../types';
@@ -14,8 +15,6 @@ interface GameViewProps {
   stage: PresentationStage | null;
   world: WorldOverview | null;
   worldMap: WorldMapState | null;
-  activeStageSpeech: StageSpeech | null;
-  activeStageNarration: StageNarration | null;
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
@@ -30,8 +29,6 @@ export function GameView({
   stage,
   world,
   worldMap,
-  activeStageSpeech,
-  activeStageNarration,
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
@@ -41,14 +38,19 @@ export function GameView({
   onEnterScene,
   onOpenSettings,
 }: GameViewProps) {
+  const dialogueEntries = useMemo(
+    () => buildStageDialogueEntries(conversation.messages),
+    [conversation.messages],
+  );
+
   return (
     <div className="game-view">
       <GameStageCanvas
         stage={stage}
         world={world}
         worldMap={worldMap}
-        activeStageSpeech={activeStageSpeech}
-        activeStageNarration={activeStageNarration}
+        dialogueKey={conversation.id}
+        dialogueEntries={dialogueEntries}
         isLoading={isLoading}
         isWorldMapLoading={isWorldMapLoading}
         isNavigationDisabled={isNavigationDisabled}
@@ -63,4 +65,26 @@ export function GameView({
       />
     </div>
   );
+}
+
+function buildStageDialogueEntries(messages: ChatMessage[]): StageDialogueEntry[] {
+  const candidates = messages.filter((message) => (
+    message.role === 'assistant'
+    && (message.kind === undefined || message.kind === 'npc-speech')
+    && (message.content.trim() || message.status === 'streaming')
+  ));
+  const latestRunId = candidates[candidates.length - 1]?.agentRunId;
+  const currentRun = latestRunId === undefined
+    ? candidates.slice(-1)
+    : candidates.filter((message) => message.agentRunId === latestRunId);
+
+  return currentRun.map((message, index) => ({
+    id: message.id,
+    kind: message.kind === 'npc-speech' ? 'speech' : 'narration',
+    ...(message.npcSpeech?.entityId ? { speakerId: message.npcSpeech.entityId } : {}),
+    ...(message.npcSpeech?.name ? { speakerName: message.npcSpeech.name } : {}),
+    content: message.content,
+    status: message.status === 'streaming' && index === currentRun.length - 1 ? 'streaming' : 'complete',
+    runId: message.agentRunId,
+  }));
 }

@@ -204,6 +204,16 @@ export interface StageNarration {
   messageId?: string;
 }
 
+export interface StageDialogueEntry {
+  id: string;
+  kind: 'narration' | 'speech';
+  speakerId?: string;
+  speakerName?: string;
+  content: string;
+  status: 'streaming' | 'complete';
+  runId?: number;
+}
+
 export interface WorldMapScene {
   id: string;
   name: string;
