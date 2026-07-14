@@ -48,7 +48,7 @@ import type {
 } from './types';
 import type { ThinkingMode } from './types';
 
-const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v1';
+const THINKING_MODE_STORAGE_KEY = 'newchat.thinkingMode.v2';
 const MODEL_STORAGE_KEY = 'newchat.model.v1';
 const AGENT_MAX_STEPS_STORAGE_KEY = 'newchat.agentMaxSteps.v1';
 const DEFAULT_AGENT_MAX_STEPS = 30;
@@ -1516,7 +1516,7 @@ function getStepTransitionTiming(step: AgentStep): Pick<PendingSceneTransition, 
 
 function getInitialThinkingMode(): ThinkingMode {
   const stored = window.localStorage.getItem(THINKING_MODE_STORAGE_KEY);
-  return isThinkingMode(stored) ? stored : 'enabled';
+  return isThinkingMode(stored) ? stored : 'disabled';
 }
 
 function getInitialModelId(): ModelId {
