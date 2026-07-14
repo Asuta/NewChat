@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR } from './saveManager.js';
+import { derivePresentationVitalState } from './presentationState.js';
 import { getComponent } from './worldDb.js';
 
 export { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR };
@@ -112,11 +113,14 @@ export function getCurrentPresentationStage(sceneState) {
       const portraitUrl = toAssetUrl(portraitAsset);
       const fallbackPortraitUrl = toAssetUrl(fallbackPortraitAsset);
       const isFallbackPortrait = !portraitUrl && Boolean(fallbackPortraitUrl);
+      const health = getPresentationHealth(entity.id);
+      const status = getComponent(entity.id, 'status');
       return {
         entityId: entity.id,
         name: entity.name,
         kind: entity.kind,
-        health: getPresentationHealth(entity.id),
+        health,
+        vitalState: derivePresentationVitalState(status, health),
         portraitUrl: portraitUrl || fallbackPortraitUrl,
         position: binding?.position || 'auto',
         scale: typeof binding?.scale === 'number' ? binding.scale : 1,

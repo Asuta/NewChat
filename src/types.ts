@@ -175,6 +175,7 @@ export interface PresentationStageCharacter {
     currentHitPoints: number;
     maxHitPoints: number;
   } | null;
+  vitalState: 'active' | 'incapacitated' | 'dead';
   portraitUrl: string | null;
   position: string;
   slot: 'left' | 'center' | 'right' | string;

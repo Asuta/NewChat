@@ -37,6 +37,7 @@ export function GameStageCharacter({
   onOpenEntityActions,
 }: GameStageCharacterProps) {
   const figureRef = useRef<HTMLElement>(null);
+  const vitalStatus = getVitalStatus(character.vitalState);
 
   useEffect(() => {
     const figure = figureRef.current;
@@ -82,8 +83,11 @@ export function GameStageCharacter({
     return () => animations.forEach((animation) => animation.cancel());
   }, [damageEvent]);
 
+  const displayedCurrentHitPoints = character.vitalState === 'dead'
+    ? 0
+    : character.health?.currentHitPoints ?? 0;
   const healthPercentage = character.health
-    ? getHealthPercentage(character.health.currentHitPoints, character.health.maxHitPoints)
+    ? getHealthPercentage(displayedCurrentHitPoints, character.health.maxHitPoints)
     : 0;
 
   return (
@@ -96,6 +100,7 @@ export function GameStageCharacter({
         onOpenEntityActions ? 'has-actions' : '',
         isPixelHovered ? 'pixel-hovered' : '',
         isActionMenuOpen ? 'action-menu-open' : '',
+        `is-${character.vitalState}`,
       ].filter(Boolean).join(' ')}
       ref={figureRef}
       style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
@@ -117,7 +122,7 @@ export function GameStageCharacter({
       {character.portraitUrl ? (
         <img
           src={character.portraitUrl}
-          alt={character.name}
+          alt={vitalStatus ? `${character.name}（${vitalStatus.label}）` : character.name}
           onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
           onPointerMove={onOpenEntityActions ? (event) => {
             if (event.pointerType === 'touch') return;
@@ -139,10 +144,21 @@ export function GameStageCharacter({
           -{damageEvent.amount}
         </span>
       ) : null}
-      <figcaption className={character.health ? 'has-health' : undefined}>
+      <figcaption className={[
+        character.health ? 'has-health' : '',
+        vitalStatus ? 'has-vital-status' : '',
+      ].filter(Boolean).join(' ') || undefined}>
         <span className="game-character-caption-row">
           <span className="game-character-name">{character.name}</span>
-          {character.health ? (
+          {vitalStatus ? (
+            <span
+              className={`game-character-vital-status ${vitalStatus.className}`}
+              role="status"
+              aria-label={`${character.name}${vitalStatus.announcement}`}
+            >
+              {vitalStatus.label}
+            </span>
+          ) : character.health ? (
             <span className="game-character-health-value" aria-hidden="true">
               {character.health.currentHitPoints}/{character.health.maxHitPoints}
             </span>
@@ -155,8 +171,8 @@ export function GameStageCharacter({
             aria-label={`${character.name} 生命值`}
             aria-valuemin={0}
             aria-valuemax={character.health.maxHitPoints}
-            aria-valuenow={character.health.currentHitPoints}
-            aria-valuetext={`${character.health.currentHitPoints}/${character.health.maxHitPoints}`}
+            aria-valuenow={displayedCurrentHitPoints}
+            aria-valuetext={`${displayedCurrentHitPoints}/${character.health.maxHitPoints}`}
           >
             {damageEvent ? (
               <span
@@ -169,7 +185,7 @@ export function GameStageCharacter({
               />
             ) : null}
             <span
-              className={`game-character-health-fill ${getHealthTone(character.health.currentHitPoints, character.health.maxHitPoints)}`}
+              className={`game-character-health-fill ${getHealthTone(displayedCurrentHitPoints, character.health.maxHitPoints)}`}
               style={{ width: `${healthPercentage}%` }}
             />
           </span>
@@ -267,6 +283,16 @@ function getHealthTone(currentHitPoints: number, maxHitPoints: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getVitalStatus(vitalState: PresentationStageCharacter['vitalState']) {
+  if (vitalState === 'dead') {
+    return { label: '已死亡', announcement: '已经死亡', className: 'is-dead' };
+  }
+  if (vitalState === 'incapacitated') {
+    return { label: '失能', announcement: '已经失能', className: 'is-incapacitated' };
+  }
+  return null;
 }
 
 interface CharacterAlphaMask {
