@@ -25,6 +25,8 @@ const GAME_STAGE_BASE_HEIGHT = 720;
 const GAME_STAGE_MIN_SCALE = 0.3;
 const DIALOGUE_LINES_PER_PAGE = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
+const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
+const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
 const STAGE_SLOTS = {
   1: ['center'],
   2: ['left', 'right'],
@@ -64,8 +66,13 @@ export function GameStageCanvas({
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
   const stageCharacters = stage?.characters || [];
   const dialogue = useStageDialogue(dialogueKey, dialogueEntries, sceneDescription);
-  const visibleCharacters = getVisibleCharacters(stageCharacters, dialogue.activeEntry.speakerId);
+  const visibleCharacters = useMemo(
+    () => getVisibleCharacters(stage?.characters || [], dialogue.activeEntry.speakerId),
+    [stage?.characters, dialogue.activeEntry.speakerId],
+  );
   const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
+  const [alphaHoveredEntityId, setAlphaHoveredEntityId] = useState<string | null>(null);
+  const alphaHoveredEntityIdRef = useRef<string | null>(null);
   const {
     frameRef,
     stageScale,
@@ -76,6 +83,22 @@ export function GameStageCanvas({
   const fullscreenLabel = isFullscreenSupported
     ? (isFullscreen ? '退出全屏' : '进入全屏')
     : '当前浏览器不支持全屏';
+
+  useEffect(() => {
+    if (
+      alphaHoveredEntityId
+      && !visibleCharacters.some((character) => character.entityId === alphaHoveredEntityId)
+    ) {
+      alphaHoveredEntityIdRef.current = null;
+      setAlphaHoveredEntityId(null);
+    }
+  }, [alphaHoveredEntityId, visibleCharacters]);
+
+  function updateAlphaHoveredEntity(entityId: string | null) {
+    if (alphaHoveredEntityIdRef.current === entityId) return;
+    alphaHoveredEntityIdRef.current = entityId;
+    setAlphaHoveredEntityId(entityId);
+  }
 
   return (
     <div className="game-stage-frame" ref={frameRef}>
@@ -150,6 +173,7 @@ export function GameStageCanvas({
                   character.isFallbackPortrait ? 'fallback-character' : '',
                   character.entityId === dialogue.activeEntry.speakerId ? 'speaking-character' : '',
                   onOpenEntityActions ? 'has-actions' : '',
+                  character.entityId === alphaHoveredEntityId ? 'pixel-hovered' : '',
                   character.entityId === actionMenuEntityId ? 'action-menu-open' : '',
                 ].filter(Boolean).join(' ')}
                 key={character.entityId}
@@ -157,6 +181,10 @@ export function GameStageCanvas({
                 onContextMenu={onOpenEntityActions ? (event) => {
                   event.preventDefault();
                   event.stopPropagation();
+                  if (
+                    event.target instanceof HTMLImageElement
+                    && !isCharacterImagePointOpaque(event.target, event.clientX, event.clientY)
+                  ) return;
                   onOpenEntityActions({
                     entityId: character.entityId,
                     entityName: character.name,
@@ -166,7 +194,24 @@ export function GameStageCanvas({
                 } : undefined}
               >
                 {character.portraitUrl ? (
-                  <img src={character.portraitUrl} alt={character.name} />
+                  <img
+                    src={character.portraitUrl}
+                    alt={character.name}
+                    onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
+                    onPointerMove={onOpenEntityActions ? (event) => {
+                      if (event.pointerType === 'touch') return;
+                      updateAlphaHoveredEntity(
+                        isCharacterImagePointOpaque(event.currentTarget, event.clientX, event.clientY)
+                          ? character.entityId
+                          : null,
+                      );
+                    } : undefined}
+                    onPointerLeave={onOpenEntityActions ? () => {
+                      if (alphaHoveredEntityIdRef.current === character.entityId) {
+                        updateAlphaHoveredEntity(null);
+                      }
+                    } : undefined}
+                  />
                 ) : (
                   <div className="game-character-missing" />
                 )}
@@ -644,4 +689,64 @@ function getHealthTone(currentHitPoints: number, maxHitPoints: number) {
   if (ratio <= 0.25) return 'is-critical';
   if (ratio <= 0.5) return 'is-wounded';
   return 'is-healthy';
+}
+
+interface CharacterAlphaMask {
+  width: number;
+  height: number;
+  alpha: Uint8Array;
+}
+
+interface CharacterAlphaMaskCacheEntry {
+  source: string;
+  mask: CharacterAlphaMask | null;
+}
+
+const characterAlphaMaskCache = new WeakMap<HTMLImageElement, CharacterAlphaMaskCacheEntry>();
+
+function prepareCharacterAlphaMask(image: HTMLImageElement) {
+  const source = image.currentSrc || image.src;
+  const cached = characterAlphaMaskCache.get(image);
+  if (cached?.source === source || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return;
+
+  const scale = Math.min(1, CHARACTER_ALPHA_MASK_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    characterAlphaMaskCache.set(image, { source, mask: null });
+    return;
+  }
+
+  try {
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const alpha = new Uint8Array(width * height);
+    for (let sourceIndex = 3, alphaIndex = 0; sourceIndex < pixels.length; sourceIndex += 4, alphaIndex += 1) {
+      alpha[alphaIndex] = pixels[sourceIndex];
+    }
+    characterAlphaMaskCache.set(image, { source, mask: { width, height, alpha } });
+  } catch {
+    // Preserve the old rectangular interaction if a cross-origin image cannot be sampled.
+    characterAlphaMaskCache.set(image, { source, mask: null });
+  }
+}
+
+function isCharacterImagePointOpaque(image: HTMLImageElement, clientX: number, clientY: number) {
+  prepareCharacterAlphaMask(image);
+  const entry = characterAlphaMaskCache.get(image);
+  if (!entry?.mask) return true;
+
+  const bounds = image.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return false;
+  const relativeX = (clientX - bounds.left) / bounds.width;
+  const relativeY = (clientY - bounds.top) / bounds.height;
+  if (relativeX < 0 || relativeX >= 1 || relativeY < 0 || relativeY >= 1) return false;
+
+  const x = Math.min(entry.mask.width - 1, Math.floor(relativeX * entry.mask.width));
+  const y = Math.min(entry.mask.height - 1, Math.floor(relativeY * entry.mask.height));
+  return entry.mask.alpha[y * entry.mask.width + x] >= CHARACTER_ALPHA_HIT_THRESHOLD;
 }

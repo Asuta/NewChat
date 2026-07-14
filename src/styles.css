@@ -1661,6 +1661,15 @@ button {
 .game-character.has-actions .game-character-missing,
 .game-character.has-actions figcaption {
   pointer-events: auto;
+}
+
+.game-character.has-actions img {
+  cursor: default;
+}
+
+.game-character.has-actions.pixel-hovered img,
+.game-character.has-actions .game-character-missing,
+.game-character.has-actions figcaption {
   cursor: context-menu;
 }
 
@@ -1791,8 +1800,8 @@ button {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
     filter:
       brightness(1.08)
       saturate(1.08)
@@ -1801,7 +1810,7 @@ button {
     transform: translateY(-7px) scale(1.035);
   }
 
-  .game-character.has-actions.fallback-character:is(.action-menu-open, :has(> img:hover, > figcaption:hover)) > img,
+  .game-character.has-actions.fallback-character:is(.action-menu-open, .pixel-hovered, :has(> figcaption:hover)) > img,
   .game-character.has-actions:is(.action-menu-open, :has(> .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
     opacity: 0.9;
     filter:
@@ -1811,8 +1820,8 @@ button {
       drop-shadow(0 26px 28px rgba(0, 0, 0, 0.38));
   }
 
-  .game-character.has-actions.speaking-character:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
-  .game-character.has-actions.speaking-character:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+  .game-character.has-actions.speaking-character:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions.speaking-character:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
     filter:
       brightness(1.1)
       saturate(1.08)
@@ -1820,7 +1829,7 @@ button {
       drop-shadow(0 28px 30px rgba(0, 0, 0, 0.42));
   }
 
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > figcaption {
     border-color: rgba(255, 220, 160, 0.58);
     background: rgba(28, 22, 16, 0.78);
     color: #fff3d5;
@@ -1830,13 +1839,13 @@ button {
     transform: translateY(calc(100% - 100cqh)) scale(1.03);
   }
 
-  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > img,
-  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > .game-character-missing {
+  .game-character.has-actions:is(.pixel-hovered:has(> img:active), :has(> .game-character-missing:active, > figcaption:active)) > img,
+  .game-character.has-actions:is(.pixel-hovered:has(> img:active), :has(> .game-character-missing:active, > figcaption:active)) > .game-character-missing {
     transform: translateY(-2px) scale(1.015);
     transition-duration: 80ms;
   }
 
-  .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > figcaption {
+  .game-character.has-actions:is(.pixel-hovered:has(> img:active), :has(> .game-character-missing:active, > figcaption:active)) > figcaption {
     transform: translateY(calc(100% - 100cqh)) scale(0.99);
     transition-duration: 80ms;
   }
@@ -1849,12 +1858,12 @@ button {
     transition: none;
   }
 
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > img,
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > img,
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > .game-character-missing {
     transform: none;
   }
 
-  .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
+  .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > figcaption {
     transform: translateY(calc(100% - 100cqh));
   }
 
