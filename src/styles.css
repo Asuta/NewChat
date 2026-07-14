@@ -2290,12 +2290,59 @@ button {
   display: block;
   width: 100%;
   max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   color: rgba(248, 250, 252, 0.96);
   font-size: 20px;
   line-height: 1.5;
   letter-spacing: 0;
   white-space: pre-wrap;
+}
+
+.stage-dialogue-text .stage-markdown-strong,
+.stage-dialogue-text .stage-markdown-heading {
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.stage-dialogue-text .stage-markdown-emphasis {
+  color: var(--dialogue-speaker);
+  font-style: italic;
+}
+
+.stage-dialogue-text .stage-markdown-quote {
+  color: rgba(226, 240, 250, 0.88);
+}
+
+.stage-dialogue-text .stage-markdown-code {
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.32);
+  color: #d8efff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+  box-decoration-break: clone;
+}
+
+.stage-dialogue-text .stage-markdown-delete {
+  color: rgba(226, 232, 240, 0.64);
+  text-decoration: line-through;
+}
+
+.stage-dialogue-text .stage-markdown-link {
+  color: #8fd8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.stage-dialogue-text .stage-markdown-image {
+  color: rgba(191, 234, 255, 0.78);
+  font-style: italic;
+}
+
+.game-stage.has-action-composer .stage-dialogue-text {
+  font-size: 18px;
+  line-height: 1.35;
 }
 
 .stage-dialogue-progress {

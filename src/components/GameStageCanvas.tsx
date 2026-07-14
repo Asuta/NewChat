@@ -19,11 +19,18 @@ import type {
   WorldOverview,
 } from '../types';
 import { SceneMiniMap } from './SceneMiniMap';
+import {
+  countStageMarkdownCharacters,
+  parseStageMarkdown,
+  sliceStageMarkdownSegments,
+  StageMarkdownContent,
+} from './StageMarkdownContent';
+import type { StageMarkdownMark, StageMarkdownSegment } from './StageMarkdownContent';
 
 const GAME_STAGE_BASE_WIDTH = 1280;
 const GAME_STAGE_BASE_HEIGHT = 720;
 const GAME_STAGE_MIN_SCALE = 0.3;
-const DIALOGUE_LINES_WITH_COMPOSER = 2;
+const DIALOGUE_LINES_WITH_COMPOSER = 3;
 const DIALOGUE_LINES_WITHOUT_COMPOSER = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
@@ -266,21 +273,28 @@ export function GameStageCanvas({
 
           <div className={`game-stage-interaction-stack ${actionComposer ? 'has-action-composer' : ''}`}>
             <div className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}>
-              <button
+              <div
                 className="stage-dialogue-content"
-                type="button"
+                role="button"
+                tabIndex={0}
                 aria-label={dialogue.actionLabel}
                 onClick={dialogue.advance}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  dialogue.advance();
+                }}
               >
                 <span className="stage-dialogue-speaker">
                   {dialogue.activeEntry.kind === 'speech'
                     ? dialogue.activeEntry.speakerName || '未知人物'
                     : '旁白'}
                 </span>
-                <span className="stage-dialogue-text" aria-live="polite" ref={dialogue.textRef}>
-                  {dialogue.visibleText || '……'}
-                </span>
-              </button>
+                <StageMarkdownContent
+                  containerRef={dialogue.textRef}
+                  segments={dialogue.visibleSegments}
+                />
+              </div>
               <span className="stage-dialogue-progress">
                 {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
               </span>
@@ -345,7 +359,7 @@ function useStageDialogue(
   const pageLengthRef = useRef(0);
   const activePageIsStreamingRef = useRef(false);
   const revealedPageIdsRef = useRef(new Set<string>());
-  const textRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
   const [textMetrics, setTextMetrics] = useState<DialogueTextMetrics | null>(null);
 
   useLayoutEffect(() => {
@@ -370,11 +384,11 @@ function useStageDialogue(
   );
   const pages = useMemo(
     () => activeEntries.flatMap((entry) => {
-      const entryPages = paginator?.paginate(entry.id, entry.content) || [entry.content.trim()];
-      return entryPages.map((content, entryPageIndex) => ({
+      const entryPages = paginator?.paginate(entry.id, entry.content) || [createMarkdownPage(parseStageMarkdown(entry.content))];
+      return entryPages.map((page, entryPageIndex) => ({
         id: `${entry.id}:${entryPageIndex}`,
         entry,
-        content,
+        ...page,
       }));
     }),
     [activeEntries, paginator],
@@ -382,17 +396,20 @@ function useStageDialogue(
   const safePageIndex = Math.min(pageIndex, pages.length - 1);
   const activePage = pages[safePageIndex];
   const activeEntry = activePage?.entry || fallbackEntry;
-  const pageText = activePage?.content || '';
-  const pageCharacters = useMemo(() => Array.from(pageText), [pageText]);
-  const visibleText = pageCharacters.slice(0, revealedLength).join('');
-  const isPageRevealed = revealedLength >= pageCharacters.length;
+  const pageSegments = activePage?.segments || [];
+  const pageLength = activePage?.characterCount || 0;
+  const visibleSegments = useMemo(
+    () => sliceStageMarkdownSegments(pageSegments, revealedLength),
+    [pageSegments, revealedLength],
+  );
+  const isPageRevealed = revealedLength >= pageLength;
   const hasPreviousPage = safePageIndex > 0;
   const hasNextPage = safePageIndex < pages.length - 1;
   const canAdvance = isPageRevealed && hasNextPage;
   const canUseForwardControl = !isPageRevealed || hasNextPage;
   const isWaiting = isPageRevealed && !canAdvance && activeEntry.status === 'streaming';
 
-  pageLengthRef.current = pageCharacters.length;
+  pageLengthRef.current = pageLength;
   activePageIsStreamingRef.current = activeEntry.status === 'streaming' && !hasNextPage;
 
   useLayoutEffect(() => {
@@ -400,13 +417,14 @@ function useStageDialogue(
     if (!textElement) return;
 
     const measure = () => {
-      const styles = getComputedStyle(textElement);
+      const fonts = readStageMarkdownFonts(textElement);
       const nextMetrics = {
-        lineWidth: Math.max(120, textElement.clientWidth - 12),
-        font: `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`,
+        lineWidth: Math.max(120, textElement.clientWidth - 2),
+        fonts,
+        signature: Object.values(fonts).join('|'),
       };
       setTextMetrics((current) => (
-        current?.lineWidth === nextMetrics.lineWidth && current.font === nextMetrics.font
+        current?.lineWidth === nextMetrics.lineWidth && current.signature === nextMetrics.signature
           ? current
           : nextMetrics
       ));
@@ -443,7 +461,7 @@ function useStageDialogue(
 
   function advance() {
     if (!isPageRevealed) {
-      setRevealedLength(pageCharacters.length);
+      setRevealedLength(pageLength);
       return;
     }
     if (hasNextPage) {
@@ -459,15 +477,14 @@ function useStageDialogue(
   function navigateToPage(nextPageIndex: number) {
     const nextPage = pages[nextPageIndex];
     if (!nextPage) return;
-    const nextPageLength = Array.from(nextPage.content).length;
     const wasRevealed = revealedPageIdsRef.current.has(nextPage.id);
-    setRevealedLength(wasRevealed ? nextPageLength : 0);
+    setRevealedLength(wasRevealed ? nextPage.characterCount : 0);
     setPageIndex(nextPageIndex);
   }
 
   return {
     activeEntry,
-    visibleText,
+    visibleSegments,
     pageIndex: safePageIndex,
     pageCount: pages.length,
     hasPreviousPage,
@@ -489,95 +506,173 @@ function useStageDialogue(
 
 interface DialogueTextMetrics {
   lineWidth: number;
-  font: string;
+  fonts: Record<StageMarkdownFontName, string>;
+  signature: string;
 }
 
-interface DialoguePaginationState {
+type StageMarkdownFontName = 'base' | 'strong' | 'emphasis' | 'strongEmphasis' | 'code';
+
+interface DialogueMarkdownPage {
+  segments: StageMarkdownSegment[];
+  characterCount: number;
+}
+
+interface DialoguePaginationCacheEntry {
   source: string;
-  pages: string[];
-  pageLines: string[];
-  currentLine: string;
-  currentWidth: number;
+  pages: DialogueMarkdownPage[];
 }
 
 function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: number) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  if (context) context.font = metrics.font;
   const widthCache = new Map<string, number>();
-  const entryCache = new Map<string, DialoguePaginationState>();
+  const entryCache = new Map<string, DialoguePaginationCacheEntry>();
 
-  function measureCharacter(character: string) {
-    const cached = widthCache.get(character);
+  function measureCharacter(character: string, marks: StageMarkdownMark[]) {
+    const font = selectStageMarkdownFont(metrics.fonts, marks);
+    const cacheKey = `${font}\u0000${character}`;
+    const cached = widthCache.get(cacheKey);
     if (cached !== undefined) return cached;
+    if (context) context.font = font;
     const width = context?.measureText(character).width || 0;
-    widthCache.set(character, width);
+    widthCache.set(cacheKey, width);
     return width;
   }
 
-  function appendLine(state: DialoguePaginationState) {
-    state.pageLines.push(state.currentLine.trimEnd());
-    state.currentLine = '';
-    state.currentWidth = 0;
-    if (state.pageLines.length < linesPerPage) return;
-    const page = state.pageLines.join('\n').trim();
-    if (page) state.pages.push(page);
-    state.pageLines = [];
-  }
+  function paginateSegments(segments: StageMarkdownSegment[]) {
+    const pages: DialogueMarkdownPage[] = [];
+    let pageSegments: StageMarkdownSegment[] = [];
+    let lineCount = 1;
+    let currentWidth = 0;
 
-  function appendContent(state: DialoguePaginationState, content: string) {
-    for (const character of Array.from(content)) {
-      if (character === '\n') {
-        appendLine(state);
-        continue;
+    const finishPage = () => {
+      trimPageTrailingWhitespace(pageSegments);
+      if (countStageMarkdownCharacters(pageSegments) > 0) {
+        pages.push(createMarkdownPage(pageSegments));
       }
-
-      const characterWidth = measureCharacter(character);
-      if (state.currentLine && state.currentWidth + characterWidth > metrics.lineWidth) {
-        appendLine(state);
-        state.currentLine = character.trimStart();
-        state.currentWidth = state.currentLine ? characterWidth : 0;
-        continue;
-      }
-      state.currentLine += character;
-      state.currentWidth += characterWidth;
-    }
-  }
-
-  function createState(source: string): DialoguePaginationState {
-    const state: DialoguePaginationState = {
-      source: '',
-      pages: [],
-      pageLines: [],
-      currentLine: '',
-      currentWidth: 0,
+      pageSegments = [];
+      lineCount = 1;
+      currentWidth = 0;
     };
-    appendContent(state, source);
-    state.source = source;
-    return state;
-  }
 
-  function getPages(state: DialoguePaginationState) {
-    const activePage = [...state.pageLines, state.currentLine.trimEnd()].join('\n').trim();
-    return activePage ? [...state.pages, activePage] : state.pages.length ? [...state.pages] : [''];
+    for (const segment of segments) {
+      for (const character of Array.from(segment.text)) {
+        if (character === '\n') {
+          if (lineCount >= linesPerPage) finishPage();
+          else {
+            appendPageText(pageSegments, '\n', []);
+            lineCount += 1;
+            currentWidth = 0;
+          }
+          continue;
+        }
+
+        const characterWidth = measureCharacter(character, segment.marks);
+        if (currentWidth > 0 && currentWidth + characterWidth > metrics.lineWidth) {
+          if (lineCount >= linesPerPage) finishPage();
+          else {
+            appendPageText(pageSegments, '\n', []);
+            lineCount += 1;
+            currentWidth = 0;
+          }
+        }
+
+        if (currentWidth === 0 && /^\s$/u.test(character) && !segment.marks.includes('code')) {
+          continue;
+        }
+        appendPageText(pageSegments, character, segment.marks);
+        currentWidth += characterWidth;
+      }
+    }
+
+    finishPage();
+    return pages.length ? pages : [createMarkdownPage([])];
   }
 
   return {
     paginate(entryId: string, content: string) {
       const normalized = content.replace(/\r\n?/g, '\n');
-      let state = entryCache.get(entryId);
-      if (!state || !normalized.startsWith(state.source)) {
-        state = createState(normalized);
-        entryCache.set(entryId, state);
-        return getPages(state);
-      }
-      if (normalized.length > state.source.length) {
-        appendContent(state, normalized.slice(state.source.length));
-        state.source = normalized;
-      }
-      return getPages(state);
+      const cached = entryCache.get(entryId);
+      if (cached?.source === normalized) return cached.pages;
+      const pages = paginateSegments(parseStageMarkdown(normalized));
+      entryCache.set(entryId, { source: normalized, pages });
+      return pages;
     },
   };
+}
+
+function createMarkdownPage(segments: StageMarkdownSegment[]): DialogueMarkdownPage {
+  return {
+    segments: segments.map((segment) => ({ ...segment, marks: [...segment.marks] })),
+    characterCount: countStageMarkdownCharacters(segments),
+  };
+}
+
+function appendPageText(
+  segments: StageMarkdownSegment[],
+  text: string,
+  marks: StageMarkdownMark[],
+) {
+  const previous = segments[segments.length - 1];
+  if (previous && sameStageMarkdownMarks(previous.marks, marks)) {
+    previous.text += text;
+    return;
+  }
+  segments.push({ text, marks: [...marks] });
+}
+
+function trimPageTrailingWhitespace(segments: StageMarkdownSegment[]) {
+  while (segments.length) {
+    const last = segments[segments.length - 1];
+    last.text = last.text.replace(/\s+$/u, '');
+    if (last.text) return;
+    segments.pop();
+  }
+}
+
+function sameStageMarkdownMarks(left: StageMarkdownMark[], right: StageMarkdownMark[]) {
+  return left.length === right.length && left.every((mark, index) => mark === right[index]);
+}
+
+function selectStageMarkdownFont(
+  fonts: Record<StageMarkdownFontName, string>,
+  marks: StageMarkdownMark[],
+) {
+  if (marks.includes('code')) return fonts.code;
+  const isStrong = marks.includes('strong') || marks.includes('heading');
+  const isEmphasis = marks.includes('emphasis') || marks.includes('image');
+  if (isStrong && isEmphasis) return fonts.strongEmphasis;
+  if (isStrong) return fonts.strong;
+  if (isEmphasis) return fonts.emphasis;
+  return fonts.base;
+}
+
+function readStageMarkdownFonts(container: HTMLDivElement) {
+  return {
+    base: readStageMarkdownFont(container),
+    strong: readStageMarkdownFont(container, ['strong']),
+    emphasis: readStageMarkdownFont(container, ['emphasis']),
+    strongEmphasis: readStageMarkdownFont(container, ['strong', 'emphasis']),
+    code: readStageMarkdownFont(container, ['code']),
+  } satisfies Record<StageMarkdownFontName, string>;
+}
+
+function readStageMarkdownFont(container: HTMLDivElement, marks: StageMarkdownMark[] = []) {
+  if (!marks.length) return formatCanvasFont(getComputedStyle(container));
+  const probe = document.createElement('span');
+  probe.className = marks.map((mark) => `stage-markdown-${mark}`).join(' ');
+  probe.textContent = '测';
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  container.appendChild(probe);
+  const font = formatCanvasFont(getComputedStyle(probe));
+  probe.remove();
+  return font;
+}
+
+function formatCanvasFont(styles: CSSStyleDeclaration) {
+  return `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
 }
 
 function useGameStageScale() {

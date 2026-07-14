@@ -1,10 +1,8 @@
 import { Bot, CheckCheck, Copy, LoaderCircle, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
 import { formatTime } from '../lib/chat';
 import type { ChatMessage } from '../types';
 import { AgentStepTimelineItem } from './AgentStepsTimelineItem';
+import { MarkdownContent } from './MarkdownContent';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -115,27 +113,6 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
         </footer>
       </div>
     </article>
-  );
-}
-
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <div className="markdown-content">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
-        components={{
-          a({ children, href, node: _node, ...props }) {
-            return (
-              <a href={href} rel="noreferrer" target="_blank" {...props}>
-                {children}
-              </a>
-            );
-          },
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
   );
 }
 
