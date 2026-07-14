@@ -1618,6 +1618,7 @@ button {
   --character-scale: 1;
   position: absolute;
   bottom: -20px;
+  container-type: size;
   display: grid;
   height: 82%;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -1663,10 +1664,6 @@ button {
   cursor: context-menu;
 }
 
-.game-character.has-actions figcaption {
-  transform: translateY(-52px);
-}
-
 .game-character.fallback-character img,
 .game-character-missing {
   opacity: 0.78;
@@ -1702,6 +1699,7 @@ button {
   font-size: 13px;
   font-weight: 700;
   backdrop-filter: blur(10px);
+  transform: translateY(calc(100% - 100cqh));
   transition:
     background 180ms ease,
     border-color 180ms ease,
@@ -1829,7 +1827,7 @@ button {
     box-shadow:
       0 8px 22px rgba(0, 0, 0, 0.3),
       0 0 14px rgba(255, 214, 143, 0.14);
-    transform: translateY(-57px) scale(1.03);
+    transform: translateY(calc(100% - 100cqh)) scale(1.03);
   }
 
   .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > img,
@@ -1839,7 +1837,7 @@ button {
   }
 
   .game-character.has-actions:has(> img:active, > .game-character-missing:active, > figcaption:active) > figcaption {
-    transform: translateY(-53px) scale(0.99);
+    transform: translateY(calc(100% - 100cqh)) scale(0.99);
     transition-duration: 80ms;
   }
 }
@@ -1857,7 +1855,7 @@ button {
   }
 
   .game-character.has-actions:is(.action-menu-open, :has(> img:hover, > .game-character-missing:hover, > figcaption:hover)) > figcaption {
-    transform: translateY(-52px);
+    transform: translateY(calc(100% - 100cqh));
   }
 
   .game-character-health-fill {
