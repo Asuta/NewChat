@@ -32,9 +32,11 @@ import type {
   EntityBundle,
   FixedContext,
   HealthState,
+  InventoryAction,
   ModelRequestLog,
   ModelId,
   PresentationStage,
+  PlayerInventory,
   SaveDataResponse,
   SaveExportMode,
   WorldAgentStreamEvent,
@@ -84,6 +86,7 @@ export default function App() {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [worldMap, setWorldMap] = useState<WorldMapState | null>(null);
   const [presentationStage, setPresentationStage] = useState<PresentationStage | null>(null);
+  const [inventory, setInventory] = useState<PlayerInventory | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityBundle | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -91,6 +94,9 @@ export default function App() {
   const [isWorldLoading, setIsWorldLoading] = useState(false);
   const [isWorldMapLoading, setIsWorldMapLoading] = useState(false);
   const [isPresentationLoading, setIsPresentationLoading] = useState(false);
+  const [isInventoryLoading, setIsInventoryLoading] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const worldActionInFlightRef = useRef(false);
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -177,7 +183,12 @@ export default function App() {
     if (!world) return;
     void refreshPresentationStage();
     void refreshWorldMap();
+    void refreshInventory();
   }, [world]);
+
+  useEffect(() => {
+    if (displayMode !== 'game') setIsInventoryOpen(false);
+  }, [displayMode]);
 
   function createNewChat() {
     if (isCompressing) return;
@@ -963,6 +974,19 @@ export default function App() {
     }
   }
 
+  async function refreshInventory() {
+    setIsInventoryLoading(true);
+    try {
+      const response = await fetch('/api/world/inventory?actorId=player');
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setInventory((await response.json()) as PlayerInventory);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '背包读取失败。');
+    } finally {
+      setIsInventoryLoading(false);
+    }
+  }
+
   async function selectWorldEntity(entityId: string) {
     setIsWorldLoading(true);
     try {
@@ -1067,7 +1091,15 @@ export default function App() {
   }
 
   async function executeWorldAction(action: WorldAction) {
-    if (!activeConversation || isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy) return;
+    if (
+      !activeConversation
+      || worldActionInFlightRef.current
+      || isStreaming
+      || isCompressing
+      || isFixedContextSaving
+      || isSaveDataBusy
+    ) return;
+    worldActionInFlightRef.current = true;
     setError(null);
     setIsWorldLoading(true);
     try {
@@ -1083,20 +1115,22 @@ export default function App() {
       const nextMessages = [...activeConversation.messages, actionMessage, assistantMessage];
       const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
       setWorld(data.world);
+      if (data.inventory) setInventory(data.inventory);
       updateActiveConversation((conversation) => ({
         ...conversation,
         updatedAt: Date.now(),
         messages: nextMessages,
       }));
-      if (selectedEntity?.entity.id === action.targetId) {
-        void selectWorldEntity(action.targetId);
+      const actionTargetId = 'targetId' in action ? action.targetId : undefined;
+      if (actionTargetId && selectedEntity?.entity.id === actionTargetId) {
+        void selectWorldEntity(actionTargetId);
       }
       await streamAgentResponse({
         conversationId: activeConversation.id,
         assistantMessageId: assistantMessage.id,
         prompt: [
           '请根据刚刚的本地硬逻辑动作结果进行 AI DM 叙事。',
-          'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害或 HP。',
+          'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害、治疗、装备状态、持有关系或道具数量。',
           '请叙事化这个结果，然后判断受影响 NPC 或周围环境是否应立即反应；如需要规则裁定或世界状态变化，请继续调用合适工具。',
         ].join('\n'),
         contextEvents,
@@ -1105,6 +1139,7 @@ export default function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '动作执行失败。');
     } finally {
+      worldActionInFlightRef.current = false;
       setIsWorldLoading(false);
     }
   }
@@ -1166,12 +1201,18 @@ export default function App() {
             isWorldMapLoading={isWorldMapLoading}
             isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
             isInputDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
+            inventory={inventory}
+            isInventoryOpen={isInventoryOpen}
+            isInventoryLoading={isInventoryLoading}
+            isWorldActionLoading={isWorldLoading}
             conversation={activeConversation}
             error={error}
             fixedContext={fixedContext}
             onSend={sendMessage}
             onStop={stopStreaming}
             onEnterScene={enterWorldScene}
+            onInventoryOpenChange={setIsInventoryOpen}
+            onExecuteInventoryAction={(action: InventoryAction) => executeWorldAction(action)}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />

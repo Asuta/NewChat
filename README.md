@@ -97,6 +97,7 @@ Agent 可用规则工具：
 - `search_entities`：按名称、别名、FTS、类型、场景搜索实体。
 - `get_entity_bundle`：读取实体详情、组件、关系、近期事件。
 - `get_current_scene` / `get_scene_entities`：读取当前场景或指定场景上下文。
+- `get_inventory` / `execute_item_action`：读取背包并通过统一硬逻辑使用、装备、展示、拾取或丢弃道具。
 - `get_rule_toc` / `search_rules` / `get_rule_section`：按需读取跑团规则。
 - `get_time_state`：读取权威时间检查点和检查点之后尚未结算的剧情。
 - `update_time`：玩家查询时间时，按剧情分项结算耗时并推进检查点游标。
@@ -109,7 +110,7 @@ Agent 可用规则工具：
 
 读取、搜索、掷骰、写库、切换场景等工具默认静默；普通 DM 叙事使用 `dm_speak`，NPC 独立发言使用 `npc_speak`，不再使用顶层 `say` 字段或 `<npc-speech>` 标签。`npc_speak.content` 只写 NPC 实际说出口的纯对白，`npcEntityId` 必须来自已有实体。`dm_speak` / `npc_speak` 只是最终展示工具，不能替代读取、搜索、掷骰、规则裁定或世界数据写入。
 
-前端右侧“游戏世界”面板会展示当前场景、场景人物、道具、出口、实体详情和最近 Agent 工具步骤。第一版只做轻量场景实体化，不启用复杂时间系统或 NPC 后台自主行动。
+游戏视图舞台右上角提供背包抽屉，支持分类、数量、装备、治疗类消耗品、剧情道具展示、拾取和丢弃；按钮操作与自然语言操作共用同一后端动作服务。右侧“游戏世界”面板会展示当前场景、场景人物、场景道具、出口、实体详情和最近 Agent 工具步骤。
 
 ### 多 worktree 共享配置
 

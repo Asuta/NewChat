@@ -103,8 +103,10 @@ export function ensureTemplatePlayableDefaults() {
     database.exec('BEGIN;');
     upsertTemplateEntity(database, 'item_crown_mark', 'item', '王冠印记');
     upsertTemplateEntity(database, 'item_iron_sword', 'item', '礼拜堂铁剑');
+    upsertTemplateEntity(database, 'item_ash_tonic', 'item', '灰烬愈合药剂');
     setTemplateAliases(database, 'player', ['玩家', '殿下', '第四王选者', '无记忆继承者']);
     setTemplateAliases(database, 'item_iron_sword', ['铁剑', '长剑', 'Iron Sword']);
+    setTemplateAliases(database, 'item_ash_tonic', ['愈合药剂', '治疗药剂', '药水']);
     mergeTemplateComponent(database, 'player', 'identity', {
       role: '失忆王选者',
       description: '玩家从灰烬礼拜堂的黑石棺中醒来，手背带着发光的王冠印记。',
@@ -119,7 +121,7 @@ export function ensureTemplatePlayableDefaults() {
       canAct: true,
     });
     mergeTemplateInventory(database, 'player', {
-      items: ['item_crown_mark', 'item_iron_sword'],
+      items: ['item_crown_mark', 'item_iron_sword', 'item_ash_tonic'],
       equippedWeaponId: 'item_iron_sword',
     });
     mergeTemplateComponent(database, 'item_crown_mark', 'identity', {
@@ -137,6 +139,29 @@ export function ensureTemplatePlayableDefaults() {
       attackAbility: 'strength',
       proficient: true,
     });
+    mergeTemplateComponent(database, 'item_crown_mark', 'item', {
+      category: 'quest',
+      stackable: false,
+      droppable: false,
+      use: { type: 'narrative', target: 'optional_character', label: '展示印记' },
+    });
+    mergeTemplateComponent(database, 'item_iron_sword', 'item', {
+      category: 'weapon',
+      stackable: false,
+      droppable: true,
+      equipSlot: 'weapon',
+      use: { type: 'equip', target: 'self' },
+    });
+    mergeTemplateComponent(database, 'item_ash_tonic', 'identity', {
+      role: 'consumable',
+      description: '一小瓶由礼拜堂残存圣灰调制的药剂，饮下后能缓和伤势。',
+    });
+    mergeTemplateComponent(database, 'item_ash_tonic', 'item', {
+      category: 'consumable',
+      stackable: true,
+      droppable: true,
+      use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 },
+    });
     upsertTemplateRelationship(database, 'player', 'item_crown_mark', 'ownership', null, {
       source: 'baseline',
       summary: '玩家手背带着王冠印记。',
@@ -145,6 +170,12 @@ export function ensureTemplatePlayableDefaults() {
       source: 'baseline',
       summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。',
     });
+    upsertTemplateRelationship(database, 'player', 'item_ash_tonic', 'ownership', null, {
+      source: 'baseline',
+      summary: '玩家苏醒时随身带着两份灰烬愈合药剂。',
+      quantity: 2,
+    });
+    database.prepare("INSERT INTO meta (key, value) VALUES ('inventory.items.v1', 'ready') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
     mergeTemplateStats(database, 'character_elena', getSevenDayCrownElenaStats(), SEVEN_DAY_CROWN_ELENA_PROFILE_ID);
     mergeTemplateStats(database, 'character_hollow_knight', getSevenDayCrownHollowKnightStats(), SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID);
     database.exec('COMMIT;');
@@ -307,10 +338,11 @@ function formatGeneratedWorldSchemaContext() {
     '## Component Shape Notes',
     '',
     '- `identity`：常用字段 `role`、`description`、`background`、`personality`、`notes`，也可以附加 race、gender、age 等描述字段。',
+    '- `item`：道具机械规则，常用字段 `category`、`stackable`、`droppable`、`equipSlot` 和 `use`；道具名称、描述和剧情背景仍放在 `identity`。',
     '- `scene`：需要 `description`；可选 `exits`、`tags`、`visibility`。',
     '- `stats`：键值表，值只能是 number、string、boolean 或 null，例如 `maxHitPoints`、`currentHitPoints`、`armorClass`、`strengthMod`。',
     '- `status`：标准字段为 `state`、`label`、`description`、`canAct`。创建能行动的普通角色时使用 `{"state":"active","label":"正常","description":"该角色状态正常，可以行动。","canAct":true}`。后端也兼容 `alive`、`conscious`、`conditions` 并会自动归一化。',
-    '- `inventory`：至少使用 `items` 字符串数组；可以附加 `gold`、`equippedWeaponId` 等字段。',
+    '- `inventory`：保存 `gold`、`equippedWeaponId` 等背包状态；`items` 只是旧存档兼容镜像。道具持有权以 `ownership` relationship 为唯一权威，禁止直接修改 `items` 表示获得或失去道具。',
     '- `quest`：需要 `status`、`title`；可选 `description`、`objectives`、`participants`。',
     '- `memory` 使用 `entries` 数组；`schedule` 使用 `entries` 数组。',
     '',

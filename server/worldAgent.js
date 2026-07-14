@@ -20,6 +20,7 @@ import {
 } from './worldDb.js';
 import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
+import { executeInventoryAction, getInventory } from './inventory.js';
 
 export const WORLD_AGENT_DEFAULT_MAX_STEPS = 30;
 export const WORLD_AGENT_MIN_STEPS = 1;
@@ -32,6 +33,7 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   'NPC 实际说出口的直接对白必须调用 npc_speak，并且 content 只写 NPC 说出口的话。',
   'dm_speak 和 npc_speak 只是最终展示工具，不是行动工具；它们不能替代读取、搜索、掷骰、规则裁定、写库或切换场景工具。',
   '不确定 NPC 实体 id 时，先调用搜索或读取工具确认，不要编造 entityId。',
+  '读取背包必须调用 get_inventory；使用、装备、卸下、展示、拾取或丢弃道具必须调用 execute_item_action，不要用 apply_world_patch 绕过背包校验。',
 ].join('\n');
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '当前玩家请求附加提醒：需要使用工具命令调用时，一定要使用 tool_calls 调用对应工具。',
@@ -47,11 +49,14 @@ const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '常见工具选择：问这里还有谁、场景里有哪些重要角色、附近有什么，先用 get_current_scene 或 get_scene_entities；问某个人、组织、地点、物品、旧事，先用 search_entities，再按需 get_entity_bundle；问两者关系、血缘、敌友、从属或认识程度，用 get_relationships，必要时读取双方实体详情。',
   '例子：玩家问 NPC“这个场景中还有哪些重要角色？”错误做法是直接让 NPC 编造或泛泛回答；正确做法是先调用 get_current_scene 或 get_scene_entities 确认当前场景人物，必要时读取重要角色详情，然后再用 dm_speak 或 npc_speak 按性格回答。',
   '只有当最近上下文里已经有明确、未过期的工具结果时，才可以直接用这些结果回答；否则不要编造，也不要只凭叙事直觉回答。',
+  '玩家查看背包或询问持有物时调用 get_inventory。玩家使用、装备、卸下、展示、拾取或丢弃道具时，先读取背包确认 action.kind，再调用 execute_item_action；不要只叙述成功，也不要用 apply_world_patch 直接改 ownership 或数量。',
 ].join('\n');
 const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
   'get_entity_bundle',
   'get_current_scene',
+  'get_inventory',
+  'execute_item_action',
   'get_time_state',
   'update_time',
   'get_scene_entities',
@@ -76,6 +81,15 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     entityId: { type: 'string', description: '目标实体 id。' },
   }, ['entityId']),
   createToolSchema('get_current_scene', '读取玩家当前所在场景及其中人物、道具、出口。', {}),
+  createToolSchema('get_inventory', '读取玩家背包、附近可拾取道具、可用动作以及当前场景内可选目标。', {
+    actorId: { type: 'string', description: '背包持有者实体 id，玩家默认为 player。' },
+  }),
+  createToolSchema('execute_item_action', '执行经过后端校验的道具动作。actionKind 必须来自 get_inventory 返回的 actions。', {
+    actionKind: { type: 'string', description: 'item.equip、item.unequip、item.use、item.present、item.drop 或 item.pickup。' },
+    actorId: { type: 'string', description: '动作执行者实体 id，玩家默认为 player。' },
+    itemId: { type: 'string', description: '道具实体 id。' },
+    targetId: { type: 'string', description: '可选目标实体 id；需要目标的使用动作必须提供。' },
+  }, ['actionKind', 'itemId']),
   createToolSchema('get_time_state', '读取权威时间检查点、检查点之后尚未结算的剧情事件和可结算游标。返回的检查点不是无需计算的当前时间；必须分析 pendingEvents 后调用 update_time。', {}),
   createToolSchema('update_time', '在玩家查询时间时，根据检查点之后的未结算剧情分项计算耗时，推进世界时间并提交新的剧情游标。', {
     timeSegments: {
@@ -782,6 +796,39 @@ export function executeWorldTool(tool, args, prompt = '') {
       scene: getCurrentScene(),
       summary: '已读取当前场景。',
     };
+  }
+
+  if (tool === 'get_inventory') {
+    try {
+      const inventory = getInventory(String(args.actorId || 'player'));
+      return {
+        ok: true,
+        inventory,
+        summary: `已读取${inventory.actor.name}的背包，共 ${inventory.totalQuantity} 件道具。`,
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  if (tool === 'execute_item_action') {
+    try {
+      const executed = executeInventoryAction({
+        kind: args.actionKind || args.kind,
+        actorId: args.actorId || 'player',
+        itemId: args.itemId,
+        targetId: args.targetId,
+      });
+      return {
+        ok: true,
+        eventId: executed.eventId,
+        result: executed.result,
+        inventory: executed.inventory,
+        summary: executed.result.summary,
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   if (tool === 'get_time_state') {

@@ -106,7 +106,7 @@ export function WorldPanel({
           });
         }}
       />
-      <WorldEntityList title="道具" icon={<Boxes size={16} />} entities={scene?.items || []} onSelectEntity={onSelectEntity} />
+      <WorldEntityList title="场景道具" icon={<Boxes size={16} />} entities={scene?.items || []} onSelectEntity={onSelectEntity} />
 
       <section className="world-section">
         <div className="world-section-title">

@@ -8,6 +8,8 @@
 
 - 搜索实体：调用 `search_entities`，参数如 `query`、`kind`、`sceneId`、`limit`。
 - 读取当前场景：调用 `get_current_scene`，无参数。
+- 读取背包：调用 `get_inventory`，玩家默认无需参数。
+- 使用或管理道具：调用 `execute_item_action`，传入 `get_inventory` 返回的 `actionKind`、`itemId`，需要目标时再传 `targetId`。
 - 读取时间结算上下文：调用 `get_time_state`，无参数；读取后仍需调用 `update_time`。
 - 查询时间时提交结算：调用 `update_time`，参数为 `timeSegments`、`throughConversationId`、`reason` 和 `summary`。
 - DM 叙事：调用 `dm_speak`，参数 `content` 会显示在聊天流并投影为舞台旁白。

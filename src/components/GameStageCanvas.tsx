@@ -14,11 +14,14 @@ import type {
   PresentationStage,
   PresentationStageCharacter,
   StageDialogueEntry,
+  InventoryAction,
+  PlayerInventory,
   WorldActionMenuTarget,
   WorldMapState,
   WorldOverview,
 } from '../types';
 import { GameStageCharacter, useCharacterDamageFeedback } from './GameStageCharacter';
+import { InventoryDrawer } from './InventoryDrawer';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
   countStageMarkdownCharacters,
@@ -50,8 +53,14 @@ interface GameStageCanvasProps {
   isLoading: boolean;
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
+  inventory: PlayerInventory | null;
+  isInventoryOpen: boolean;
+  isInventoryLoading: boolean;
+  isInventoryDisabled: boolean;
   actionComposer?: ReactNode;
   onEnterScene: (sceneId: string) => void;
+  onInventoryOpenChange: (open: boolean) => void;
+  onExecuteInventoryAction: (action: InventoryAction) => void | Promise<void>;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
 
@@ -65,8 +74,14 @@ export function GameStageCanvas({
   isLoading,
   isWorldMapLoading,
   isNavigationDisabled,
+  inventory,
+  isInventoryOpen,
+  isInventoryLoading,
+  isInventoryDisabled,
   actionComposer,
   onEnterScene,
+  onInventoryOpenChange,
+  onExecuteInventoryAction,
   onOpenEntityActions,
 }: GameStageCanvasProps) {
   const sceneName = stage?.scene?.name || '未知场景';
@@ -179,6 +194,15 @@ export function GameStageCanvas({
             isNavigationDisabled={isNavigationDisabled}
             isInteractive
             onEnterScene={onEnterScene}
+          />
+
+          <InventoryDrawer
+            inventory={inventory}
+            isOpen={isInventoryOpen}
+            isLoading={isInventoryLoading}
+            isDisabled={isInventoryDisabled}
+            onOpenChange={onInventoryOpenChange}
+            onExecuteAction={onExecuteInventoryAction}
           />
 
           <div className="game-character-layer" aria-label="当前场景人物">

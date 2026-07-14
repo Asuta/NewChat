@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const ENTITY_KINDS = ['player', 'character', 'scene', 'item', 'quest', 'event', 'faction', 'lore'];
-export const COMPONENT_TYPES = ['identity', 'scene', 'stats', 'status', 'memory', 'inventory', 'quest', 'schedule'];
+export const COMPONENT_TYPES = ['identity', 'item', 'scene', 'stats', 'status', 'memory', 'inventory', 'quest', 'schedule'];
 export const RELATIONSHIP_TYPES = [
   'located_in',
   'ownership',
@@ -29,6 +29,24 @@ export const componentSchemas = {
       personality: z.array(z.string()).optional(),
       effect: z.record(z.string(), z.unknown()).optional(),
       notes: z.string().optional(),
+    })
+    .passthrough(),
+  item: z
+    .object({
+      category: z.enum(['weapon', 'consumable', 'tool', 'quest', 'clue']).optional(),
+      stackable: z.boolean().optional(),
+      droppable: z.boolean().optional(),
+      equipSlot: z.string().optional(),
+      use: z
+        .object({
+          type: z.enum(['equip', 'restore_hit_points', 'narrative']),
+          target: z.string().optional(),
+          label: z.string().optional(),
+          amount: z.number().finite().positive().optional(),
+          consumeQuantity: z.number().int().positive().optional(),
+        })
+        .passthrough()
+        .optional(),
     })
     .passthrough(),
   scene: z

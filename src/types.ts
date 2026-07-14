@@ -244,7 +244,7 @@ export interface WorldActionMenuTarget {
   clientY: number;
 }
 
-export interface WorldAction {
+export interface AttackWorldAction {
   id: string;
   kind: 'attack.weapon';
   label: string;
@@ -256,8 +256,75 @@ export interface WorldAction {
   weaponName: string;
 }
 
+export type InventoryActionKind =
+  | 'item.equip'
+  | 'item.unequip'
+  | 'item.use'
+  | 'item.present'
+  | 'item.drop'
+  | 'item.pickup';
+
+export interface InventoryAction {
+  id: string;
+  kind: InventoryActionKind;
+  label: string;
+  actorId: string;
+  itemId: string;
+  targetId?: string;
+  targetMode: 'none' | 'self_or_character' | 'optional_character';
+  requiresTarget: boolean;
+  validTargetIds: string[];
+  disabledReason: string | null;
+  danger: boolean;
+}
+
+export interface InventoryTarget {
+  id: string;
+  name: string;
+  kind: EntityKind;
+  vitalState: 'active' | 'incapacitated' | 'dead';
+  health: {
+    currentHitPoints: number;
+    maxHitPoints: number;
+  } | null;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  quantity: number;
+  equipped: boolean;
+  category: 'weapon' | 'consumable' | 'tool' | 'quest' | 'clue' | string;
+  identity: {
+    role?: string;
+    description?: string;
+    effect?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  rules: {
+    category: string;
+    stackable: boolean;
+    droppable: boolean;
+    equipSlot: string | null;
+    use: Record<string, unknown> | null;
+  };
+  actions: InventoryAction[];
+}
+
+export interface PlayerInventory {
+  actor: { id: string; name: string };
+  gold: number;
+  equippedWeaponId: string | null;
+  totalQuantity: number;
+  items: InventoryItem[];
+  nearbyItems: InventoryItem[];
+  targets: InventoryTarget[];
+}
+
+export type WorldAction = AttackWorldAction | InventoryAction;
+
 export interface ActionResult {
-  type: 'attack.resolved';
+  type: string;
   action?: WorldAction;
   facts: Record<string, unknown>;
   stateChanges: Array<Record<string, unknown>>;
@@ -270,6 +337,7 @@ export interface ExecuteWorldActionResponse {
   eventId: number;
   result: ActionResult;
   world: WorldOverview;
+  inventory?: PlayerInventory;
 }
 
 export interface EntityBundle {

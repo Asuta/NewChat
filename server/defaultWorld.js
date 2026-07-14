@@ -114,6 +114,7 @@ export function seedSevenDayCrownWorld(api) {
     ['character_crown_will', 'character', '王冠意志'],
     ['item_crown_mark', 'item', '王冠印记'],
     ['item_iron_sword', 'item', '礼拜堂铁剑'],
+    ['item_ash_tonic', 'item', '灰烬愈合药剂'],
     ['item_knight_oath', 'item', '骑士团誓约印'],
     ['item_church_oath', 'item', '教会誓约印'],
     ['item_people_oath', 'item', '民众誓约印'],
@@ -151,6 +152,7 @@ export function seedSevenDayCrownWorld(api) {
     character_kaen: ['卡恩', '灰街领袖', '第三王选者'],
     item_iron_sword: ['铁剑', '长剑', 'Iron Sword'],
     item_crown_mark: ['王选印记', '手背印记'],
+    item_ash_tonic: ['愈合药剂', '治疗药剂', '药水'],
   };
   for (const [entityId, names] of Object.entries(aliases)) setAliases(entityId, names);
 
@@ -169,7 +171,7 @@ export function seedSevenDayCrownWorld(api) {
       description: '玩家刚从黑石棺中醒来，失去大部分记忆，但身体仍能行动。距离王冠仪式还有七天。',
       canAct: true,
     }],
-    ['player', 'inventory', { items: ['item_crown_mark', 'item_iron_sword'], equippedWeaponId: 'item_iron_sword' }],
+    ['player', 'inventory', { items: ['item_crown_mark', 'item_iron_sword', 'item_ash_tonic'], equippedWeaponId: 'item_iron_sword' }],
     ['scene_ash_chapel', 'scene', {
       description: '一座被焚毁的礼拜堂，焦黑长椅间散落着白色鸦羽。中央黑石棺已经打开，玩家就在这里醒来。这里是主线开场点，适合触发艾蕾娜说明“七天后王冠仪式”的引导。',
       exits: ['scene_outer_gate'], tags: ['开场', '遗迹', '安全点'], visibility: 'public',
@@ -231,6 +233,10 @@ export function seedSevenDayCrownWorld(api) {
     ['character_crown_will', 'status', { state: 'dormant', label: '沉睡', description: '王冠意志仍在沉睡，只能通过梦境和印记影响玩家。', canAct: false }],
     ['item_crown_mark', 'identity', { role: 'key_item', description: '玩家手背上的发光王冠印记。它证明玩家拥有王选资格，也会在玩家迷路时以刺痛、发光或梦境方式指向下一条主线线索。', effect: { type: 'quest_guidance', targetQuestId: 'quest_main' } }],
     ['item_iron_sword', 'identity', { role: 'weapon', description: '灰烬礼拜堂中拾得的旧铁剑，剑柄刻着白狮纹章。适合低等级近战判定。', weaponCategory: 'martial melee weapon', damageDice: '1d8', versatileDamageDice: '1d10', damageType: 'slashing', attackAbility: 'strength', proficient: true }],
+    ['item_ash_tonic', 'identity', { role: 'consumable', description: '一小瓶由礼拜堂残存圣灰调制的药剂，饮下后能缓和伤势。' }],
+    ['item_crown_mark', 'item', { category: 'quest', stackable: false, droppable: false, use: { type: 'narrative', target: 'optional_character', label: '展示印记' } }],
+    ['item_iron_sword', 'item', { category: 'weapon', stackable: false, droppable: true, equipSlot: 'weapon', use: { type: 'equip', target: 'self' } }],
+    ['item_ash_tonic', 'item', { category: 'consumable', stackable: true, droppable: true, use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 } }],
     ['item_knight_oath', 'identity', { role: 'quest_token', description: '白狮骑士团的誓约印。获得它代表骑士团承认玩家有资格进入王冠厅。', effect: { type: 'unlock', targetEntityId: 'scene_crown_hall' } }],
     ['item_church_oath', 'identity', { role: 'quest_token', description: '圣冠教会的誓约印。它可以来自正式赐予、温和派协助，或玩家揭露禁书真相后的替代仪式。', effect: { type: 'unlock', targetEntityId: 'scene_crown_hall' } }],
     ['item_people_oath', 'identity', { role: 'quest_token', description: '民众议会的誓约印。它不是贵族印章，而是一枚刻满灰街名字的铜片。', effect: { type: 'unlock', targetEntityId: 'scene_crown_hall' } }],
@@ -269,6 +275,7 @@ export function seedSevenDayCrownWorld(api) {
     ['character_crown_will', 'scene_crown_hall', 'located_in', null, '王冠意志沉睡在王冠厅，等待第七日仪式。'],
     ['player', 'item_crown_mark', 'ownership', null, '玩家手背带着王冠印记。'],
     ['player', 'item_iron_sword', 'ownership', null, '玩家从灰烬礼拜堂拾得一把旧铁剑。'],
+    ['player', 'item_ash_tonic', 'ownership', null, '玩家苏醒时随身带着两份灰烬愈合药剂。', { quantity: 2 }],
     ['scene_ash_chapel', 'item_blackstone_plaque', 'mentions', null, '灰烬礼拜堂的黑石棺上刻着铭牌。'],
     ['scene_sanctum', 'item_forbidden_codex', 'mentions', null, '地下圣库藏有记录王冠真相的禁书。'],
     ['scene_blackstone_tomb', 'item_old_king_testament', 'mentions', null, '黑石陵墓中藏着旧王遗诏。'],
@@ -316,8 +323,8 @@ export function seedSevenDayCrownWorld(api) {
     ['character_crown_will', 'player', 'fear', 20, '王冠意志既渴望吞噬玩家，也害怕玩家保留自由意志。'],
   ];
 
-  for (const [sourceId, targetId, type, value, summary] of relationships) {
-    upsertRelationship(sourceId, targetId, type, value, { source: 'seed', summary });
+  for (const [sourceId, targetId, type, value, summary, data = {}] of relationships) {
+    upsertRelationship(sourceId, targetId, type, value, { source: 'seed', summary, ...data });
   }
 
   setMeta('playerId', 'player');
@@ -325,6 +332,7 @@ export function seedSevenDayCrownWorld(api) {
   setMeta('campaignId', 'seven-day-crown');
   setMeta('campaignTitle', '七日王冠');
   setMeta('campaignDay', '1');
+  setMeta('inventory.items.v1', 'ready');
   addEvent('world.seeded', null, null, { summary: '初始化七日王冠默认游戏世界。' });
 }
 
@@ -337,13 +345,17 @@ export function ensureSevenDayCrownPlayableState(api) {
     applyStatsProfile,
     mergeInventoryDefaults,
     upsertRelationship,
+    getMeta,
+    setMeta,
   } = api;
 
   if (getEntity('player')) {
     upsertEntity('item_iron_sword', 'item', '礼拜堂铁剑');
     upsertEntity('item_crown_mark', 'item', '王冠印记');
+    upsertEntity('item_ash_tonic', 'item', '灰烬愈合药剂');
     setAliases('player', ['玩家', '殿下', '第四王选者', '无记忆继承者']);
     setAliases('item_iron_sword', ['铁剑', '长剑', 'Iron Sword']);
+    setAliases('item_ash_tonic', ['愈合药剂', '治疗药剂', '药水']);
     mergeComponentDefaults('player', 'identity', {
       role: '失忆王选者',
       description: '玩家从灰烬礼拜堂的黑石棺中醒来，手背带着发光的王冠印记。',
@@ -376,8 +388,35 @@ export function ensureSevenDayCrownPlayableState(api) {
       description: '玩家手背上的发光王冠印记。它证明玩家拥有王选资格，也会在玩家迷路时指向下一条主线线索。',
       effect: { type: 'quest_guidance', targetQuestId: 'quest_main' },
     });
+    mergeComponentDefaults('item_crown_mark', 'item', {
+      category: 'quest',
+      stackable: false,
+      droppable: false,
+      use: { type: 'narrative', target: 'optional_character', label: '展示印记' },
+    });
+    mergeComponentDefaults('item_iron_sword', 'item', {
+      category: 'weapon',
+      stackable: false,
+      droppable: true,
+      equipSlot: 'weapon',
+      use: { type: 'equip', target: 'self' },
+    });
+    mergeComponentDefaults('item_ash_tonic', 'identity', {
+      role: 'consumable',
+      description: '一小瓶由礼拜堂残存圣灰调制的药剂，饮下后能缓和伤势。',
+    });
+    mergeComponentDefaults('item_ash_tonic', 'item', {
+      category: 'consumable',
+      stackable: true,
+      droppable: true,
+      use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 },
+    });
     upsertRelationship('player', 'item_crown_mark', 'ownership', null, { source: 'baseline', summary: '玩家手背带着王冠印记。' });
     upsertRelationship('player', 'item_iron_sword', 'ownership', null, { source: 'baseline', summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。' });
+    if (getMeta('inventory.items.v1', '') !== 'ready') {
+      upsertRelationship('player', 'item_ash_tonic', 'ownership', null, { source: 'baseline', summary: '玩家苏醒时随身带着两份灰烬愈合药剂。', quantity: 2 });
+      setMeta('inventory.items.v1', 'ready');
+    }
   }
 
   if (getEntity('character_elena')) {

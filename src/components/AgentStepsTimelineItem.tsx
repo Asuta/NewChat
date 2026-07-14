@@ -11,6 +11,8 @@ const TOOL_LABELS: Record<string, string> = {
   search_entities: '搜索实体',
   get_entity_bundle: '读取实体详情',
   get_current_scene: '读取当前场景',
+  get_inventory: '读取玩家背包',
+  execute_item_action: '执行道具动作',
   get_scene_entities: '读取场景实体',
   get_relationships: '读取关系',
   get_rule_toc: '读取规则目录',

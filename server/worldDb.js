@@ -152,6 +152,8 @@ export function ensurePlayableCharacterStats() {
       applyStatsProfile,
       mergeInventoryDefaults,
       upsertRelationship,
+      getMeta,
+      setMeta,
     });
   });
 }

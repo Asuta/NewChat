@@ -4,6 +4,8 @@ import type {
   ChatMessage,
   Conversation,
   FixedContext,
+  InventoryAction,
+  PlayerInventory,
   PresentationStage,
   StageDialogueEntry,
   WorldActionMenuTarget,
@@ -23,12 +25,18 @@ interface GameViewProps {
   isWorldMapLoading: boolean;
   isNavigationDisabled: boolean;
   isInputDisabled: boolean;
+  inventory: PlayerInventory | null;
+  isInventoryOpen: boolean;
+  isInventoryLoading: boolean;
+  isWorldActionLoading: boolean;
   conversation: Conversation;
   error: string | null;
   fixedContext: FixedContext;
   onSend: (content: string) => void;
   onStop: () => void;
   onEnterScene: (sceneId: string) => void;
+  onInventoryOpenChange: (open: boolean) => void;
+  onExecuteInventoryAction: (action: InventoryAction) => void | Promise<void>;
   onOpenEntityActions: (target: WorldActionMenuTarget) => void;
   onOpenSettings: () => void;
 }
@@ -43,12 +51,18 @@ export function GameView({
   isWorldMapLoading,
   isNavigationDisabled,
   isInputDisabled,
+  inventory,
+  isInventoryOpen,
+  isInventoryLoading,
+  isWorldActionLoading,
   conversation,
   error,
   fixedContext,
   onSend,
   onStop,
   onEnterScene,
+  onInventoryOpenChange,
+  onExecuteInventoryAction,
   onOpenEntityActions,
   onOpenSettings,
 }: GameViewProps) {
@@ -69,6 +83,10 @@ export function GameView({
         isLoading={isLoading}
         isWorldMapLoading={isWorldMapLoading}
         isNavigationDisabled={isNavigationDisabled}
+        inventory={inventory}
+        isInventoryOpen={isInventoryOpen}
+        isInventoryLoading={isInventoryLoading}
+        isInventoryDisabled={isInputDisabled || isStreaming || isWorldActionLoading}
         actionComposer={(
           <GameActionComposer
             isStreaming={isStreaming}
@@ -78,6 +96,8 @@ export function GameView({
           />
         )}
         onEnterScene={onEnterScene}
+        onInventoryOpenChange={onInventoryOpenChange}
+        onExecuteInventoryAction={onExecuteInventoryAction}
         onOpenEntityActions={onOpenEntityActions}
       />
 

@@ -5,6 +5,8 @@
 - search_entities：按名称、别名、FTS、类型、场景搜索实体。
 - get_entity_bundle：读取实体详情、组件、关系、近期事件。
 - get_current_scene：读取玩家当前场景。
+- get_inventory：读取玩家背包、附近可拾取道具、每件道具的可用动作和当前场景目标。
+- execute_item_action：执行 `get_inventory` 返回的背包动作，包括使用、装备、卸下、展示、拾取和丢弃。道具数量、持有关系、治疗与装备状态由后端原子校验和结算。
 - get_time_state：读取权威时间检查点、检查点之后尚未结算的剧情事件和可提交的 conversation 游标。它返回的是计算基础，不是无需更新的当前时间。
 - update_time：玩家询问时间时，根据 `get_time_state` 返回的未结算剧情生成 `timeSegments`，推进世界时钟并提交 `throughConversationId`。每个分项都要提供 `evidence`；存在明确时刻时必须写成 `HH:MM`，后端会结合原始未结算剧情校验分钟数和跨日语义。成功后才能向玩家回答当前时间。
 - get_scene_entities：读取指定场景中的实体。
@@ -17,6 +19,8 @@
 - apply_world_patch：创建或修改长期世界事实。移动 NPC、物品或其他非玩家实体位置时，使用 `set_location` 操作；不要用 `set_relationship` 写 `located_in`。玩家进入新场景只能使用 `transition_scene`。
 - dm_speak：输出玩家可见的 DM 叙事、动作描写、环境变化、规则结果或说明。
 - npc_speak：让某个 NPC 以独立气泡说出纯对白。
+
+玩家查看背包或询问持有物时调用 `get_inventory`。玩家要求使用、装备、卸下、展示、拾取或丢弃道具时，先读取背包确认可用 action，再调用 `execute_item_action`；不要只叙述成功，也不要用 `apply_world_patch` 直接修改 `ownership`、装备状态或道具数量。
 
 这些工具由后端通过 API 原生工具调用协议执行。读取、搜索、掷骰、写库、结算时间、切换场景等工具默认静默，不附带可见文字。
 

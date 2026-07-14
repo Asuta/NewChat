@@ -20,6 +20,7 @@ import {
 } from './worldDb.js';
 import { executeWorldTool, getAgentHistory, runWorldAgentTask, runWorldAgentTaskStream } from './worldAgent.js';
 import { executeWorldAction, listWorldActions } from './worldActions.js';
+import { ensureInventoryConsistency, executeInventoryAction, getInventory } from './inventory.js';
 import { listWorldSchemas } from './worldSchemas.js';
 import { readFixedContextBundle, writeUserFixedContext } from './contextLoader.js';
 import {
@@ -44,6 +45,7 @@ const loadedConfigFiles = loadRuntimeConfig();
 migrateWorldDb();
 seedWorldIfEmpty();
 ensurePlayableCharacterStats();
+ensureInventoryConsistency();
 rebuildSearchIndex();
 checkpointWorldDb();
 ensureTemplateDbFromSaveIfMissing();
@@ -173,6 +175,14 @@ app.get('/api/world/map', (_req, res) => {
   res.json(getWorldMap());
 });
 
+app.get('/api/world/inventory', (req, res) => {
+  try {
+    res.json(getInventory(String(req.query.actorId || 'player')));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : '背包读取失败。' });
+  }
+});
+
 app.get('/api/presentation/catalog', (_req, res) => {
   res.json(getPresentationCatalog());
 });
@@ -226,7 +236,8 @@ app.get('/api/world/actions', (req, res) => {
 
 app.post('/api/world/actions/execute', (req, res) => {
   try {
-    res.json(executeWorldAction(req.body || {}));
+    const kind = String(req.body?.kind || req.body?.actionKind || '');
+    res.json(kind.startsWith('item.') ? executeInventoryAction(req.body || {}) : executeWorldAction(req.body || {}));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : '动作执行失败。' });
   }
@@ -535,6 +546,7 @@ function refreshWorldRuntime() {
   migrateWorldDb();
   seedWorldIfEmpty();
   ensurePlayableCharacterStats();
+  ensureInventoryConsistency();
   rebuildSearchIndex();
   checkpointWorldDb();
 }
