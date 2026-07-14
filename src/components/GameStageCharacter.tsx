@@ -1,0 +1,330 @@
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import type { PresentationStageCharacter, WorldActionMenuTarget } from '../types';
+
+const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
+const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
+
+export interface CharacterDamageEvent {
+  id: string;
+  amount: number;
+  fromPercentage: number;
+  toPercentage: number;
+}
+
+interface CharacterHealthSnapshot {
+  currentHitPoints: number;
+  maxHitPoints: number;
+}
+
+interface GameStageCharacterProps {
+  character: PresentationStageCharacter;
+  damageEvent?: CharacterDamageEvent;
+  isSpeaking: boolean;
+  isPixelHovered: boolean;
+  isActionMenuOpen: boolean;
+  onAlphaHoverChange: (entityId: string | null) => void;
+  onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
+}
+
+export function GameStageCharacter({
+  character,
+  damageEvent,
+  isSpeaking,
+  isPixelHovered,
+  isActionMenuOpen,
+  onAlphaHoverChange,
+  onOpenEntityActions,
+}: GameStageCharacterProps) {
+  const figureRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const figure = figureRef.current;
+    if (!figure || !damageEvent) return;
+
+    const visual = figure.querySelector<HTMLElement>(':scope > img, :scope > .game-character-missing');
+    const caption = figure.querySelector<HTMLElement>(':scope > figcaption');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const animations: Animation[] = [];
+
+    if (visual && typeof visual.animate === 'function') {
+      const baseFilter = getComputedStyle(visual).filter;
+      const damageFilter = baseFilter === 'none'
+        ? 'sepia(0.72) saturate(2.4) brightness(1.22)'
+        : `${baseFilter} sepia(0.72) saturate(2.4) brightness(1.22)`;
+      animations.push(visual.animate(
+        prefersReducedMotion
+          ? [
+              { filter: baseFilter },
+              { filter: damageFilter, offset: 0.34 },
+              { filter: baseFilter },
+            ]
+          : [
+              { filter: baseFilter, translate: '0 0' },
+              { filter: damageFilter, translate: '-9px 0', offset: 0.2 },
+              { filter: damageFilter, translate: '7px 0', offset: 0.38 },
+              { filter: damageFilter, translate: '-4px 0', offset: 0.56 },
+              { filter: baseFilter, translate: '0 0' },
+            ],
+        { duration: prefersReducedMotion ? 280 : 380, easing: 'ease-out' },
+      ));
+    }
+
+    if (caption && typeof caption.animate === 'function') {
+      const styles = getComputedStyle(caption);
+      animations.push(caption.animate([
+        { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor },
+        { backgroundColor: 'rgba(78, 18, 22, 0.88)', borderColor: 'rgba(255, 119, 119, 0.82)', offset: 0.3 },
+        { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor },
+      ], { duration: 460, easing: 'ease-out' }));
+    }
+
+    return () => animations.forEach((animation) => animation.cancel());
+  }, [damageEvent]);
+
+  const healthPercentage = character.health
+    ? getHealthPercentage(character.health.currentHitPoints, character.health.maxHitPoints)
+    : 0;
+
+  return (
+    <figure
+      className={[
+        'game-character',
+        `slot-${character.slot}`,
+        character.isFallbackPortrait ? 'fallback-character' : '',
+        isSpeaking ? 'speaking-character' : '',
+        onOpenEntityActions ? 'has-actions' : '',
+        isPixelHovered ? 'pixel-hovered' : '',
+        isActionMenuOpen ? 'action-menu-open' : '',
+      ].filter(Boolean).join(' ')}
+      ref={figureRef}
+      style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
+      onContextMenu={onOpenEntityActions ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+          event.target instanceof HTMLImageElement
+          && !isCharacterImagePointOpaque(event.target, event.clientX, event.clientY)
+        ) return;
+        onOpenEntityActions({
+          entityId: character.entityId,
+          entityName: character.name,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      } : undefined}
+    >
+      {character.portraitUrl ? (
+        <img
+          src={character.portraitUrl}
+          alt={character.name}
+          onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
+          onPointerMove={onOpenEntityActions ? (event) => {
+            if (event.pointerType === 'touch') return;
+            onAlphaHoverChange(
+              isCharacterImagePointOpaque(event.currentTarget, event.clientX, event.clientY)
+                ? character.entityId
+                : null,
+            );
+          } : undefined}
+          onPointerLeave={onOpenEntityActions ? () => {
+            if (isPixelHovered) onAlphaHoverChange(null);
+          } : undefined}
+        />
+      ) : (
+        <div className="game-character-missing" />
+      )}
+      {damageEvent ? (
+        <span className="game-character-damage-number" key={damageEvent.id} aria-hidden="true">
+          -{damageEvent.amount}
+        </span>
+      ) : null}
+      <figcaption className={character.health ? 'has-health' : undefined}>
+        <span className="game-character-caption-row">
+          <span className="game-character-name">{character.name}</span>
+          {character.health ? (
+            <span className="game-character-health-value" aria-hidden="true">
+              {character.health.currentHitPoints}/{character.health.maxHitPoints}
+            </span>
+          ) : null}
+        </span>
+        {character.health ? (
+          <span
+            className="game-character-health-track"
+            role="meter"
+            aria-label={`${character.name} 生命值`}
+            aria-valuemin={0}
+            aria-valuemax={character.health.maxHitPoints}
+            aria-valuenow={character.health.currentHitPoints}
+            aria-valuetext={`${character.health.currentHitPoints}/${character.health.maxHitPoints}`}
+          >
+            {damageEvent ? (
+              <span
+                className="game-character-health-loss"
+                key={damageEvent.id}
+                style={{
+                  '--health-before': `${damageEvent.fromPercentage}%`,
+                  '--health-after': `${damageEvent.toPercentage}%`,
+                } as CSSProperties}
+              />
+            ) : null}
+            <span
+              className={`game-character-health-fill ${getHealthTone(character.health.currentHitPoints, character.health.maxHitPoints)}`}
+              style={{ width: `${healthPercentage}%` }}
+            />
+          </span>
+        ) : null}
+      </figcaption>
+    </figure>
+  );
+}
+
+export function useCharacterDamageFeedback(
+  sequenceKey: string,
+  characters: PresentationStageCharacter[],
+) {
+  const snapshotRef = useRef<{
+    sequenceKey: string;
+    healthByEntity: Map<string, CharacterHealthSnapshot>;
+  } | null>(null);
+  const eventCounterRef = useRef(0);
+  const [eventsByEntity, setEventsByEntity] = useState<Record<string, CharacterDamageEvent>>({});
+  const [announcement, setAnnouncement] = useState<{ id: string; text: string } | null>(null);
+
+  useEffect(() => {
+    const healthByEntity = new Map<string, CharacterHealthSnapshot>();
+    for (const character of characters) {
+      if (!character.health) continue;
+      healthByEntity.set(character.entityId, {
+        currentHitPoints: character.health.currentHitPoints,
+        maxHitPoints: character.health.maxHitPoints,
+      });
+    }
+
+    const previousSnapshot = snapshotRef.current;
+    snapshotRef.current = { sequenceKey, healthByEntity };
+    const sequenceChanged = !previousSnapshot || previousSnapshot.sequenceKey !== sequenceKey;
+    if (sequenceChanged) {
+      setEventsByEntity((current) => Object.keys(current).length ? {} : current);
+      setAnnouncement(null);
+      return;
+    }
+
+    const detectedEvents: Array<CharacterDamageEvent & { entityId: string; name: string }> = [];
+    for (const character of characters) {
+      if (!character.health) continue;
+      const previousHealth = previousSnapshot.healthByEntity.get(character.entityId);
+      if (!previousHealth || character.health.currentHitPoints >= previousHealth.currentHitPoints) continue;
+
+      eventCounterRef.current += 1;
+      detectedEvents.push({
+        id: `${character.entityId}:${eventCounterRef.current}`,
+        entityId: character.entityId,
+        name: character.name,
+        amount: previousHealth.currentHitPoints - character.health.currentHitPoints,
+        fromPercentage: getHealthPercentage(previousHealth.currentHitPoints, previousHealth.maxHitPoints),
+        toPercentage: getHealthPercentage(character.health.currentHitPoints, character.health.maxHitPoints),
+      });
+    }
+
+    const visibleEntityIds = new Set(healthByEntity.keys());
+    setEventsByEntity((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const entityId of Object.keys(next)) {
+        if (visibleEntityIds.has(entityId)) continue;
+        delete next[entityId];
+        changed = true;
+      }
+      for (const event of detectedEvents) {
+        next[event.entityId] = event;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+
+    if (detectedEvents.length) {
+      setAnnouncement({
+        id: detectedEvents.map((event) => event.id).join('|'),
+        text: detectedEvents.map((event) => `${event.name}受到${event.amount}点伤害`).join('，'),
+      });
+    }
+  }, [characters, sequenceKey]);
+
+  return { eventsByEntity, announcement };
+}
+
+function getHealthPercentage(currentHitPoints: number, maxHitPoints: number) {
+  return clamp((currentHitPoints / maxHitPoints) * 100, 0, 100);
+}
+
+function getHealthTone(currentHitPoints: number, maxHitPoints: number) {
+  const ratio = currentHitPoints / maxHitPoints;
+  if (ratio <= 0.25) return 'is-critical';
+  if (ratio <= 0.5) return 'is-wounded';
+  return 'is-healthy';
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+interface CharacterAlphaMask {
+  width: number;
+  height: number;
+  alpha: Uint8Array;
+}
+
+interface CharacterAlphaMaskCacheEntry {
+  source: string;
+  mask: CharacterAlphaMask | null;
+}
+
+const characterAlphaMaskCache = new WeakMap<HTMLImageElement, CharacterAlphaMaskCacheEntry>();
+
+function prepareCharacterAlphaMask(image: HTMLImageElement) {
+  const source = image.currentSrc || image.src;
+  const cached = characterAlphaMaskCache.get(image);
+  if (cached?.source === source || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return;
+
+  const scale = Math.min(1, CHARACTER_ALPHA_MASK_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    characterAlphaMaskCache.set(image, { source, mask: null });
+    return;
+  }
+
+  try {
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const alpha = new Uint8Array(width * height);
+    for (let sourceIndex = 3, alphaIndex = 0; sourceIndex < pixels.length; sourceIndex += 4, alphaIndex += 1) {
+      alpha[alphaIndex] = pixels[sourceIndex];
+    }
+    characterAlphaMaskCache.set(image, { source, mask: { width, height, alpha } });
+  } catch {
+    // Preserve the rectangular interaction if a cross-origin image cannot be sampled.
+    characterAlphaMaskCache.set(image, { source, mask: null });
+  }
+}
+
+function isCharacterImagePointOpaque(image: HTMLImageElement, clientX: number, clientY: number) {
+  prepareCharacterAlphaMask(image);
+  const entry = characterAlphaMaskCache.get(image);
+  if (!entry?.mask) return true;
+
+  const bounds = image.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return false;
+  const relativeX = (clientX - bounds.left) / bounds.width;
+  const relativeY = (clientY - bounds.top) / bounds.height;
+  if (relativeX < 0 || relativeX >= 1 || relativeY < 0 || relativeY >= 1) return false;
+
+  const x = Math.min(entry.mask.width - 1, Math.floor(relativeX * entry.mask.width));
+  const y = Math.min(entry.mask.height - 1, Math.floor(relativeY * entry.mask.height));
+  return entry.mask.alpha[y * entry.mask.width + x] >= CHARACTER_ALPHA_HIT_THRESHOLD;
+}
