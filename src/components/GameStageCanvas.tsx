@@ -23,7 +23,8 @@ import { SceneMiniMap } from './SceneMiniMap';
 const GAME_STAGE_BASE_WIDTH = 1280;
 const GAME_STAGE_BASE_HEIGHT = 720;
 const GAME_STAGE_MIN_SCALE = 0.3;
-const DIALOGUE_LINES_PER_PAGE = 3;
+const DIALOGUE_LINES_WITH_COMPOSER = 2;
+const DIALOGUE_LINES_WITHOUT_COMPOSER = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
 const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
@@ -65,7 +66,12 @@ export function GameStageCanvas({
   const sceneName = stage?.scene?.name || '未知场景';
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
   const stageCharacters = stage?.characters || [];
-  const dialogue = useStageDialogue(dialogueKey, dialogueEntries, sceneDescription);
+  const dialogue = useStageDialogue(
+    dialogueKey,
+    dialogueEntries,
+    sceneDescription,
+    actionComposer ? DIALOGUE_LINES_WITH_COMPOSER : DIALOGUE_LINES_WITHOUT_COMPOSER,
+  );
   const visibleCharacters = useMemo(
     () => getVisibleCharacters(stage?.characters || [], dialogue.activeEntry.speakerId),
     [stage?.characters, dialogue.activeEntry.speakerId],
@@ -327,7 +333,12 @@ export function GameStageCanvas({
   );
 }
 
-function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fallbackText: string) {
+function useStageDialogue(
+  dialogueKey: string,
+  entries: StageDialogueEntry[],
+  fallbackText: string,
+  linesPerPage: number,
+) {
   const sequenceKey = `${dialogueKey}:${entries[0]?.runId ?? entries[0]?.id ?? 'scene'}`;
   const [pageIndex, setPageIndex] = useState(0);
   const [revealedLength, setRevealedLength] = useState(0);
@@ -354,8 +365,8 @@ function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fa
     [entries, fallbackEntry],
   );
   const paginator = useMemo(
-    () => textMetrics ? createDialoguePaginator(textMetrics) : null,
-    [sequenceKey, textMetrics],
+    () => textMetrics ? createDialoguePaginator(textMetrics, linesPerPage) : null,
+    [linesPerPage, sequenceKey, textMetrics],
   );
   const pages = useMemo(
     () => activeEntries.flatMap((entry) => {
@@ -489,7 +500,7 @@ interface DialoguePaginationState {
   currentWidth: number;
 }
 
-function createDialoguePaginator(metrics: DialogueTextMetrics) {
+function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: number) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
   if (context) context.font = metrics.font;
@@ -508,7 +519,7 @@ function createDialoguePaginator(metrics: DialogueTextMetrics) {
     state.pageLines.push(state.currentLine.trimEnd());
     state.currentLine = '';
     state.currentWidth = 0;
-    if (state.pageLines.length < DIALOGUE_LINES_PER_PAGE) return;
+    if (state.pageLines.length < linesPerPage) return;
     const page = state.pageLines.join('\n').trim();
     if (page) state.pages.push(page);
     state.pageLines = [];
