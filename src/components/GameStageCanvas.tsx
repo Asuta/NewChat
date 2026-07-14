@@ -212,37 +212,39 @@ export function GameStageCanvas({
             </div>
           ) : null}
 
-          {actionComposer ? (
-            <div className="game-stage-action-slot">
-              {actionComposer}
-            </div>
-          ) : null}
+          <div className={`game-stage-interaction-stack ${actionComposer ? 'has-action-composer' : ''}`}>
+            <button
+              className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}
+              type="button"
+              aria-label={dialogue.actionLabel}
+              onClick={dialogue.advance}
+            >
+              <span className="stage-dialogue-speaker">
+                {dialogue.activeEntry.kind === 'speech'
+                  ? dialogue.activeEntry.speakerName || '未知人物'
+                  : '旁白'}
+              </span>
+              <span className="stage-dialogue-text" aria-live="polite" ref={dialogue.textRef}>
+                {dialogue.visibleText || '……'}
+              </span>
+              <span className="stage-dialogue-progress" aria-hidden="true">
+                {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
+              </span>
+              <span className="stage-dialogue-indicator" aria-hidden="true">
+                {dialogue.isWaiting ? (
+                  <Loader2 className="spin" size={20} />
+                ) : dialogue.canAdvance ? (
+                  <ChevronDown size={22} />
+                ) : null}
+              </span>
+            </button>
 
-          <button
-            className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}
-            type="button"
-            aria-label={dialogue.actionLabel}
-            onClick={dialogue.advance}
-          >
-            <span className="stage-dialogue-speaker">
-              {dialogue.activeEntry.kind === 'speech'
-                ? dialogue.activeEntry.speakerName || '未知人物'
-                : '旁白'}
-            </span>
-            <span className="stage-dialogue-text" aria-live="polite" ref={dialogue.textRef}>
-              {dialogue.visibleText || '……'}
-            </span>
-            <span className="stage-dialogue-progress" aria-hidden="true">
-              {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
-            </span>
-            <span className="stage-dialogue-indicator" aria-hidden="true">
-              {dialogue.isWaiting ? (
-                <Loader2 className="spin" size={20} />
-              ) : dialogue.canAdvance ? (
-                <ChevronDown size={22} />
-              ) : null}
-            </span>
-          </button>
+            {actionComposer ? (
+              <div className="game-stage-action-slot">
+                {actionComposer}
+              </div>
+            ) : null}
+          </div>
         </section>
       </div>
     </div>

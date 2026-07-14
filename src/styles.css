@@ -1519,7 +1519,7 @@ button {
 .game-stage-header,
 .game-stage-empty,
 .game-stage-overflow,
-.stage-dialogue-box {
+.game-stage-interaction-stack {
   position: absolute;
   z-index: 3;
 }
@@ -2185,6 +2185,17 @@ button {
   color: rgba(226, 232, 240, 0.58);
 }
 
+.game-stage-interaction-stack {
+  z-index: 6;
+  right: 48px;
+  bottom: 28px;
+  left: 48px;
+}
+
+.game-stage-interaction-stack.has-action-composer {
+  bottom: 24px;
+}
+
 .stage-dialogue-box {
   --dialogue-panel-start: rgba(35, 17, 14, 0.96);
   --dialogue-panel-end: rgba(58, 29, 20, 0.92);
@@ -2194,11 +2205,10 @@ button {
   --dialogue-border-hover: rgba(255, 211, 143, 0.72);
   --dialogue-accent: #f2bd68;
   --dialogue-speaker: #ffe0a3;
-  z-index: 6;
-  left: 48px;
-  right: 48px;
-  bottom: 28px;
+  position: relative;
+  z-index: 1;
   display: grid;
+  width: 100%;
   height: 170px;
   grid-template-rows: 30px minmax(0, 1fr);
   gap: 7px;
@@ -2220,8 +2230,8 @@ button {
 }
 
 .game-stage.has-action-composer .stage-dialogue-box {
-  bottom: 118px;
   height: 150px;
+  border-radius: 6px 6px 0 0;
 }
 
 .stage-dialogue-box:hover {
@@ -2301,11 +2311,9 @@ button {
 }
 
 .game-stage-action-slot {
-  position: absolute;
-  z-index: 7;
-  right: 48px;
-  bottom: 24px;
-  left: 48px;
+  position: relative;
+  z-index: 2;
+  margin-top: -1px;
 }
 
 .game-action-composer {
@@ -2314,7 +2322,7 @@ button {
   gap: 10px;
   width: 100%;
   border: 1px solid rgba(116, 160, 210, 0.42);
-  border-radius: 7px;
+  border-radius: 0 0 7px 7px;
   padding: 9px;
   background:
     linear-gradient(180deg, rgba(12, 24, 38, 0.96), rgba(7, 16, 27, 0.96)),
