@@ -1,5 +1,6 @@
 import {
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   ImageOff,
   Loader2,
@@ -213,31 +214,61 @@ export function GameStageCanvas({
           ) : null}
 
           <div className={`game-stage-interaction-stack ${actionComposer ? 'has-action-composer' : ''}`}>
-            <button
-              className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}
-              type="button"
-              aria-label={dialogue.actionLabel}
-              onClick={dialogue.advance}
-            >
-              <span className="stage-dialogue-speaker">
-                {dialogue.activeEntry.kind === 'speech'
-                  ? dialogue.activeEntry.speakerName || '未知人物'
-                  : '旁白'}
-              </span>
-              <span className="stage-dialogue-text" aria-live="polite" ref={dialogue.textRef}>
-                {dialogue.visibleText || '……'}
-              </span>
-              <span className="stage-dialogue-progress" aria-hidden="true">
+            <div className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}>
+              <button
+                className="stage-dialogue-content"
+                type="button"
+                aria-label={dialogue.actionLabel}
+                onClick={dialogue.advance}
+              >
+                <span className="stage-dialogue-speaker">
+                  {dialogue.activeEntry.kind === 'speech'
+                    ? dialogue.activeEntry.speakerName || '未知人物'
+                    : '旁白'}
+                </span>
+                <span className="stage-dialogue-text" aria-live="polite" ref={dialogue.textRef}>
+                  {dialogue.visibleText || '……'}
+                </span>
+              </button>
+              <span className="stage-dialogue-progress">
                 {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
               </span>
-              <span className="stage-dialogue-indicator" aria-hidden="true">
-                {dialogue.isWaiting ? (
-                  <Loader2 className="spin" size={20} />
-                ) : dialogue.canAdvance ? (
-                  <ChevronDown size={22} />
+              <div className="stage-dialogue-navigation" role="group" aria-label="本轮输出翻页">
+                {dialogue.pageCount > 1 ? (
+                  <button
+                    className="stage-dialogue-page-button"
+                    type="button"
+                    aria-label="上一页"
+                    title="上一页"
+                    disabled={!dialogue.hasPreviousPage}
+                    onClick={dialogue.previous}
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
                 ) : null}
-              </span>
-            </button>
+                {dialogue.pageCount > 1 ? (
+                  <button
+                    className="stage-dialogue-page-button"
+                    type="button"
+                    aria-label={dialogue.actionLabel}
+                    title={dialogue.actionLabel}
+                    disabled={!dialogue.canUseForwardControl}
+                    onClick={dialogue.advance}
+                  >
+                    {dialogue.isWaiting ? (
+                      <Loader2 className="spin" size={20} />
+                    ) : (
+                      <ChevronRight size={20} />
+                    )}
+                  </button>
+                ) : null}
+                {dialogue.pageCount === 1 && dialogue.isWaiting ? (
+                  <span className="stage-dialogue-indicator" aria-label="正在等待后续文字">
+                    <Loader2 className="spin" size={20} />
+                  </span>
+                ) : null}
+              </div>
+            </div>
 
             {actionComposer ? (
               <div className="game-stage-action-slot">
@@ -253,18 +284,18 @@ export function GameStageCanvas({
 
 function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fallbackText: string) {
   const sequenceKey = `${dialogueKey}:${entries[0]?.runId ?? entries[0]?.id ?? 'scene'}`;
-  const [entryIndex, setEntryIndex] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const [revealedLength, setRevealedLength] = useState(0);
   const pageLengthRef = useRef(0);
-  const entryStatusRef = useRef<StageDialogueEntry['status']>('complete');
+  const activePageIsStreamingRef = useRef(false);
+  const revealedPageIdsRef = useRef(new Set<string>());
   const textRef = useRef<HTMLSpanElement>(null);
   const [textMetrics, setTextMetrics] = useState<DialogueTextMetrics | null>(null);
 
   useLayoutEffect(() => {
-    setEntryIndex(0);
     setPageIndex(0);
     setRevealedLength(0);
+    revealedPageIdsRef.current.clear();
   }, [sequenceKey]);
 
   const fallbackEntry = useMemo<StageDialogueEntry>(() => ({
@@ -273,28 +304,40 @@ function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fa
     content: fallbackText,
     status: 'complete',
   }), [dialogueKey, fallbackText]);
-  const safeEntryIndex = Math.min(entryIndex, Math.max(entries.length - 1, 0));
-  const activeEntry = entries[safeEntryIndex] || fallbackEntry;
+  const activeEntries = useMemo(
+    () => entries.length ? entries : [fallbackEntry],
+    [entries, fallbackEntry],
+  );
   const paginator = useMemo(
     () => textMetrics ? createDialoguePaginator(textMetrics) : null,
     [sequenceKey, textMetrics],
   );
   const pages = useMemo(
-    () => paginator?.paginate(activeEntry.id, activeEntry.content) || [activeEntry.content.trim()],
-    [activeEntry.content, activeEntry.id, paginator],
+    () => activeEntries.flatMap((entry) => {
+      const entryPages = paginator?.paginate(entry.id, entry.content) || [entry.content.trim()];
+      return entryPages.map((content, entryPageIndex) => ({
+        id: `${entry.id}:${entryPageIndex}`,
+        entry,
+        content,
+      }));
+    }),
+    [activeEntries, paginator],
   );
   const safePageIndex = Math.min(pageIndex, pages.length - 1);
-  const pageText = pages[safePageIndex] || '';
+  const activePage = pages[safePageIndex];
+  const activeEntry = activePage?.entry || fallbackEntry;
+  const pageText = activePage?.content || '';
   const pageCharacters = useMemo(() => Array.from(pageText), [pageText]);
   const visibleText = pageCharacters.slice(0, revealedLength).join('');
   const isPageRevealed = revealedLength >= pageCharacters.length;
+  const hasPreviousPage = safePageIndex > 0;
   const hasNextPage = safePageIndex < pages.length - 1;
-  const hasNextEntry = safeEntryIndex < entries.length - 1;
-  const canAdvance = isPageRevealed && (hasNextPage || hasNextEntry);
+  const canAdvance = isPageRevealed && hasNextPage;
+  const canUseForwardControl = !isPageRevealed || hasNextPage;
   const isWaiting = isPageRevealed && !canAdvance && activeEntry.status === 'streaming';
 
   pageLengthRef.current = pageCharacters.length;
-  entryStatusRef.current = activeEntry.status;
+  activePageIsStreamingRef.current = activeEntry.status === 'streaming' && !hasNextPage;
 
   useLayoutEffect(() => {
     const textElement = textRef.current;
@@ -319,18 +362,28 @@ function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fa
   }, []);
 
   useEffect(() => {
-    setRevealedLength(0);
+    const activePageId = activePage?.id;
+    const wasRevealed = activePageId ? revealedPageIdsRef.current.has(activePageId) : false;
+    setRevealedLength(wasRevealed ? pageLengthRef.current : 0);
+    if (wasRevealed && !activePageIsStreamingRef.current) return;
+
     const timer = window.setInterval(() => {
       setRevealedLength((current) => {
         const next = Math.min(current + 1, pageLengthRef.current);
-        if (next >= pageLengthRef.current && entryStatusRef.current === 'complete') {
+        if (next >= pageLengthRef.current && !activePageIsStreamingRef.current) {
           window.clearInterval(timer);
         }
         return next;
       });
     }, TYPEWRITER_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [activeEntry.id, safePageIndex]);
+  }, [activePage?.id]);
+
+  useEffect(() => {
+    if (isPageRevealed && activePage?.id) {
+      revealedPageIdsRef.current.add(activePage.id);
+    }
+  }, [activePage?.id, isPageRevealed]);
 
   function advance() {
     if (!isPageRevealed) {
@@ -338,15 +391,22 @@ function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fa
       return;
     }
     if (hasNextPage) {
-      setPageIndex((current) => current + 1);
-      setRevealedLength(0);
-      return;
+      navigateToPage(safePageIndex + 1);
     }
-    if (hasNextEntry) {
-      setEntryIndex((current) => current + 1);
-      setPageIndex(0);
-      setRevealedLength(0);
-    }
+  }
+
+  function previous() {
+    if (!hasPreviousPage) return;
+    navigateToPage(safePageIndex - 1);
+  }
+
+  function navigateToPage(nextPageIndex: number) {
+    const nextPage = pages[nextPageIndex];
+    if (!nextPage) return;
+    const nextPageLength = Array.from(nextPage.content).length;
+    const wasRevealed = revealedPageIdsRef.current.has(nextPage.id);
+    setRevealedLength(wasRevealed ? nextPageLength : 0);
+    setPageIndex(nextPageIndex);
   }
 
   return {
@@ -354,9 +414,12 @@ function useStageDialogue(dialogueKey: string, entries: StageDialogueEntry[], fa
     visibleText,
     pageIndex: safePageIndex,
     pageCount: pages.length,
+    hasPreviousPage,
     canAdvance,
+    canUseForwardControl,
     isWaiting,
     advance,
+    previous,
     actionLabel: !isPageRevealed
       ? '显示当前页全部文字'
       : canAdvance

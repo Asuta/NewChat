@@ -2207,16 +2207,11 @@ button {
   --dialogue-speaker: #ffe0a3;
   position: relative;
   z-index: 1;
-  display: grid;
   width: 100%;
   height: 170px;
-  grid-template-rows: 30px minmax(0, 1fr);
-  gap: 7px;
   overflow: hidden;
   border: 1px solid var(--dialogue-border);
   border-radius: 6px;
-  padding: 17px 58px 18px 22px;
-  appearance: none;
   background:
     linear-gradient(100deg, var(--dialogue-panel-start), var(--dialogue-panel-end)),
     var(--dialogue-panel-start);
@@ -2224,9 +2219,7 @@ button {
   box-shadow:
     inset 4px 0 0 var(--dialogue-accent),
     0 20px 46px rgba(0, 0, 0, 0.38);
-  text-align: left;
   backdrop-filter: blur(16px);
-  cursor: pointer;
 }
 
 .game-stage.has-action-composer .stage-dialogue-box {
@@ -2252,9 +2245,25 @@ button {
   --dialogue-speaker: #bfeaff;
 }
 
-.stage-dialogue-box:focus-visible {
+.stage-dialogue-content {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: 30px minmax(0, 1fr);
+  gap: 7px;
+  border: 0;
+  padding: 17px 104px 18px 22px;
+  appearance: none;
+  background: transparent;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stage-dialogue-content:focus-visible,
+.stage-dialogue-page-button:focus-visible {
   outline: 3px solid rgba(111, 185, 255, 0.72);
-  outline-offset: 3px;
+  outline-offset: -3px;
 }
 
 .stage-dialogue-speaker {
@@ -2288,15 +2297,47 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.stage-dialogue-indicator {
+.stage-dialogue-navigation {
   position: absolute;
-  right: 20px;
-  bottom: 17px;
-  display: grid;
-  width: 26px;
-  height: 26px;
+  right: 16px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stage-dialogue-page-button,
+.stage-dialogue-indicator {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   place-items: center;
-  color: #b9dcff;
+  border: 1px solid var(--dialogue-border);
+  border-radius: 5px;
+  background: rgba(5, 16, 30, 0.42);
+  color: var(--dialogue-speaker);
+}
+
+.stage-dialogue-page-button {
+  padding: 0;
+  cursor: pointer;
+}
+
+.stage-dialogue-page-button:hover:not(:disabled) {
+  border-color: var(--dialogue-border-hover);
+  background: rgba(20, 63, 91, 0.74);
+  color: #ffffff;
+}
+
+.stage-dialogue-page-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.stage-dialogue-indicator {
+  border-color: transparent;
+  background: transparent;
   animation: stage-dialogue-prompt 1.15s ease-in-out infinite;
 }
 
