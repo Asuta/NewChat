@@ -1,6 +1,35 @@
-import { Loader2, Map as MapIcon, Maximize2, Navigation, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  Archive,
+  BookOpen,
+  Church,
+  Circle,
+  CircleDot,
+  Crown,
+  DoorOpen,
+  Drama,
+  Footprints,
+  Landmark,
+  Loader2,
+  Map as MapIcon,
+  Maximize2,
+  Navigation,
+  Route,
+  Shield,
+  Sparkles,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import type { WorldMapScene, WorldMapState } from '../types';
+import { buildMapLayout, compareScenes, type MapLayout, type MapNode } from './sceneMapLayout';
 
 interface SceneMiniMapProps {
   worldMap: WorldMapState | null;
@@ -8,15 +37,6 @@ interface SceneMiniMapProps {
   isNavigationDisabled: boolean;
   isInteractive?: boolean;
   onEnterScene: (sceneId: string) => void;
-}
-
-interface MapNode {
-  scene: WorldMapScene;
-  x: number;
-  y: number;
-  distance: number;
-  isCurrent: boolean;
-  isReachable: boolean;
 }
 
 const COMPACT_SIZE = 120;
@@ -30,33 +50,72 @@ export function SceneMiniMap({
   onEnterScene,
 }: SceneMiniMapProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const layout = useMemo(() => buildMapLayout(worldMap), [worldMap]);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const layout = useMemo(() => buildMapLayout(worldMap), [worldMap]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const titleId = useId();
   const selectedNode = layout.nodes.find((node) => node.scene.id === (selectedSceneId || worldMap?.currentSceneId))
-    || layout.nodes.find((node) => node.isCurrent)
+    || layout.currentNode
     || layout.nodes[0]
     || null;
 
+  const closeMap = useCallback(() => setIsExpanded(false), []);
+
   useEffect(() => {
     if (!isExpanded) return undefined;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsExpanded(false);
+    const panel = panelRef.current;
+    const focusTarget = panel?.querySelector<HTMLElement>('.scene-map-node.current')
+      || panel?.querySelector<HTMLElement>('.scene-map-node')
+      || panel?.querySelector<HTMLElement>('.scene-map-close');
+    const focusFrame = window.requestAnimationFrame(() => focusTarget?.focus());
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMap();
+        return;
+      }
+      if (event.key !== 'Tab' || !panel) return;
+      const focusable = [...panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => !element.hasAttribute('hidden'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isExpanded]);
+
+    window.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', handleDialogKeyDown);
+      triggerRef.current?.focus();
+    };
+  }, [closeMap, isExpanded]);
 
   useEffect(() => {
     setSelectedSceneId(null);
   }, [worldMap?.currentSceneId]);
 
+  function openMap() {
+    setSelectedSceneId(null);
+    setIsExpanded(true);
+  }
+
   function enterSelectedScene() {
     if (!selectedNode || !selectedNode.isReachable || isNavigationDisabled) return;
-    setIsExpanded(false);
+    closeMap();
     onEnterScene(selectedNode.scene.id);
   }
 
-  const title = selectedNode?.isCurrent ? selectedNode.scene.name : layout.currentNode?.scene.name || '地图';
+  const title = layout.currentNode?.scene.name || '地图';
   const triggerContent = (
     <>
       <span className="scene-minimap-title">
@@ -75,28 +134,45 @@ export function SceneMiniMap({
           {triggerContent}
         </div>
       ) : (
-      <button
-        className="scene-minimap-trigger"
-        type="button"
-        onClick={() => setIsExpanded(true)}
+        <button
+          ref={triggerRef}
+          className="scene-minimap-trigger"
+          type="button"
+          onClick={openMap}
           aria-label="展开场景地图"
-      >
+        >
           {triggerContent}
-      </button>
+        </button>
       )}
 
       {isExpanded ? (
-        <div className="scene-map-modal" role="dialog" aria-modal="true" aria-label="场景地图">
-          <button className="scene-map-backdrop" type="button" aria-label="关闭场景地图" onClick={() => setIsExpanded(false)} />
-          <section className="scene-map-panel">
+        <div className="scene-map-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+          <button
+            className="scene-map-backdrop"
+            type="button"
+            tabIndex={-1}
+            aria-label="关闭场景地图"
+            onClick={closeMap}
+          />
+          <section ref={panelRef} className="scene-map-panel">
             <header className="scene-map-header">
-              <div>
-                <MapIcon size={18} />
-                <strong>场景地图</strong>
+              <div className="scene-map-header-title">
+                <span className="scene-map-header-icon"><MapIcon size={18} /></span>
+                <span>
+                  <strong id={titleId}>场景地图</strong>
+                  <small>已发现 {layout.nodes.length} 个地点</small>
+                </span>
               </div>
-              <button className="icon-button ghost scene-map-close" type="button" aria-label="关闭场景地图" onClick={() => setIsExpanded(false)}>
-                <X size={18} />
-              </button>
+              <div className="scene-map-header-actions">
+                <div className="scene-map-legend" aria-label="地图图例">
+                  <span><Circle className="current" size={8} fill="currentColor" />当前位置</span>
+                  <span><Circle className="reachable" size={8} fill="currentColor" />可前往</span>
+                  <span><Circle className="known" size={8} fill="currentColor" />已发现</span>
+                </div>
+                <button className="icon-button ghost scene-map-close" type="button" aria-label="关闭场景地图" onClick={closeMap}>
+                  <X size={18} />
+                </button>
+              </div>
             </header>
 
             <div className="scene-map-content">
@@ -108,35 +184,12 @@ export function SceneMiniMap({
                 />
               </div>
 
-              <aside className="scene-map-detail" aria-label="场景详情">
-                {selectedNode ? (
-                  <>
-                    <div className="scene-map-detail-heading">
-                      <strong>{selectedNode.scene.name}</strong>
-                      <span>{selectedNode.isCurrent ? '当前位置' : selectedNode.isReachable ? '可前往' : '不可直接前往'}</span>
-                    </div>
-                    <p>{selectedNode.scene.description || '暂无场景描述。'}</p>
-                    {selectedNode.scene.tags.length ? (
-                      <div className="scene-map-tags">
-                        {selectedNode.scene.tags.map((tag) => (
-                          <span key={tag}>{tag}</span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <button
-                      className="scene-map-enter"
-                      type="button"
-                      disabled={!selectedNode.isReachable || isNavigationDisabled}
-                      onClick={enterSelectedScene}
-                    >
-                      <Navigation size={16} />
-                      <span>{selectedNode.isCurrent ? '当前位置' : selectedNode.isReachable ? '前往此处' : '需要先到达相邻场景'}</span>
-                    </button>
-                  </>
-                ) : (
-                  <p>暂无场景数据。</p>
-                )}
-              </aside>
+              <SceneMapDetail
+                layout={layout}
+                node={selectedNode}
+                isNavigationDisabled={isNavigationDisabled}
+                onEnter={enterSelectedScene}
+              />
             </div>
           </section>
         </div>
@@ -145,10 +198,11 @@ export function SceneMiniMap({
   );
 }
 
-function MiniMapCanvas({ layout }: { layout: ReturnType<typeof buildMapLayout> }) {
-  const visibleNodes = layout.nodes
+function MiniMapCanvas({ layout }: { layout: MapLayout }) {
+  const visibleNodes = [...layout.nodes]
     .filter((node) => node.isCurrent || node.distance <= 1)
-    .slice(0, 5);
+    .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || compareScenes(a.scene, b.scene))
+    .slice(0, 6);
   const visibleIds = new Set(visibleNodes.map((node) => node.scene.id));
   const visibleLinks = layout.links.filter((link) => visibleIds.has(link.sourceSceneId) && visibleIds.has(link.targetSceneId));
 
@@ -160,8 +214,8 @@ function MiniMapCanvas({ layout }: { layout: ReturnType<typeof buildMapLayout> }
         if (!source || !target) return null;
         return (
           <line
-            className={layout.reachableLinkKeys.has(getLinkKey(link.sourceSceneId, link.targetSceneId)) ? 'reachable' : ''}
-            key={`${link.sourceSceneId}-${link.targetSceneId}`}
+            className={layout.reachableLinkKeys.has(link.key) ? 'reachable' : ''}
+            key={link.key}
             x1={scaleCompact(source.x)}
             y1={scaleCompact(source.y)}
             x2={scaleCompact(target.x)}
@@ -187,149 +241,204 @@ function FullMapCanvas({
   selectedSceneId,
   onSelect,
 }: {
-  layout: ReturnType<typeof buildMapLayout>;
+  layout: MapLayout;
   selectedSceneId: string | null;
   onSelect: (sceneId: string) => void;
 }) {
+  const selectedConnections = selectedSceneId
+    ? layout.connectedById.get(selectedSceneId) || new Set<string>()
+    : new Set<string>();
+
+  function handleNodeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, node: MapNode) {
+    const direction = getArrowDirection(event.key);
+    let target: MapNode | null = null;
+    if (direction) target = findDirectionalNode(node, layout.nodes, direction);
+    if (event.key === 'Home') target = layout.currentNode;
+    if (!target) return;
+    event.preventDefault();
+    onSelect(target.scene.id);
+    const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('.scene-map-node');
+    [...(buttons || [])].find((button) => button.dataset.sceneId === target?.scene.id)?.focus();
+  }
+
+  if (!layout.nodes.length) {
+    return <div className="scene-map-empty"><MapIcon size={24} /><span>暂无场景数据</span></div>;
+  }
+
   return (
     <>
-      <svg className="scene-map-links" viewBox={`0 0 ${FULL_SIZE} ${FULL_SIZE}`} aria-hidden="true">
+      <svg className="scene-map-links" viewBox={`0 0 ${FULL_SIZE} ${FULL_SIZE}`} preserveAspectRatio="none" aria-hidden="true">
         {layout.links.map((link) => {
-        const source = layout.nodeById.get(link.sourceSceneId);
-        const target = layout.nodeById.get(link.targetSceneId);
-        if (!source || !target) return null;
-        return (
-          <line
-              className={layout.reachableLinkKeys.has(getLinkKey(link.sourceSceneId, link.targetSceneId)) ? 'reachable' : ''}
-              key={`${link.sourceSceneId}-${link.targetSceneId}`}
+          const source = layout.nodeById.get(link.sourceSceneId);
+          const target = layout.nodeById.get(link.targetSceneId);
+          if (!source || !target) return null;
+          const isSelectedRoute = Boolean(selectedSceneId)
+            && (link.sourceSceneId === selectedSceneId || link.targetSceneId === selectedSceneId);
+          return (
+            <line
+              className={[
+                layout.reachableLinkKeys.has(link.key) ? 'reachable' : '',
+                isSelectedRoute ? 'selected-route' : selectedSceneId ? 'muted-route' : '',
+              ].filter(Boolean).join(' ')}
+              key={link.key}
               x1={source.x}
               y1={source.y}
               x2={target.x}
               y2={target.y}
+              vectorEffect="non-scaling-stroke"
             />
           );
         })}
       </svg>
-      {layout.nodes.map((node) => (
-        <button
-          className={[
-            'scene-map-node',
-            node.isCurrent ? 'current' : '',
-            node.isReachable ? 'reachable' : '',
-            selectedSceneId === node.scene.id ? 'selected' : '',
-          ].filter(Boolean).join(' ')}
-          key={node.scene.id}
-          type="button"
-          style={{ left: `${node.x}%`, top: `${node.y}%` }}
-          onClick={() => onSelect(node.scene.id)}
-        >
-          <span>{node.scene.name}</span>
-        </button>
-      ))}
+      {layout.nodes.map((node) => {
+        const SceneIcon = getSceneIcon(node.scene);
+        const isSelected = selectedSceneId === node.scene.id;
+        const isContextNode = isSelected || selectedConnections.has(node.scene.id);
+        return (
+          <button
+            className={[
+              'scene-map-node',
+              node.isCurrent ? 'current' : '',
+              node.isReachable ? 'reachable' : '',
+              isSelected ? 'selected' : '',
+              selectedSceneId && !isContextNode ? 'context-dimmed' : '',
+            ].filter(Boolean).join(' ')}
+            key={node.scene.id}
+            type="button"
+            data-scene-id={node.scene.id}
+            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+            aria-pressed={isSelected}
+            aria-label={`${node.scene.name}，${getNodeStatus(node)}`}
+            onClick={() => onSelect(node.scene.id)}
+            onKeyDown={(event) => handleNodeKeyDown(event, node)}
+          >
+            <span className="scene-map-node-icon"><SceneIcon size={14} /></span>
+            <span className="scene-map-node-name">{node.scene.name}</span>
+            {node.isCurrent ? <span className="scene-map-node-marker">在此</span> : null}
+          </button>
+        );
+      })}
     </>
   );
 }
 
-function buildMapLayout(worldMap: WorldMapState | null) {
-  const scenes = [...(worldMap?.scenes || [])].sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, 'zh-Hans-CN'));
-  const currentSceneId = worldMap?.currentSceneId || scenes[0]?.id || '';
-  const outgoing = new Map<string, Set<string>>();
-  const undirected = new Map<string, Set<string>>();
-
-  for (const scene of scenes) {
-    outgoing.set(scene.id, new Set());
-    undirected.set(scene.id, new Set());
-  }
-  for (const link of worldMap?.links || []) {
-    if (!outgoing.has(link.sourceSceneId) || !outgoing.has(link.targetSceneId)) continue;
-    outgoing.get(link.sourceSceneId)?.add(link.targetSceneId);
-    undirected.get(link.sourceSceneId)?.add(link.targetSceneId);
-    undirected.get(link.targetSceneId)?.add(link.sourceSceneId);
-  }
-
-  const directTargets = outgoing.get(currentSceneId) || new Set<string>();
-  const distances = getDistances(currentSceneId, undirected);
-  const grouped = new Map<number, WorldMapScene[]>();
-  const unreachable: WorldMapScene[] = [];
-  for (const scene of scenes) {
-    if (scene.id === currentSceneId) continue;
-    const distance = distances.get(scene.id);
-    if (!distance) {
-      unreachable.push(scene);
-      continue;
-    }
-    const ring = Math.min(distance, 3);
-    grouped.set(ring, [...(grouped.get(ring) || []), scene]);
-  }
-  if (unreachable.length) grouped.set(4, unreachable);
-
-  const nodes: MapNode[] = [];
-  const currentScene = scenes.find((scene) => scene.id === currentSceneId);
-  if (currentScene) {
-    nodes.push({
-      scene: currentScene,
-      x: 50,
-      y: 50,
-      distance: 0,
-      isCurrent: true,
-      isReachable: false,
-    });
+function SceneMapDetail({
+  layout,
+  node,
+  isNavigationDisabled,
+  onEnter,
+}: {
+  layout: MapLayout;
+  node: MapNode | null;
+  isNavigationDisabled: boolean;
+  onEnter: () => void;
+}) {
+  if (!node) {
+    return (
+      <aside className="scene-map-detail" aria-label="场景详情">
+        <p>暂无场景数据。</p>
+      </aside>
+    );
   }
 
-  for (const [ring, ringScenes] of [...grouped.entries()].sort(([a], [b]) => a - b)) {
-    const radius = ring === 1 ? 24 : ring === 2 ? 34 : ring === 3 ? 42 : 47;
-    const startAngle = ring === 1 ? -90 : -90 + ring * 21;
-    ringScenes.forEach((scene, index) => {
-      const angle = ((startAngle + (360 / ringScenes.length) * index) * Math.PI) / 180;
-      nodes.push({
-        scene,
-        x: clamp(50 + Math.cos(angle) * radius, 8, 92),
-        y: clamp(50 + Math.sin(angle) * radius, 10, 90),
-        distance: distances.get(scene.id) ?? Number.POSITIVE_INFINITY,
-        isCurrent: false,
-        isReachable: directTargets.has(scene.id),
-      });
-    });
-  }
+  const SceneIcon = getSceneIcon(node.scene);
+  const connectionCount = layout.connectedById.get(node.scene.id)?.size || 0;
+  const distanceLabel = getDistanceLabel(node);
 
-  const nodeById = new Map(nodes.map((node) => [node.scene.id, node]));
-  const reachableLinkKeys = new Set(
-    [...directTargets].map((targetSceneId) => getLinkKey(currentSceneId, targetSceneId)),
+  return (
+    <aside className="scene-map-detail" aria-label="场景详情">
+      <div className={`scene-map-detail-status ${node.isCurrent ? 'current' : node.isReachable ? 'reachable' : ''}`}>
+        <SceneIcon size={15} />
+        <span>{getNodeStatus(node)}</span>
+      </div>
+      <div className="scene-map-detail-heading">
+        <strong>{node.scene.name}</strong>
+        <small>{distanceLabel}</small>
+      </div>
+      <p className="scene-map-description">{node.scene.description || '暂无场景描述。'}</p>
+      {node.scene.tags.length ? (
+        <div className="scene-map-tags" aria-label="场景标签">
+          {node.scene.tags.map((tag) => <span key={tag}>{tag}</span>)}
+        </div>
+      ) : null}
+      <div className="scene-map-detail-meta">
+        <span><Route size={15} />连接 {connectionCount} 处地点</span>
+        <span><Footprints size={15} />{distanceLabel}</span>
+      </div>
+      <div className="scene-map-detail-action">
+        {node.isCurrent ? (
+          <div className="scene-map-location-note current"><Navigation size={16} /><span>你在这里</span></div>
+        ) : node.isReachable ? (
+          <button className="scene-map-enter" type="button" disabled={isNavigationDisabled} onClick={onEnter}>
+            <Navigation size={16} />
+            <span>{isNavigationDisabled ? '当前无法移动' : '前往此处'}</span>
+          </button>
+        ) : (
+          <div className="scene-map-location-note"><Route size={16} /><span>需要先到达相邻场景</span></div>
+        )}
+      </div>
+    </aside>
   );
-  return {
-    currentNode: nodes.find((node) => node.isCurrent) || null,
-    links: worldMap?.links || [],
-    nodeById,
-    nodes,
-    reachableLinkKeys,
-  };
 }
 
-function getDistances(startId: string, adjacency: Map<string, Set<string>>) {
-  const distances = new Map<string, number>();
-  if (!startId || !adjacency.has(startId)) return distances;
-  const queue = [startId];
-  distances.set(startId, 0);
-  for (let index = 0; index < queue.length; index += 1) {
-    const sceneId = queue[index];
-    const distance = distances.get(sceneId) || 0;
-    for (const nextId of adjacency.get(sceneId) || []) {
-      if (distances.has(nextId)) continue;
-      distances.set(nextId, distance + 1);
-      queue.push(nextId);
-    }
-  }
-  return distances;
+function findDirectionalNode(
+  source: MapNode,
+  nodes: MapNode[],
+  direction: { x: number; y: number },
+) {
+  return nodes
+    .filter((node) => {
+      if (node.scene.id === source.scene.id) return false;
+      const dx = node.x - source.x;
+      const dy = node.y - source.y;
+      return dx * direction.x + dy * direction.y > 2;
+    })
+    .sort((a, b) => getDirectionalScore(source, a, direction) - getDirectionalScore(source, b, direction))[0] || null;
+}
+
+function getDirectionalScore(source: MapNode, target: MapNode, direction: { x: number; y: number }) {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const forward = Math.abs(dx * direction.x + dy * direction.y);
+  const sideways = Math.abs(dx * direction.y - dy * direction.x);
+  return forward + sideways * 2.4;
+}
+
+function getArrowDirection(key: string) {
+  if (key === 'ArrowLeft') return { x: -1, y: 0 };
+  if (key === 'ArrowRight') return { x: 1, y: 0 };
+  if (key === 'ArrowUp') return { x: 0, y: -1 };
+  if (key === 'ArrowDown') return { x: 0, y: 1 };
+  return null;
+}
+
+function getSceneIcon(scene: WorldMapScene): LucideIcon {
+  const keywords = `${scene.name} ${scene.tags.join(' ')}`.toLowerCase();
+  if (/骑士|shield|试炼/.test(keywords)) return Shield;
+  if (/王冠|王座|crown/.test(keywords)) return Crown;
+  if (/教会|礼拜|祷|chapel|church/.test(keywords)) return Church;
+  if (/剧场|议会|theater/.test(keywords)) return Drama;
+  if (/登记|档案|archive|registry/.test(keywords)) return Archive;
+  if (/陵墓|圣库|遗迹|tomb|sanctum/.test(keywords)) return Landmark;
+  if (/门|gate|出口/.test(keywords)) return DoorOpen;
+  if (/记忆|梦|镜|memory|dream/.test(keywords)) return Sparkles;
+  if (/书|知识|禁书|book/.test(keywords)) return BookOpen;
+  return CircleDot;
+}
+
+function getNodeStatus(node: MapNode) {
+  if (node.isCurrent) return '当前位置';
+  if (node.isReachable) return '可前往';
+  return '已发现';
+}
+
+function getDistanceLabel(node: MapNode) {
+  if (node.isCurrent) return '当前位置';
+  if (node.distance === 1) return '相邻地点';
+  if (Number.isFinite(node.distance)) return `距离 ${node.distance} 步`;
+  return '尚未连通';
 }
 
 function scaleCompact(value: number) {
   return (value / 100) * COMPACT_SIZE;
-}
-
-function getLinkKey(sourceSceneId: string, targetSceneId: string) {
-  return `${sourceSceneId}->${targetSceneId}`;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
 }
