@@ -1232,6 +1232,7 @@ export default function App() {
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
             onExecuteInventoryAction={(action: InventoryAction) => executeWorldAction(action)}
+            onCloseEntityActions={closeWorldActionMenu}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />

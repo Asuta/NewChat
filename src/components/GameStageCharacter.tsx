@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type { PresentationStageCharacter, WorldActionMenuTarget } from '../types';
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import {
@@ -19,7 +19,11 @@ interface GameStageCharacterProps {
   isSpeaking: boolean;
   isPixelHovered: boolean;
   isActionMenuOpen: boolean;
+  isItemTargeting?: boolean;
+  isValidItemTarget?: boolean;
   onAlphaHoverChange: (entityId: string | null) => void;
+  onItemTarget?: (entityId: string) => void;
+  onCancelItemTargeting?: () => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
 
@@ -30,7 +34,11 @@ export function GameStageCharacter({
   isSpeaking,
   isPixelHovered,
   isActionMenuOpen,
+  isItemTargeting = false,
+  isValidItemTarget = false,
   onAlphaHoverChange,
+  onItemTarget,
+  onCancelItemTargeting,
   onOpenEntityActions,
 }: GameStageCharacterProps) {
   const figureRef = useRef<HTMLElement>(null);
@@ -118,6 +126,39 @@ export function GameStageCharacter({
   const healthPercentage = character.health
     ? getHealthPercentage(displayedCurrentHitPoints, character.health.maxHitPoints)
     : 0;
+  const hasPointerInteraction = Boolean(onOpenEntityActions || isItemTargeting);
+
+  function handleContextMenu(event: ReactMouseEvent<HTMLElement>) {
+    if (!hasPointerInteraction) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (isItemTargeting) {
+      onCancelItemTargeting?.();
+      return;
+    }
+    if (
+      event.target instanceof HTMLImageElement
+      && !isCharacterImagePointOpaque(event.target, event.clientX, event.clientY)
+    ) return;
+    onOpenEntityActions?.({
+      entityId: character.entityId,
+      entityName: character.name,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+  }
+
+  function handleClick(event: ReactMouseEvent<HTMLElement>) {
+    if (!isItemTargeting) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isValidItemTarget || !onItemTarget) return;
+    if (
+      event.target instanceof HTMLImageElement
+      && !isCharacterImagePointOpaque(event.target, event.clientX, event.clientY)
+    ) return;
+    onItemTarget(character.entityId);
+  }
 
   return (
     <figure
@@ -126,42 +167,34 @@ export function GameStageCharacter({
         `slot-${character.slot}`,
         character.isFallbackPortrait ? 'fallback-character' : '',
         isSpeaking ? 'speaking-character' : '',
-        onOpenEntityActions ? 'has-actions' : '',
+        hasPointerInteraction ? 'has-actions' : '',
         isPixelHovered ? 'pixel-hovered' : '',
         isActionMenuOpen ? 'action-menu-open' : '',
+        isItemTargeting ? 'item-targeting' : '',
+        isItemTargeting && isValidItemTarget ? 'item-target-valid' : '',
+        isItemTargeting && !isValidItemTarget ? 'item-target-invalid' : '',
         `is-${character.vitalState}`,
       ].filter(Boolean).join(' ')}
       ref={figureRef}
       style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
-      onContextMenu={onOpenEntityActions ? (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (
-          event.target instanceof HTMLImageElement
-          && !isCharacterImagePointOpaque(event.target, event.clientX, event.clientY)
-        ) return;
-        onOpenEntityActions({
-          entityId: character.entityId,
-          entityName: character.name,
-          clientX: event.clientX,
-          clientY: event.clientY,
-        });
-      } : undefined}
+      onClick={isItemTargeting ? handleClick : undefined}
+      onContextMenu={hasPointerInteraction ? handleContextMenu : undefined}
     >
       {character.portraitUrl ? (
         <img
           src={character.portraitUrl}
           alt={vitalStatus ? `${character.name}（${vitalStatus.label}）` : character.name}
           onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
-          onPointerMove={onOpenEntityActions ? (event) => {
+          onPointerMove={hasPointerInteraction ? (event) => {
             if (event.pointerType === 'touch') return;
+            const isOpaque = isCharacterImagePointOpaque(event.currentTarget, event.clientX, event.clientY);
             onAlphaHoverChange(
-              isCharacterImagePointOpaque(event.currentTarget, event.clientX, event.clientY)
+              isOpaque && (!isItemTargeting || isValidItemTarget)
                 ? character.entityId
                 : null,
             );
           } : undefined}
-          onPointerLeave={onOpenEntityActions ? () => {
+          onPointerLeave={hasPointerInteraction ? () => {
             if (isPixelHovered) onAlphaHoverChange(null);
           } : undefined}
         />

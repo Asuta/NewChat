@@ -23,6 +23,8 @@ interface InventoryPanelProps {
   inventory: PlayerInventory | null;
   isLoading: boolean;
   isDisabled: boolean;
+  visibleNpcTargetIds: string[];
+  onBeginTargeting: (action: InventoryAction, item: InventoryItem) => void;
   onExecuteAction: (action: InventoryAction) => void | Promise<void>;
 }
 
@@ -49,6 +51,8 @@ export function InventoryPanel({
   inventory,
   isLoading,
   isDisabled,
+  visibleNpcTargetIds,
+  onBeginTargeting,
   onExecuteAction,
 }: InventoryPanelProps) {
   const tooltipId = useId();
@@ -213,7 +217,12 @@ export function InventoryPanel({
             isDisabled={isDisabled || isLoading}
             style={actionMenu.position}
             targetIds={targetIds}
+            visibleNpcTargetIds={visibleNpcTargetIds}
             onClose={() => setActionMenu(null)}
+            onBeginTargeting={(action, item) => {
+              setActionMenu(null);
+              onBeginTargeting(action, item);
+            }}
             onTargetChange={(actionId, targetId) => setTargetIds((current) => ({ ...current, [actionId]: targetId }))}
             onExecuteAction={(action) => {
               setActionMenu(null);
@@ -303,7 +312,9 @@ function InventoryActionMenu({
   isDisabled,
   style,
   targetIds,
+  visibleNpcTargetIds,
   onClose,
+  onBeginTargeting,
   onTargetChange,
   onExecuteAction,
 }: {
@@ -312,11 +323,14 @@ function InventoryActionMenu({
   isDisabled: boolean;
   style: CSSProperties;
   targetIds: Record<string, string>;
+  visibleNpcTargetIds: string[];
   onClose: () => void;
+  onBeginTargeting: (action: InventoryAction, item: InventoryItem) => void;
   onTargetChange: (actionId: string, targetId: string) => void;
   onExecuteAction: (action: InventoryAction) => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const visibleNpcTargetIdSet = useMemo(() => new Set(visibleNpcTargetIds), [visibleNpcTargetIds]);
 
   useEffect(() => {
     menuRef.current?.focus();
@@ -350,14 +364,18 @@ function InventoryActionMenu({
       <div className="inventory-popover-actions">
         {item.actions.map((action) => {
           const validTargets = inventory?.targets.filter((target) => action.validTargetIds.includes(target.id)) || [];
+          const visibleNpcTargets = validTargets.filter((target) => visibleNpcTargetIdSet.has(target.id));
           const cachedTargetId = targetIds[action.id];
           const selectedTargetId = cachedTargetId && validTargets.some((target) => target.id === cachedTargetId)
             ? cachedTargetId
             : action.requiresTarget
               ? validTargets[0]?.id || ''
               : '';
-          const needsSelector = action.targetMode !== 'none' && validTargets.length > 0;
-          const missingTarget = action.requiresTarget && !selectedTargetId;
+          const needsSelector = !action.requiresTarget && action.targetMode !== 'none' && validTargets.length > 0;
+          const targetingUnavailableReason = action.requiresTarget && !visibleNpcTargets.length
+            ? '当前场景没有可用的 NPC 目标。'
+            : null;
+          const disabledReason = targetingUnavailableReason || action.disabledReason;
           return (
             <div className="inventory-popover-action" key={action.id}>
               {needsSelector ? (
@@ -365,7 +383,7 @@ function InventoryActionMenu({
                   <span>{action.requiresTarget ? '使用目标' : '展示给（可选）'}</span>
                   <select
                     value={selectedTargetId}
-                    disabled={isDisabled || Boolean(action.disabledReason)}
+                    disabled={isDisabled || Boolean(disabledReason)}
                     onChange={(event) => onTargetChange(action.id, event.target.value)}
                   >
                     {!action.requiresTarget ? <option value="">不指定目标</option> : null}
@@ -380,14 +398,20 @@ function InventoryActionMenu({
               <button
                 className={action.danger ? 'danger' : 'primary'}
                 type="button"
-                disabled={isDisabled || Boolean(action.disabledReason) || missingTarget}
-                title={action.disabledReason || undefined}
-                onClick={() => onExecuteAction({ ...action, ...(selectedTargetId ? { targetId: selectedTargetId } : {}) })}
+                disabled={isDisabled || Boolean(disabledReason)}
+                title={disabledReason || undefined}
+                onClick={() => {
+                  if (action.requiresTarget) {
+                    onBeginTargeting(action, item);
+                    return;
+                  }
+                  onExecuteAction({ ...action, ...(selectedTargetId ? { targetId: selectedTargetId } : {}) });
+                }}
               >
                 {isDisabled ? <Loader2 className="spin" size={15} /> : actionIcon(action.kind)}
                 {action.label}
               </button>
-              {action.disabledReason ? <small className="inventory-popover-reason">{action.disabledReason}</small> : null}
+              {disabledReason ? <small className="inventory-popover-reason">{disabledReason}</small> : null}
             </div>
           );
         })}

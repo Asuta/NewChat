@@ -4,6 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Crosshair,
+  FlaskConical,
   ImageOff,
   Loader2,
   MapPinned,
@@ -11,8 +13,9 @@ import {
   Minimize2,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type {
+  InventoryItem,
   PresentationStage,
   StageDialogueEntry,
   InventoryAction,
@@ -59,7 +62,18 @@ interface GameStageCanvasProps {
   onEnterScene: (sceneId: string) => void;
   onInventoryOpenChange: (open: boolean) => void;
   onExecuteInventoryAction: (action: InventoryAction) => void | Promise<void>;
+  onCloseEntityActions?: () => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
+}
+
+interface ItemTargetingState {
+  action: InventoryAction;
+  item: InventoryItem;
+}
+
+interface ItemTargetingPointer {
+  left: number;
+  top: number;
 }
 
 export function GameStageCanvas({
@@ -81,6 +95,7 @@ export function GameStageCanvas({
   onEnterScene,
   onInventoryOpenChange,
   onExecuteInventoryAction,
+  onCloseEntityActions,
   onOpenEntityActions,
 }: GameStageCanvasProps) {
   const sceneName = stage?.scene?.name || '未知场景';
@@ -104,7 +119,24 @@ export function GameStageCanvas({
   );
   const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
   const [alphaHoveredEntityId, setAlphaHoveredEntityId] = useState<string | null>(null);
+  const [itemTargeting, setItemTargeting] = useState<ItemTargetingState | null>(null);
+  const [itemTargetingPointer, setItemTargetingPointer] = useState<ItemTargetingPointer | null>(null);
+  const [itemTargetingNotice, setItemTargetingNotice] = useState<string | null>(null);
   const alphaHoveredEntityIdRef = useRef<string | null>(null);
+  const visibleNpcTargetIds = useMemo(
+    () => visibleCharacters.map((character) => character.entityId),
+    [visibleCharacters],
+  );
+  const currentItemTargetingAction = useMemo(() => {
+    if (!itemTargeting || !inventory) return null;
+    const currentItem = inventory.items.find((item) => item.id === itemTargeting.item.id);
+    return currentItem?.actions.find((action) => action.id === itemTargeting.action.id) || null;
+  }, [inventory, itemTargeting]);
+  const itemTargetIdSet = useMemo(() => {
+    if (!currentItemTargetingAction) return new Set<string>();
+    const visibleNpcTargetIdSet = new Set(visibleNpcTargetIds);
+    return new Set(currentItemTargetingAction.validTargetIds.filter((targetId) => visibleNpcTargetIdSet.has(targetId)));
+  }, [currentItemTargetingAction, visibleNpcTargetIds]);
   const {
     frameRef,
     stageScale,
@@ -127,28 +159,95 @@ export function GameStageCanvas({
   }, [alphaHoveredEntityId, visibleCharacters]);
 
   useEffect(() => {
+    if (!itemTargeting) return;
+    if (
+      isInventoryOpen
+      && !isInventoryDisabled
+      && currentItemTargetingAction
+      && currentItemTargetingAction.requiresTarget
+      && !currentItemTargetingAction.disabledReason
+      && itemTargetIdSet.size
+    ) return;
+    if (isInventoryOpen && !isInventoryDisabled) {
+      setItemTargetingNotice('目标状态已经变化，请重新选择道具。');
+    }
+    setItemTargeting(null);
+    setItemTargetingPointer(null);
+  }, [currentItemTargetingAction, isInventoryDisabled, isInventoryOpen, itemTargetIdSet, itemTargeting]);
+
+  useEffect(() => {
+    if (!itemTargetingNotice) return;
+    const timer = window.setTimeout(() => setItemTargetingNotice(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [itemTargetingNotice]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const isTyping = target instanceof HTMLInputElement
         || target instanceof HTMLTextAreaElement
         || target instanceof HTMLSelectElement
         || (target instanceof HTMLElement && target.isContentEditable);
+      if (event.key === 'Escape' && itemTargeting) {
+        event.preventDefault();
+        setItemTargeting(null);
+        setItemTargetingPointer(null);
+        return;
+      }
       if (event.key === 'Escape' && isInventoryOpen) {
         onInventoryOpenChange(false);
         return;
       }
       if (!isTyping && !event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'b') {
+        setItemTargeting(null);
+        setItemTargetingPointer(null);
         onInventoryOpenChange(!isInventoryOpen);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isInventoryOpen, onInventoryOpenChange]);
+  }, [isInventoryOpen, itemTargeting, onInventoryOpenChange]);
 
   function updateAlphaHoveredEntity(entityId: string | null) {
     if (alphaHoveredEntityIdRef.current === entityId) return;
     alphaHoveredEntityIdRef.current = entityId;
     setAlphaHoveredEntityId(entityId);
+  }
+
+  function cancelItemTargeting() {
+    setItemTargeting(null);
+    setItemTargetingPointer(null);
+  }
+
+  function beginItemTargeting(action: InventoryAction, item: InventoryItem) {
+    if (!action.requiresTarget || !action.validTargetIds.some((targetId) => visibleNpcTargetIds.includes(targetId))) {
+      return;
+    }
+    onCloseEntityActions?.();
+    setItemTargetingNotice(null);
+    setAlphaHoveredEntityId(null);
+    alphaHoveredEntityIdRef.current = null;
+    setItemTargeting({ action, item });
+    setItemTargetingPointer(null);
+  }
+
+  function executeItemOnTarget(targetId: string) {
+    if (!currentItemTargetingAction || !itemTargetIdSet.has(targetId)) return;
+    const action = { ...currentItemTargetingAction, targetId };
+    cancelItemTargeting();
+    void onExecuteInventoryAction(action);
+  }
+
+  function updateItemTargetingPointer(event: ReactPointerEvent<HTMLElement>) {
+    if (!itemTargeting || event.pointerType === 'touch') return;
+    const stageElement = event.currentTarget;
+    const bounds = stageElement.getBoundingClientRect();
+    const scaleX = bounds.width / stageElement.offsetWidth || 1;
+    const scaleY = bounds.height / stageElement.offsetHeight || 1;
+    setItemTargetingPointer({
+      left: (event.clientX - bounds.left) / scaleX,
+      top: (event.clientY - bounds.top) / scaleY,
+    });
   }
 
   return (
@@ -177,8 +276,15 @@ export function GameStageCanvas({
             'game-stage',
             stage?.backgroundUrl ? 'has-background' : '',
             actionComposer ? 'has-action-composer' : '',
+            itemTargeting ? 'item-targeting-active' : '',
           ].filter(Boolean).join(' ')}
           aria-label="游戏表现层"
+          onContextMenu={itemTargeting ? (event) => {
+            event.preventDefault();
+            cancelItemTargeting();
+          } : undefined}
+          onPointerLeave={itemTargeting ? () => setItemTargetingPointer(null) : undefined}
+          onPointerMove={itemTargeting ? updateItemTargetingPointer : undefined}
         >
           {stage?.backgroundUrl ? (
             <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
@@ -187,6 +293,38 @@ export function GameStageCanvas({
           )}
 
           <div className="game-stage-overlay" />
+
+          {itemTargeting ? (
+            <div className="item-targeting-banner" role="status" aria-live="polite">
+              <span className="item-targeting-banner-icon"><FlaskConical size={18} /></span>
+              <span>
+                <strong>正在使用 {itemTargeting.item.name}</strong>
+                <small>点击发光的 NPC 立绘进行使用</small>
+              </span>
+              <kbd>Esc 取消</kbd>
+            </div>
+          ) : null}
+
+          {!itemTargeting && itemTargetingNotice ? (
+            <div className="item-targeting-banner item-targeting-notice" role="status" aria-live="polite">
+              <span className="item-targeting-banner-icon"><Crosshair size={18} /></span>
+              <span>
+                <strong>{itemTargetingNotice}</strong>
+                <small>当前没有可继续使用的 NPC 目标</small>
+              </span>
+            </div>
+          ) : null}
+
+          {itemTargeting && itemTargetingPointer ? (
+            <span
+              className="item-targeting-cursor"
+              style={{ left: itemTargetingPointer.left, top: itemTargetingPointer.top }}
+              aria-hidden="true"
+            >
+              <Crosshair size={31} />
+              <FlaskConical size={13} />
+            </span>
+          ) : null}
 
           <header className="game-stage-header">
             <div className="game-stage-heading">
@@ -224,8 +362,12 @@ export function GameStageCanvas({
                 healthChangeEvent={healthFeedback.eventsByEntity[character.entityId]}
                 isSpeaking={character.entityId === dialogue.activeEntry.speakerId}
                 isPixelHovered={character.entityId === alphaHoveredEntityId}
-                isActionMenuOpen={character.entityId === actionMenuEntityId}
+                isActionMenuOpen={!itemTargeting && character.entityId === actionMenuEntityId}
+                isItemTargeting={Boolean(itemTargeting)}
+                isValidItemTarget={itemTargetIdSet.has(character.entityId)}
                 onAlphaHoverChange={updateAlphaHoveredEntity}
+                onItemTarget={executeItemOnTarget}
+                onCancelItemTargeting={cancelItemTargeting}
                 onOpenEntityActions={onOpenEntityActions}
               />
             ))}
@@ -270,7 +412,10 @@ export function GameStageCanvas({
                   aria-controls="stage-story-panel"
                   aria-selected={!isInventoryOpen}
                   className={!isInventoryOpen ? 'active' : ''}
-                  onClick={() => onInventoryOpenChange(false)}
+                  onClick={() => {
+                    cancelItemTargeting();
+                    onInventoryOpenChange(false);
+                  }}
                 >
                   <BookOpenText size={15} />剧情
                 </button>
@@ -294,6 +439,8 @@ export function GameStageCanvas({
                     inventory={inventory}
                     isLoading={isInventoryLoading}
                     isDisabled={isInventoryDisabled}
+                    visibleNpcTargetIds={visibleNpcTargetIds}
+                    onBeginTargeting={beginItemTargeting}
                     onExecuteAction={onExecuteInventoryAction}
                   />
                 </div>
