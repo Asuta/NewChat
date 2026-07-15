@@ -238,6 +238,13 @@ export interface WorldMapState {
   links: WorldMapLink[];
 }
 
+export interface WorldRealtimeSnapshot {
+  world: WorldOverview;
+  worldMap: WorldMapState;
+  presentationStage: PresentationStage;
+  inventory: PlayerInventory;
+}
+
 export interface WorldActionMenuTarget {
   entityId: string;
   entityName: string;
@@ -538,6 +545,7 @@ export type WorldAgentStreamEvent =
   | {
       type: 'step';
       step: AgentStep;
+      realtimeSnapshot?: WorldRealtimeSnapshot;
     }
   | {
       type: 'assistant_text_start';

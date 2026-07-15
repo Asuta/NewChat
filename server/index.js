@@ -320,7 +320,27 @@ app.post('/api/world/agent/stream', async (req, res) => {
       },
       {
         onStart: (event) => writeSseEvent(res, 'start', event),
-        onStep: (event) => writeSseEvent(res, 'step', { step: event.step }),
+        onStep: (event) => {
+          const shouldSendRealtimeSnapshot = event.step?.result?.ok === true
+            && ['transition_scene', 'apply_world_patch'].includes(event.step?.tool);
+          let realtimeSnapshot;
+          if (shouldSendRealtimeSnapshot) {
+            try {
+              realtimeSnapshot = {
+                world: getWorldOverview(),
+                worldMap: getWorldMap(),
+                presentationStage: getCurrentPresentationStage(getCurrentScene()),
+                inventory: getInventory('player'),
+              };
+            } catch {
+              // The step itself must still reach the client; it can fall back to an HTTP refresh.
+            }
+          }
+          writeSseEvent(res, 'step', {
+            step: event.step,
+            ...(realtimeSnapshot ? { realtimeSnapshot } : {}),
+          });
+        },
         onAssistantReasoningStart: (event) => writeSseEvent(res, 'assistant_reasoning_start', event),
         onAssistantReasoningDelta: (delta) => writeSseEvent(res, 'assistant_reasoning_delta', { delta }),
         onAssistantTextStart: (event) => writeSseEvent(res, 'assistant_text_start', event),

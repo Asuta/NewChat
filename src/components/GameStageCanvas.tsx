@@ -46,6 +46,7 @@ const GAME_STAGE_MIN_SCALE = 0.3;
 const DIALOGUE_LINES_WITH_COMPOSER = 3;
 const DIALOGUE_LINES_WITHOUT_COMPOSER = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
+const SCENE_BACKDROP_TRANSITION_MS = 280;
 interface GameStageCanvasProps {
   stage: PresentationStage | null;
   world?: WorldOverview | null;
@@ -78,6 +79,12 @@ interface ItemTargetingState {
 interface ItemTargetingPointer {
   left: number;
   top: number;
+}
+
+interface SceneBackdropLayer {
+  id: string;
+  backgroundUrl: string | null;
+  phase: 'active' | 'incoming' | 'outgoing';
 }
 
 export function GameStageCanvas({
@@ -289,6 +296,7 @@ export function GameStageCanvas({
             itemTargeting ? 'item-targeting-active' : '',
             isWeaponAttackTargeting ? 'item-targeting-attack' : '',
           ].filter(Boolean).join(' ')}
+          data-scene-id={stage?.scene?.id || ''}
           aria-label="游戏表现层"
           onContextMenu={itemTargeting ? (event) => {
             event.preventDefault();
@@ -297,11 +305,10 @@ export function GameStageCanvas({
           onPointerLeave={itemTargeting ? () => setItemTargetingPointer(null) : undefined}
           onPointerMove={itemTargeting ? updateItemTargetingPointer : undefined}
         >
-          {stage?.backgroundUrl ? (
-            <img className="game-stage-background" src={stage.backgroundUrl} alt="" aria-hidden="true" />
-          ) : (
-            <div className="game-stage-fallback" aria-hidden="true" />
-          )}
+          <SceneBackdrop
+            sceneId={stage?.scene?.id || 'unknown-scene'}
+            backgroundUrl={stage?.backgroundUrl || null}
+          />
 
           <div className="game-stage-overlay" />
 
@@ -545,6 +552,83 @@ export function GameStageCanvas({
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function SceneBackdrop({ sceneId, backgroundUrl }: { sceneId: string; backgroundUrl: string | null }) {
+  const layerId = `${sceneId}:${backgroundUrl || 'fallback'}`;
+  const [layers, setLayers] = useState<SceneBackdropLayer[]>(() => [{
+    id: layerId,
+    backgroundUrl,
+    phase: 'active',
+  }]);
+  const activeLayerIdRef = useRef(layerId);
+
+  useEffect(() => {
+    if (activeLayerIdRef.current === layerId) return undefined;
+    let cancelled = false;
+    let transitionTimer: number | undefined;
+
+    const startTransition = (resolvedBackgroundUrl: string | null) => {
+      if (cancelled) return;
+      activeLayerIdRef.current = layerId;
+      setLayers((current) => {
+        const activeLayer = current[current.length - 1];
+        return [
+          ...(activeLayer ? [{ ...activeLayer, phase: 'outgoing' as const }] : []),
+          { id: layerId, backgroundUrl: resolvedBackgroundUrl, phase: 'incoming' },
+        ];
+      });
+
+      transitionTimer = window.setTimeout(() => {
+        setLayers((current) => {
+          const activeLayer = current[current.length - 1];
+          if (!activeLayer || activeLayer.id !== layerId) return current;
+          return [{ ...activeLayer, phase: 'active' }];
+        });
+      }, SCENE_BACKDROP_TRANSITION_MS);
+    };
+
+    let preloadImage: HTMLImageElement | null = null;
+    if (!backgroundUrl) {
+      startTransition(null);
+    } else {
+      preloadImage = new Image();
+      preloadImage.onload = () => {
+        const revealLoadedBackground = async () => {
+          try {
+            await preloadImage?.decode();
+          } catch {
+            // A completed load is still usable when decode() is unavailable or rejects.
+          }
+          startTransition(backgroundUrl);
+        };
+        void revealLoadedBackground();
+      };
+      preloadImage.onerror = () => startTransition(null);
+      preloadImage.src = backgroundUrl;
+    }
+
+    return () => {
+      cancelled = true;
+      preloadImage?.removeAttribute('src');
+      if (transitionTimer !== undefined) window.clearTimeout(transitionTimer);
+    };
+  }, [backgroundUrl, layerId]);
+
+  return (
+    <div className="game-stage-backdrop" aria-hidden="true">
+      {layers.map((layer) => layer.backgroundUrl ? (
+        <img
+          key={layer.id}
+          className={`game-stage-background is-${layer.phase}`}
+          src={layer.backgroundUrl}
+          alt=""
+        />
+      ) : (
+        <div key={layer.id} className={`game-stage-fallback is-${layer.phase}`} />
+      ))}
     </div>
   );
 }

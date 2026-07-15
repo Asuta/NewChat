@@ -1490,6 +1490,7 @@ button {
   transform-origin: left top;
 }
 
+.game-stage-backdrop,
 .game-stage-background,
 .game-stage-fallback {
   position: absolute;
@@ -1498,14 +1499,71 @@ button {
   height: 100%;
 }
 
+.game-stage-backdrop {
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .game-stage-background {
   object-fit: cover;
+}
+
+.game-stage-background.is-incoming,
+.game-stage-fallback.is-incoming {
+  animation: game-stage-scene-enter 280ms ease-out both;
+}
+
+.game-stage-background.is-outgoing,
+.game-stage-fallback.is-outgoing {
+  animation: game-stage-scene-exit 280ms ease-out both;
 }
 
 .game-stage-fallback {
   background:
     linear-gradient(180deg, #34495d, #18212b 54%, #10161e),
     radial-gradient(circle at 50% 34%, rgba(229, 199, 140, 0.2), transparent 38%);
+}
+
+@keyframes game-stage-scene-enter {
+  from {
+    opacity: 0;
+    filter: brightness(0.72) blur(2px);
+    transform: scale(1.012);
+  }
+
+  to {
+    opacity: 1;
+    filter: brightness(1) blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes game-stage-scene-exit {
+  from {
+    opacity: 1;
+    filter: brightness(1);
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    filter: brightness(0.76);
+    transform: scale(0.995);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-stage-background.is-incoming,
+  .game-stage-fallback.is-incoming,
+  .game-stage-background.is-outgoing,
+  .game-stage-fallback.is-outgoing {
+    animation: none;
+  }
+
+  .game-stage-background.is-outgoing,
+  .game-stage-fallback.is-outgoing {
+    opacity: 0;
+  }
 }
 
 .game-stage-overlay {

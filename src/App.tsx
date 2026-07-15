@@ -30,6 +30,10 @@ import {
   formatUserMessageWithItemReferences,
   sanitizeInventoryItemReferences,
 } from './lib/inventoryItemReferences';
+import {
+  getWorldRealtimeSnapshot,
+  isSuccessfulRealtimeWorldMutationStep,
+} from './lib/worldAgentRealtimeSync';
 import type {
   AgentStep,
   ExecuteWorldActionResponse,
@@ -53,6 +57,7 @@ import type {
   WorldEntity,
   WorldMapState,
   WorldOverview,
+  WorldRealtimeSnapshot,
 } from './types';
 import type { ThinkingMode } from './types';
 
@@ -123,6 +128,11 @@ export default function App({ stageOnly = false }: AppProps) {
   const resetDialogRef = useRef<HTMLElement | null>(null);
   const resetCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const worldActionMenuRequestRef = useRef(0);
+  const worldRefreshRequestRef = useRef(0);
+  const presentationRefreshRequestRef = useRef(0);
+  const worldMapRefreshRequestRef = useRef(0);
+  const inventoryRefreshRequestRef = useRef(0);
+  const worldWithDependentsRef = useRef<WorldOverview | null>(null);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
@@ -205,6 +215,9 @@ export default function App({ stageOnly = false }: AppProps) {
 
   useEffect(() => {
     if (!world) return;
+    if (worldWithDependentsRef.current === world) {
+      return;
+    }
     void refreshPresentationStage();
     void refreshWorldMap();
     void refreshInventory();
@@ -348,6 +361,12 @@ export default function App({ stageOnly = false }: AppProps) {
         }
 
         if (event.type === 'step') {
+          const realtimeSnapshot = getWorldRealtimeSnapshot(event);
+          if (realtimeSnapshot) {
+            applyRealtimeWorldSnapshot(realtimeSnapshot);
+          } else if (isSuccessfulRealtimeWorldMutationStep(event.step)) {
+            void refreshWorld({ silent: true });
+          }
           streamedSteps = [...streamedSteps, event.step];
           setAgentSteps(streamedSteps);
           patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
@@ -516,7 +535,7 @@ export default function App({ stageOnly = false }: AppProps) {
           const completedSceneTransition = getCompletedSceneTransition(streamedSteps, pendingSceneTransition);
           setLastRequestLog(event.requestLog || { entries: [] });
           setAgentSteps(streamedSteps);
-          setWorld(event.world);
+          applyWorldSnapshot(event.world);
           if (!hasVisibleAssistantContent) {
             updateAssistantMessage(conversationId, assistantMessageId, streamedAnswer || '世界 Agent 没有返回内容。', 'done', {
               agentRunId: runId,
@@ -949,7 +968,7 @@ export default function App({ stageOnly = false }: AppProps) {
     state: SaveDataResponse,
     options: { resetConversations: boolean; openingConversation?: Conversation },
   ) {
-    setWorld(state.world);
+    applyWorldSnapshot(state.world);
     setFixedContext(normalizeFixedContext(state.fixedContext));
     setSelectedEntity(null);
     setAgentSteps([]);
@@ -967,55 +986,99 @@ export default function App({ stageOnly = false }: AppProps) {
     setActiveId(nextConversations[0]?.id || '');
   }
 
-  async function refreshWorld() {
-    setIsWorldLoading(true);
+  function applyWorldSnapshot(nextWorld: WorldOverview, requestId?: number) {
+    if (requestId !== undefined && requestId !== worldRefreshRequestRef.current) return false;
+    if (requestId === undefined) worldRefreshRequestRef.current += 1;
+    presentationRefreshRequestRef.current += 1;
+    worldMapRefreshRequestRef.current += 1;
+    inventoryRefreshRequestRef.current += 1;
+    worldWithDependentsRef.current = null;
+    setWorld(nextWorld);
+    return true;
+  }
+
+  function applyRealtimeWorldSnapshot(snapshot: WorldRealtimeSnapshot) {
+    worldRefreshRequestRef.current += 1;
+    presentationRefreshRequestRef.current += 1;
+    worldMapRefreshRequestRef.current += 1;
+    inventoryRefreshRequestRef.current += 1;
+    worldWithDependentsRef.current = snapshot.world;
+    setWorld(snapshot.world);
+    setPresentationStage(snapshot.presentationStage);
+    setWorldMap(snapshot.worldMap);
+    setInventory(snapshot.inventory);
+    setIsPresentationLoading(false);
+    setIsWorldMapLoading(false);
+    setIsInventoryLoading(false);
+  }
+
+  async function refreshWorld({ silent = false }: { silent?: boolean } = {}) {
+    const requestId = ++worldRefreshRequestRef.current;
+    if (!silent) setIsWorldLoading(true);
     try {
       const response = await fetch('/api/world');
       if (!response.ok) throw new Error(await readErrorMessage(response));
-      setWorld((await response.json()) as WorldOverview);
+      applyWorldSnapshot((await response.json()) as WorldOverview, requestId);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '世界数据库读取失败。');
+      if (!silent && requestId === worldRefreshRequestRef.current) {
+        setError(caught instanceof Error ? caught.message : '世界数据库读取失败。');
+      }
     } finally {
-      setIsWorldLoading(false);
+      if (!silent) setIsWorldLoading(false);
     }
   }
 
   async function refreshPresentationStage() {
+    const requestId = ++presentationRefreshRequestRef.current;
     setIsPresentationLoading(true);
     try {
       const response = await fetch('/api/presentation/current-stage');
       if (!response.ok) throw new Error(await readErrorMessage(response));
-      setPresentationStage((await response.json()) as PresentationStage);
+      if (requestId === presentationRefreshRequestRef.current) {
+        setPresentationStage((await response.json()) as PresentationStage);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '表现层读取失败。');
+      if (requestId === presentationRefreshRequestRef.current) {
+        setError(caught instanceof Error ? caught.message : '表现层读取失败。');
+      }
     } finally {
-      setIsPresentationLoading(false);
+      if (requestId === presentationRefreshRequestRef.current) setIsPresentationLoading(false);
     }
   }
 
   async function refreshWorldMap() {
+    const requestId = ++worldMapRefreshRequestRef.current;
     setIsWorldMapLoading(true);
     try {
       const response = await fetch('/api/world/map');
       if (!response.ok) throw new Error(await readErrorMessage(response));
-      setWorldMap((await response.json()) as WorldMapState);
+      if (requestId === worldMapRefreshRequestRef.current) {
+        setWorldMap((await response.json()) as WorldMapState);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '世界地图读取失败。');
+      if (requestId === worldMapRefreshRequestRef.current) {
+        setError(caught instanceof Error ? caught.message : '世界地图读取失败。');
+      }
     } finally {
-      setIsWorldMapLoading(false);
+      if (requestId === worldMapRefreshRequestRef.current) setIsWorldMapLoading(false);
     }
   }
 
   async function refreshInventory() {
+    const requestId = ++inventoryRefreshRequestRef.current;
     setIsInventoryLoading(true);
     try {
       const response = await fetch('/api/world/inventory?actorId=player');
       if (!response.ok) throw new Error(await readErrorMessage(response));
-      setInventory((await response.json()) as PlayerInventory);
+      if (requestId === inventoryRefreshRequestRef.current) {
+        setInventory((await response.json()) as PlayerInventory);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '背包读取失败。');
+      if (requestId === inventoryRefreshRequestRef.current) {
+        setError(caught instanceof Error ? caught.message : '背包读取失败。');
+      }
     } finally {
-      setIsInventoryLoading(false);
+      if (requestId === inventoryRefreshRequestRef.current) setIsInventoryLoading(false);
     }
   }
 
@@ -1148,7 +1211,7 @@ export default function App({ stageOnly = false }: AppProps) {
       const assistantMessage = createMessage('assistant', '', 'streaming');
       const nextMessages = [...activeConversation.messages, actionMessage, assistantMessage];
       const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
-      setWorld(data.world);
+      applyWorldSnapshot(data.world);
       if (data.inventory) setInventory(data.inventory);
       if (action.kind.startsWith('item.') || action.kind === 'attack.weapon') setIsInventoryOpen(false);
       updateActiveConversation((conversation) => ({
@@ -1477,7 +1540,11 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
     return { type: 'start', runId: Number(payload.runId) };
   }
   if (eventType === 'step') {
-    return { type: 'step', step: payload.step as AgentStep };
+    return {
+      type: 'step',
+      step: payload.step as AgentStep,
+      realtimeSnapshot: payload.realtimeSnapshot as WorldRealtimeSnapshot | undefined,
+    };
   }
   if (eventType === 'assistant_text_start') {
     return {
