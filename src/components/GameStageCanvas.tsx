@@ -1,4 +1,6 @@
 import {
+  Backpack,
+  BookOpenText,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -21,7 +23,7 @@ import type {
   WorldOverview,
 } from '../types';
 import { GameStageCharacter, useCharacterDamageFeedback } from './GameStageCharacter';
-import { InventoryDrawer } from './InventoryDrawer';
+import { InventoryPanel } from './InventoryPanel';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
   countStageMarkdownCharacters,
@@ -92,6 +94,7 @@ export function GameStageCanvas({
     dialogueEntries,
     sceneDescription,
     actionComposer ? DIALOGUE_LINES_WITH_COMPOSER : DIALOGUE_LINES_WITHOUT_COMPOSER,
+    !isInventoryOpen,
   );
   const activeSpeakerId = dialogue.activeEntry.speakerId;
   const visibleCharacters = useMemo(
@@ -125,6 +128,25 @@ export function GameStageCanvas({
       setAlphaHoveredEntityId(null);
     }
   }, [alphaHoveredEntityId, visibleCharacters]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isTyping = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (event.key === 'Escape' && isInventoryOpen) {
+        onInventoryOpenChange(false);
+        return;
+      }
+      if (!isTyping && !event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'b') {
+        onInventoryOpenChange(!isInventoryOpen);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isInventoryOpen, onInventoryOpenChange]);
 
   function updateAlphaHoveredEntity(entityId: string | null) {
     if (alphaHoveredEntityIdRef.current === entityId) return;
@@ -196,15 +218,6 @@ export function GameStageCanvas({
             onEnterScene={onEnterScene}
           />
 
-          <InventoryDrawer
-            inventory={inventory}
-            isOpen={isInventoryOpen}
-            isLoading={isInventoryLoading}
-            isDisabled={isInventoryDisabled}
-            onOpenChange={onInventoryOpenChange}
-            onExecuteAction={onExecuteInventoryAction}
-          />
-
           <div className="game-character-layer" aria-label="当前场景人物">
             {visibleCharacters.map((character) => (
               <GameStageCharacter
@@ -240,67 +253,106 @@ export function GameStageCanvas({
           ) : null}
 
           <div className={`game-stage-interaction-stack ${actionComposer ? 'has-action-composer' : ''}`}>
-            <div className={`stage-dialogue-box ${dialogue.activeEntry.kind}`}>
-              <div
-                className="stage-dialogue-content"
-                role="button"
-                tabIndex={0}
-                aria-label={dialogue.actionLabel}
-                onClick={dialogue.advance}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  event.preventDefault();
-                  dialogue.advance();
-                }}
-              >
-                <span className="stage-dialogue-speaker">
-                  {dialogue.activeEntry.kind === 'speech'
-                    ? dialogue.activeEntry.speakerName || '未知人物'
-                    : '旁白'}
-                </span>
-                <StageMarkdownContent
-                  containerRef={dialogue.textRef}
-                  segments={dialogue.visibleSegments}
-                />
+            <div className={`stage-dialogue-box ${isInventoryOpen ? 'narration inventory-tab' : dialogue.activeEntry.kind}`}>
+              <div className="stage-output-tabs" role="tablist" aria-label="输出框页签">
+                <button
+                  id="stage-story-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="stage-story-panel"
+                  aria-selected={!isInventoryOpen}
+                  className={!isInventoryOpen ? 'active' : ''}
+                  onClick={() => onInventoryOpenChange(false)}
+                >
+                  <BookOpenText size={15} />剧情
+                </button>
+                <button
+                  id="stage-inventory-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="stage-inventory-panel"
+                  aria-selected={isInventoryOpen}
+                  className={isInventoryOpen ? 'active' : ''}
+                  onClick={() => onInventoryOpenChange(true)}
+                >
+                  <Backpack size={15} />背包
+                  <strong>{inventory?.totalQuantity || 0}</strong>
+                </button>
               </div>
-              <span className="stage-dialogue-progress">
-                {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
-              </span>
-              <div className="stage-dialogue-navigation" role="group" aria-label="本轮输出翻页">
-                {dialogue.pageCount > 1 ? (
-                  <button
-                    className="stage-dialogue-page-button"
-                    type="button"
-                    aria-label="上一页"
-                    title="上一页"
-                    disabled={!dialogue.hasPreviousPage}
-                    onClick={dialogue.previous}
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                ) : null}
-                {dialogue.pageCount > 1 ? (
-                  <button
-                    className="stage-dialogue-page-button"
-                    type="button"
+
+              {isInventoryOpen ? (
+                <div id="stage-inventory-panel" role="tabpanel" aria-labelledby="stage-inventory-tab">
+                  <InventoryPanel
+                    inventory={inventory}
+                    isLoading={isInventoryLoading}
+                    isDisabled={isInventoryDisabled}
+                    onExecuteAction={onExecuteInventoryAction}
+                  />
+                </div>
+              ) : (
+                <div id="stage-story-panel" role="tabpanel" aria-labelledby="stage-story-tab">
+                  <div
+                    className="stage-dialogue-content"
+                    role="button"
+                    tabIndex={0}
                     aria-label={dialogue.actionLabel}
-                    title={dialogue.actionLabel}
-                    disabled={!dialogue.canUseForwardControl}
                     onClick={dialogue.advance}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      dialogue.advance();
+                    }}
                   >
-                    {dialogue.isWaiting ? (
-                      <Loader2 className="spin" size={20} />
-                    ) : (
-                      <ChevronRight size={20} />
-                    )}
-                  </button>
-                ) : null}
-                {dialogue.pageCount === 1 && dialogue.isWaiting ? (
-                  <span className="stage-dialogue-indicator" aria-label="正在等待后续文字">
-                    <Loader2 className="spin" size={20} />
+                    <span className="stage-dialogue-speaker">
+                      {dialogue.activeEntry.kind === 'speech'
+                        ? dialogue.activeEntry.speakerName || '未知人物'
+                        : '旁白'}
+                    </span>
+                    <StageMarkdownContent
+                      containerRef={dialogue.textRef}
+                      segments={dialogue.visibleSegments}
+                    />
+                  </div>
+                  <span className="stage-dialogue-progress">
+                    {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
                   </span>
-                ) : null}
-              </div>
+                  <div className="stage-dialogue-navigation" role="group" aria-label="本轮输出翻页">
+                    {dialogue.pageCount > 1 ? (
+                      <button
+                        className="stage-dialogue-page-button"
+                        type="button"
+                        aria-label="上一页"
+                        title="上一页"
+                        disabled={!dialogue.hasPreviousPage}
+                        onClick={dialogue.previous}
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                    ) : null}
+                    {dialogue.pageCount > 1 ? (
+                      <button
+                        className="stage-dialogue-page-button"
+                        type="button"
+                        aria-label={dialogue.actionLabel}
+                        title={dialogue.actionLabel}
+                        disabled={!dialogue.canUseForwardControl}
+                        onClick={dialogue.advance}
+                      >
+                        {dialogue.isWaiting ? (
+                          <Loader2 className="spin" size={20} />
+                        ) : (
+                          <ChevronRight size={20} />
+                        )}
+                      </button>
+                    ) : null}
+                    {dialogue.pageCount === 1 && dialogue.isWaiting ? (
+                      <span className="stage-dialogue-indicator" aria-label="正在等待后续文字">
+                        <Loader2 className="spin" size={20} />
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </div>
 
             {actionComposer ? (
@@ -320,6 +372,7 @@ function useStageDialogue(
   entries: StageDialogueEntry[],
   fallbackText: string,
   linesPerPage: number,
+  isTextVisible: boolean,
 ) {
   const sequenceKey = `${dialogueKey}:${entries[0]?.runId ?? entries[0]?.id ?? 'scene'}`;
   const [pageIndex, setPageIndex] = useState(0);
@@ -381,6 +434,7 @@ function useStageDialogue(
   activePageIsStreamingRef.current = activeEntry.status === 'streaming' && !hasNextPage;
 
   useLayoutEffect(() => {
+    if (!isTextVisible) return;
     const textElement = textRef.current;
     if (!textElement) return;
 
@@ -401,7 +455,7 @@ function useStageDialogue(
     observer.observe(textElement);
     measure();
     return () => observer.disconnect();
-  }, []);
+  }, [isTextVisible]);
 
   useEffect(() => {
     const activePageId = activePage?.id;

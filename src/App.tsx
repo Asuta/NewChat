@@ -1116,6 +1116,7 @@ export default function App() {
       const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
       setWorld(data.world);
       if (data.inventory) setInventory(data.inventory);
+      if (action.kind.startsWith('item.')) setIsInventoryOpen(false);
       updateActiveConversation((conversation) => ({
         ...conversation,
         updatedAt: Date.now(),

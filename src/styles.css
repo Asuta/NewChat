@@ -2052,440 +2052,405 @@ button {
   backdrop-filter: blur(10px);
 }
 
-.inventory-stage-trigger {
-  position: absolute;
-  top: 64px;
-  right: 194px;
-  z-index: 5;
-  display: inline-flex;
-  height: 42px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 0 11px;
-  background: rgba(7, 13, 21, 0.68);
-  color: #f8fafc;
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(12px);
-}
-
-.inventory-stage-trigger:hover,
-.inventory-stage-trigger.active {
-  border-color: rgba(130, 188, 255, 0.62);
-  background: rgba(8, 25, 43, 0.88);
-}
-
-.inventory-stage-trigger span {
-  font-size: 13px;
-  font-weight: 760;
-}
-
-.inventory-stage-trigger strong {
+.inventory-panel {
   display: grid;
-  min-width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 999px;
-  background: rgba(82, 164, 238, 0.2);
-  color: #bfe6ff;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.inventory-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-}
-
-.inventory-backdrop {
-  position: absolute;
-  inset: 0;
   width: 100%;
-  border: 0;
-  padding: 0;
-  background: rgba(4, 9, 16, 0.48);
-  backdrop-filter: blur(2px);
+  height: 100%;
+  grid-template-rows: 30px minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+  padding: 10px 14px 9px 18px;
 }
 
-.inventory-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  width: 560px;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  border-left: 1px solid rgba(126, 184, 235, 0.34);
-  background:
-    linear-gradient(145deg, rgba(15, 29, 45, 0.98), rgba(7, 16, 27, 0.99)),
-    #0b1625;
-  color: #f8fafc;
-  box-shadow: -26px 0 56px rgba(0, 0, 0, 0.42);
-}
-
-.inventory-header {
+.inventory-panel-toolbar {
   display: flex;
-  min-height: 66px;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 12px 14px;
-}
-
-.inventory-header > div,
-.inventory-header-actions,
-.inventory-header-icon,
-.inventory-gold {
-  display: inline-flex;
-  align-items: center;
-}
-
-.inventory-header > div {
   gap: 10px;
 }
 
-.inventory-header > div > span:not(.inventory-header-icon) {
-  display: grid;
-  gap: 2px;
-}
-
-.inventory-header strong {
-  font-size: 17px;
-}
-
-.inventory-header small {
-  color: rgba(226, 232, 240, 0.58);
-  font-size: 11px;
-}
-
-.inventory-header-icon {
-  width: 36px;
-  height: 36px;
-  justify-content: center;
-  border: 1px solid rgba(111, 203, 233, 0.32);
-  border-radius: 9px;
-  background: rgba(13, 70, 94, 0.44);
-  color: #bfeaff;
-}
-
-.inventory-header-actions {
-  gap: 8px;
-}
-
-.inventory-header-actions button {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 0;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f8fafc;
-}
-
-.inventory-header-actions button:hover {
-  border-color: rgba(130, 188, 255, 0.5);
-  background: rgba(59, 130, 246, 0.16);
-}
-
-.inventory-gold {
-  gap: 5px;
-  border: 1px solid rgba(234, 179, 69, 0.24);
-  border-radius: 999px;
-  padding: 7px 9px;
-  background: rgba(122, 78, 12, 0.18);
-  color: #f8d38a;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.inventory-filters {
+.inventory-panel-filters {
   display: flex;
+  min-width: 0;
+  align-items: center;
   gap: 5px;
   overflow-x: auto;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 9px 12px;
 }
 
-.inventory-filters button {
+.inventory-panel-filters button {
   display: inline-flex;
   min-width: max-content;
-  height: 30px;
+  height: 26px;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   border: 1px solid transparent;
-  border-radius: 7px;
-  padding: 0 8px;
+  border-radius: 6px;
+  padding: 0 7px;
   background: transparent;
   color: rgba(226, 232, 240, 0.68);
-  font-size: 11px;
-  font-weight: 720;
-}
-
-.inventory-filters button span {
-  color: rgba(191, 234, 255, 0.62);
   font-size: 10px;
+  font-weight: 740;
 }
 
-.inventory-filters button:hover,
-.inventory-filters button.active {
-  border-color: rgba(111, 203, 233, 0.28);
-  background: rgba(14, 82, 112, 0.28);
-  color: #dff5ff;
+.inventory-panel-filters button span {
+  color: rgba(191, 234, 255, 0.58);
+  font-size: 9px;
 }
 
-.inventory-content {
-  display: grid;
+.inventory-panel-filters button:hover,
+.inventory-panel-filters button.active {
+  border-color: rgba(111, 203, 233, 0.3);
+  background: rgba(14, 82, 112, 0.34);
+  color: #e2f7ff;
+}
+
+.inventory-panel-gold {
+  display: inline-flex;
+  height: 25px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(234, 179, 69, 0.24);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: rgba(122, 78, 12, 0.18);
+  color: #f8d38a;
+  font-size: 10px;
+  font-weight: 780;
+}
+
+.inventory-icon-grid {
+  display: flex;
+  min-width: 0;
   min-height: 0;
-  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 1px 3px;
 }
 
-.inventory-list {
-  min-height: 0;
-  overflow-y: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 10px;
-}
-
-.inventory-list-item {
+.inventory-icon-button {
   position: relative;
   display: grid;
-  width: 100%;
-  min-height: 58px;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 8px;
-  background: transparent;
-  color: #f8fafc;
-  text-align: left;
-}
-
-.inventory-list-item:hover {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.inventory-list-item.selected {
-  border-color: rgba(111, 203, 233, 0.34);
-  background: linear-gradient(90deg, rgba(13, 88, 119, 0.38), rgba(15, 51, 73, 0.18));
-}
-
-.inventory-item-icon,
-.inventory-detail-icon {
-  display: grid;
+  width: 68px;
+  min-width: 68px;
+  height: 82px;
+  grid-template-rows: 55px 18px;
   place-items: center;
+  gap: 2px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  padding: 3px 5px 2px;
+  background: rgba(3, 12, 21, 0.48);
   color: #d8e4ef;
 }
 
-.inventory-item-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
+.inventory-icon-button:hover,
+.inventory-icon-button:focus-visible,
+.inventory-icon-button.selected {
+  border-color: rgba(111, 203, 233, 0.62);
+  background: rgba(11, 57, 80, 0.66);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(111, 203, 233, 0.12);
 }
 
-.inventory-item-icon.category-weapon,
-.inventory-detail-icon.category-weapon { color: #f2c879; background: rgba(128, 82, 19, 0.2); }
-.inventory-item-icon.category-consumable,
-.inventory-detail-icon.category-consumable { color: #83e1b0; background: rgba(20, 107, 72, 0.2); }
-.inventory-item-icon.category-quest,
-.inventory-detail-icon.category-quest { color: #c8b4ff; background: rgba(83, 51, 145, 0.22); }
-.inventory-item-icon.category-clue,
-.inventory-detail-icon.category-clue { color: #9ed9ff; background: rgba(28, 93, 135, 0.22); }
-
-.inventory-list-copy {
+.inventory-icon-glyph {
   display: grid;
-  min-width: 0;
-  gap: 3px;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: rgba(148, 163, 184, 0.08);
 }
 
-.inventory-list-copy strong {
+.inventory-icon-button.category-weapon .inventory-icon-glyph,
+.inventory-tooltip-icon.category-weapon { color: #f2c879; background: rgba(128, 82, 19, 0.22); }
+.inventory-icon-button.category-consumable .inventory-icon-glyph,
+.inventory-tooltip-icon.category-consumable { color: #83e1b0; background: rgba(20, 107, 72, 0.22); }
+.inventory-icon-button.category-tool .inventory-icon-glyph,
+.inventory-tooltip-icon.category-tool { color: #f5b4e8; background: rgba(126, 45, 105, 0.22); }
+.inventory-icon-button.category-quest .inventory-icon-glyph,
+.inventory-tooltip-icon.category-quest { color: #c8b4ff; background: rgba(83, 51, 145, 0.24); }
+.inventory-icon-button.category-clue .inventory-icon-glyph,
+.inventory-tooltip-icon.category-clue { color: #9ed9ff; background: rgba(28, 93, 135, 0.24); }
+
+.inventory-icon-name {
+  width: 100%;
   overflow: hidden;
-  font-size: 12px;
+  color: rgba(248, 250, 252, 0.88);
+  font-size: 9px;
+  font-weight: 740;
+  line-height: 18px;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.inventory-list-copy small {
+.inventory-icon-quantity,
+.inventory-icon-equipped,
+.inventory-icon-nearby {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.inventory-icon-quantity {
+  top: 5px;
+  right: 5px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 4px;
+  background: rgba(3, 10, 18, 0.82);
+  color: #ffffff;
+  font-size: 9px;
+}
+
+.inventory-icon-equipped {
+  top: 5px;
+  left: 5px;
+  width: 18px;
+  height: 18px;
+  background: rgba(14, 116, 144, 0.88);
+  color: #dff8ff;
+}
+
+.inventory-icon-nearby {
+  left: 5px;
+  bottom: 21px;
+  width: 18px;
+  height: 18px;
+  background: rgba(37, 99, 163, 0.86);
+  color: #e0efff;
+}
+
+.inventory-panel-empty {
+  display: flex;
+  min-width: 180px;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   color: rgba(226, 232, 240, 0.5);
   font-size: 10px;
 }
 
-.inventory-equipped {
+.inventory-hover-tooltip {
   position: absolute;
-  right: 7px;
-  bottom: 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  color: #9ed9ff;
-  font-size: 9px;
-  font-weight: 750;
+  z-index: 1001;
+  width: 320px;
+  max-height: min(320px, calc(100vh - 16px));
+  overflow: hidden;
+  border: 1px solid rgba(132, 207, 240, 0.44);
+  border-radius: 9px;
+  padding: 12px;
+  background:
+    linear-gradient(145deg, rgba(15, 31, 47, 0.985), rgba(5, 15, 25, 0.99)),
+    #091522;
+  color: #f8fafc;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.48);
+  pointer-events: none;
 }
 
-.inventory-quantity {
-  align-self: start;
-  margin-top: 2px;
-  color: rgba(248, 250, 252, 0.8);
+.inventory-hover-tooltip header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.inventory-tooltip-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.inventory-hover-tooltip header > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-hover-tooltip header strong { font-size: 14px; }
+.inventory-hover-tooltip header small { color: rgba(191, 234, 255, 0.64); font-size: 10px; }
+
+.inventory-hover-tooltip p {
+  margin: 11px 0;
+  color: rgba(226, 232, 240, 0.78);
   font-size: 11px;
-  font-weight: 800;
+  line-height: 1.55;
 }
 
-.inventory-detail {
-  min-height: 0;
-  overflow-y: auto;
-  padding: 18px;
-}
-
-.inventory-detail-heading {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+.inventory-tooltip-effect,
+.inventory-tooltip-warning {
+  display: flex;
   align-items: center;
-  gap: 11px;
-}
-
-.inventory-detail-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 11px;
-}
-
-.inventory-detail-heading > div {
-  display: grid;
-  gap: 4px;
-}
-
-.inventory-detail-heading > div span,
-.inventory-detail-count {
-  color: rgba(191, 234, 255, 0.64);
+  gap: 6px;
+  border-radius: 6px;
+  padding: 7px 8px;
   font-size: 10px;
+}
+
+.inventory-tooltip-effect {
+  background: rgba(14, 102, 67, 0.2);
+  color: #91ecc0;
+}
+
+.inventory-tooltip-warning {
+  margin-top: 6px;
+  background: rgba(127, 29, 29, 0.18);
+  color: #f7b8b8;
+}
+
+.inventory-hover-tooltip footer {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+  color: rgba(226, 232, 240, 0.44);
+  font-size: 9px;
+}
+
+.inventory-action-scrim {
+  position: absolute;
+  z-index: 1002;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.inventory-action-popover {
+  position: absolute;
+  z-index: 1003;
+  display: grid;
+  width: 300px;
+  max-height: min(340px, calc(100vh - 16px));
+  overflow-y: auto;
+  gap: 10px;
+  border: 1px solid rgba(132, 207, 240, 0.46);
+  border-radius: 9px;
+  padding: 11px;
+  background:
+    linear-gradient(145deg, rgba(14, 30, 46, 0.99), rgba(5, 14, 24, 0.995)),
+    #091522;
+  color: #f8fafc;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.52);
+  outline: none;
+}
+
+.inventory-action-popover > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inventory-action-popover > header > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.inventory-action-popover > header strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-action-popover > header small { color: rgba(191, 234, 255, 0.6); font-size: 9px; }
+
+.inventory-action-popover > header button {
+  border: 0;
+  padding: 4px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+}
+
+.inventory-popover-description {
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 9px 0;
+  color: rgba(226, 232, 240, 0.76);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.inventory-popover-actions,
+.inventory-popover-action,
+.inventory-popover-action label {
+  display: grid;
+  gap: 7px;
+}
+
+.inventory-popover-action + .inventory-popover-action {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 9px;
+}
+
+.inventory-popover-action label span {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 9px;
   font-weight: 720;
 }
 
-.inventory-detail-heading strong {
-  font-size: 16px;
-}
-
-.inventory-detail-count {
-  align-self: start;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  padding: 5px 7px;
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.inventory-description {
-  margin: 18px 0;
-  color: rgba(226, 232, 240, 0.76);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.inventory-effect-card {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid rgba(66, 211, 143, 0.22);
-  border-radius: 9px;
-  padding: 10px;
-  background: rgba(14, 102, 67, 0.16);
-  color: #8de8b8;
-}
-
-.inventory-effect-card span {
-  display: grid;
-  gap: 2px;
-}
-
-.inventory-effect-card strong { font-size: 11px; }
-.inventory-effect-card small { color: rgba(207, 250, 229, 0.66); font-size: 10px; }
-
-.inventory-action-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.inventory-action-row {
-  display: grid;
-  gap: 7px;
-}
-
-.inventory-action-row label {
-  display: grid;
-  gap: 5px;
-}
-
-.inventory-action-row label span {
-  color: rgba(226, 232, 240, 0.6);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.inventory-action-row select {
+.inventory-popover-action select {
   width: 100%;
-  height: 34px;
+  height: 31px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 7px;
-  padding: 0 9px;
-  background: rgba(3, 10, 18, 0.56);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: rgba(3, 10, 18, 0.66);
   color: #eef6ff;
-  font-size: 11px;
+  font-size: 10px;
 }
 
-.inventory-action-row button {
+.inventory-popover-action > button {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 33px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  border: 1px solid rgba(98, 187, 235, 0.36);
-  border-radius: 8px;
-  padding: 0 12px;
-  background: linear-gradient(180deg, rgba(21, 119, 163, 0.68), rgba(11, 76, 110, 0.72));
+  gap: 6px;
+  border: 1px solid rgba(98, 187, 235, 0.38);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, rgba(21, 119, 163, 0.72), rgba(11, 76, 110, 0.76));
   color: #effaff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 780;
 }
 
-.inventory-action-row button:hover:not(:disabled) {
-  border-color: rgba(143, 220, 247, 0.68);
-  background: linear-gradient(180deg, rgba(27, 140, 190, 0.8), rgba(12, 91, 132, 0.82));
+.inventory-popover-action > button:hover:not(:disabled) {
+  border-color: rgba(143, 220, 247, 0.7);
+  background: linear-gradient(180deg, rgba(27, 140, 190, 0.82), rgba(12, 91, 132, 0.84));
 }
 
-.inventory-action-row button.danger {
-  border-color: rgba(244, 114, 114, 0.22);
-  background: rgba(127, 29, 29, 0.16);
+.inventory-popover-action > button.danger {
+  border-color: rgba(244, 114, 114, 0.24);
+  background: rgba(127, 29, 29, 0.2);
   color: #ffc4c4;
 }
 
-.inventory-action-row button:disabled {
+.inventory-popover-action > button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
 
-.inventory-action-reason {
+.inventory-popover-reason {
   color: rgba(248, 183, 183, 0.72);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.4;
-}
-
-.inventory-empty {
-  display: grid;
-  min-height: 160px;
-  place-items: center;
-  align-content: center;
-  gap: 9px;
-  color: rgba(226, 232, 240, 0.48);
-  font-size: 11px;
-  text-align: center;
 }
 
 .scene-minimap-trigger {
@@ -3055,7 +3020,7 @@ button {
   z-index: 1;
   width: 100%;
   height: 170px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--dialogue-border);
   border-radius: 6px;
   background:
@@ -3066,6 +3031,73 @@ button {
     inset 4px 0 0 var(--dialogue-accent),
     0 20px 46px rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(16px);
+}
+
+.stage-dialogue-box > [role="tabpanel"] {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.stage-output-tabs {
+  position: absolute;
+  z-index: 3;
+  bottom: 100%;
+  left: -1px;
+  display: flex;
+  height: 30px;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.stage-output-tabs button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-bottom-color: var(--dialogue-border);
+  border-radius: 7px 7px 0 0;
+  padding: 0 12px;
+  background: rgba(5, 15, 27, 0.86);
+  color: rgba(226, 232, 240, 0.76);
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+
+.stage-output-tabs button:hover {
+  color: #f8fafc;
+  background: rgba(8, 27, 43, 0.94);
+}
+
+.stage-output-tabs button.active {
+  height: 31px;
+  margin-bottom: -1px;
+  border-color: var(--dialogue-border);
+  border-bottom-color: transparent;
+  background: var(--dialogue-panel-start);
+  color: var(--dialogue-speaker);
+}
+
+.stage-output-tabs button:focus-visible {
+  outline: 2px solid rgba(111, 203, 233, 0.86);
+  outline-offset: 2px;
+}
+
+.stage-output-tabs strong {
+  min-width: 19px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: rgba(111, 203, 233, 0.18);
+  color: #c8efff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }
 
 .game-stage.has-action-composer .stage-dialogue-box {
