@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
+import {
+  createCharacterAttackFeedbackEvent,
+  type CharacterAttackFeedbackEvent,
+} from './components/characterAttackFeedback';
 import { Composer } from './components/Composer';
 import { GameView } from './components/GameView';
 import { Sidebar } from './components/Sidebar';
@@ -102,6 +106,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [worldActionMenu, setWorldActionMenu] = useState<WorldActionMenuState | null>(null);
+  const [characterAttackFeedback, setCharacterAttackFeedback] = useState<CharacterAttackFeedbackEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationsRef = useRef(conversations);
@@ -177,7 +182,17 @@ export default function App() {
 
   useEffect(() => {
     setIsSettingsOpen(false);
+    setCharacterAttackFeedback(null);
   }, [activeId]);
+
+  useEffect(() => {
+    if (!characterAttackFeedback) return;
+    const eventId = characterAttackFeedback.id;
+    const timer = window.setTimeout(() => {
+      setCharacterAttackFeedback((current) => current?.id === eventId ? null : current);
+    }, 1100);
+    return () => window.clearTimeout(timer);
+  }, [characterAttackFeedback]);
 
   useEffect(() => {
     if (!world) return;
@@ -1110,6 +1125,8 @@ export default function App() {
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as ExecuteWorldActionResponse;
+      const nextAttackFeedback = createCharacterAttackFeedbackEvent(data.eventId, data.result);
+      if (nextAttackFeedback) setCharacterAttackFeedback(nextAttackFeedback);
       const actionMessage = createActionResultMessage(data.result);
       const assistantMessage = createMessage('assistant', '', 'streaming');
       const nextMessages = [...activeConversation.messages, actionMessage, assistantMessage];
@@ -1207,6 +1224,7 @@ export default function App() {
             isInventoryLoading={isInventoryLoading}
             isWorldActionLoading={isWorldLoading}
             conversation={activeConversation}
+            attackFeedback={characterAttackFeedback}
             error={error}
             fixedContext={fixedContext}
             onSend={sendMessage}

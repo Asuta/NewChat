@@ -14,7 +14,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type {
   PresentationStage,
-  PresentationStageCharacter,
   StageDialogueEntry,
   InventoryAction,
   PlayerInventory,
@@ -22,7 +21,8 @@ import type {
   WorldMapState,
   WorldOverview,
 } from '../types';
-import { GameStageCharacter, useCharacterDamageFeedback } from './GameStageCharacter';
+import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
+import { GameStageCharacter, useCharacterHealthFeedback } from './GameStageCharacter';
 import { InventoryPanel } from './InventoryPanel';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
@@ -32,6 +32,7 @@ import {
   StageMarkdownContent,
 } from './StageMarkdownContent';
 import type { StageMarkdownMark, StageMarkdownSegment } from './StageMarkdownContent';
+import { getVisibleStageCharacters } from './stageCharacterSelection';
 
 const GAME_STAGE_BASE_WIDTH = 1280;
 const GAME_STAGE_BASE_HEIGHT = 720;
@@ -39,18 +40,13 @@ const GAME_STAGE_MIN_SCALE = 0.3;
 const DIALOGUE_LINES_WITH_COMPOSER = 3;
 const DIALOGUE_LINES_WITHOUT_COMPOSER = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
-const STAGE_SLOTS = {
-  1: ['center'],
-  2: ['left', 'right'],
-  3: ['left', 'center', 'right'],
-} as const;
-
 interface GameStageCanvasProps {
   stage: PresentationStage | null;
   world?: WorldOverview | null;
   worldMap: WorldMapState | null;
   dialogueKey: string;
   dialogueEntries: StageDialogueEntry[];
+  attackFeedback: CharacterAttackFeedbackEvent | null;
   actionMenuEntityId?: string | null;
   isLoading: boolean;
   isWorldMapLoading: boolean;
@@ -72,6 +68,7 @@ export function GameStageCanvas({
   worldMap,
   dialogueKey,
   dialogueEntries,
+  attackFeedback,
   actionMenuEntityId = null,
   isLoading,
   isWorldMapLoading,
@@ -98,10 +95,10 @@ export function GameStageCanvas({
   );
   const activeSpeakerId = dialogue.activeEntry.speakerId;
   const visibleCharacters = useMemo(
-    () => getVisibleCharacters(stageCharacters, activeSpeakerId),
-    [activeSpeakerId, stageCharacters],
+    () => getVisibleStageCharacters(stageCharacters, activeSpeakerId, attackFeedback?.targetEntityId),
+    [activeSpeakerId, attackFeedback?.targetEntityId, stageCharacters],
   );
-  const damageFeedback = useCharacterDamageFeedback(
+  const healthFeedback = useCharacterHealthFeedback(
     `${dialogueKey}:${stage?.scene?.id ?? 'scene'}`,
     visibleCharacters,
   );
@@ -223,7 +220,8 @@ export function GameStageCanvas({
               <GameStageCharacter
                 key={character.entityId}
                 character={character}
-                damageEvent={damageFeedback.eventsByEntity[character.entityId]}
+                attackFeedbackEvent={attackFeedback?.targetEntityId === character.entityId ? attackFeedback : undefined}
+                healthChangeEvent={healthFeedback.eventsByEntity[character.entityId]}
                 isSpeaking={character.entityId === dialogue.activeEntry.speakerId}
                 isPixelHovered={character.entityId === alphaHoveredEntityId}
                 isActionMenuOpen={character.entityId === actionMenuEntityId}
@@ -233,9 +231,19 @@ export function GameStageCanvas({
             ))}
           </div>
 
-          <span className="game-stage-damage-announcement" aria-live="polite" aria-atomic="true">
-            {damageFeedback.announcement ? (
-              <span key={damageFeedback.announcement.id}>{damageFeedback.announcement.text}</span>
+          <span className="game-stage-health-announcement" aria-live="polite" aria-atomic="true">
+            {healthFeedback.announcement ? (
+              <span key={healthFeedback.announcement.id}>{healthFeedback.announcement.text}</span>
+            ) : null}
+          </span>
+
+          <span className="game-stage-attack-announcement" aria-live="polite" aria-atomic="true">
+            {attackFeedback ? (
+              <span key={attackFeedback.id}>
+                {attackFeedback.hit
+                  ? `攻击命中${attackFeedback.targetName}`
+                  : `${attackFeedback.targetName}闪开了攻击，未命中`}
+              </span>
             ) : null}
           </span>
 
@@ -786,25 +794,4 @@ function parseCssPx(value: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function getVisibleCharacters(
-  characters: PresentationStageCharacter[],
-  activeSpeakerId?: string,
-): PresentationStageCharacter[] {
-  const speaker = activeSpeakerId
-    ? characters.find((character) => character.entityId === activeSpeakerId) || null
-    : null;
-  const firstThree = characters.slice(0, 3);
-  const selected = speaker && !firstThree.some((character) => character.entityId === speaker.entityId)
-    ? [...characters.filter((character) => character.entityId !== speaker.entityId).slice(0, 2), speaker]
-    : firstThree;
-
-  const slots = STAGE_SLOTS[Math.min(selected.length, 3) as keyof typeof STAGE_SLOTS] || STAGE_SLOTS[1];
-  return selected.map((character, index) => ({
-    ...character,
-    slot: selected.length === 1 && character.position && character.position !== 'auto'
-      ? character.position
-      : slots[index] || 'center',
-  }));
 }

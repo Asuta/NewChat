@@ -1614,7 +1614,8 @@ button {
   pointer-events: none;
 }
 
-.game-stage-damage-announcement {
+.game-stage-health-announcement,
+.game-stage-attack-announcement {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1797,6 +1798,7 @@ button {
 }
 
 .game-character-health-loss,
+.game-character-health-gain,
 .game-character-health-fill {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1810,6 +1812,16 @@ button {
   background: linear-gradient(90deg, #f45f5f, #ff8a63);
   box-shadow: 0 0 7px rgba(255, 82, 82, 0.7);
   animation: game-character-health-loss 760ms cubic-bezier(0.22, 0.76, 0.28, 1) forwards;
+}
+
+.game-character-health-gain {
+  z-index: 3;
+  left: var(--health-before);
+  width: calc(var(--health-after) - var(--health-before));
+  background: #9cf1b5;
+  box-shadow: 0 0 8px rgba(105, 239, 155, 0.86);
+  transform-origin: left center;
+  animation: game-character-health-gain 820ms cubic-bezier(0.2, 0.78, 0.22, 1) forwards;
 }
 
 .game-character-health-fill {
@@ -1829,21 +1841,99 @@ button {
   background: #d75a5a;
 }
 
-.game-character-damage-number {
+.game-character-health-number {
   position: absolute;
   left: 50%;
   top: 30%;
   z-index: 5;
-  color: #ff6b6b;
   font-size: 27px;
   font-variant-numeric: tabular-nums;
   font-weight: 900;
   line-height: 1;
   pointer-events: none;
+}
+
+.game-character-attack-feedback {
+  position: absolute;
+  inset: 4% 0 14%;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.game-character-attack-slash {
+  position: absolute;
+  left: 5%;
+  top: 48%;
+  width: 90%;
+  height: 5px;
+  border-radius: 999px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 227, 158, 0.72) 22%, #fff9df 50%, rgba(255, 214, 116, 0.82) 72%, transparent);
+  box-shadow:
+    0 0 7px rgba(255, 248, 216, 0.96),
+    0 0 18px rgba(255, 195, 91, 0.68);
+  transform-origin: center;
+  animation: game-character-attack-slash 400ms cubic-bezier(0.16, 0.78, 0.2, 1) forwards;
+}
+
+.game-character-attack-slash::after {
+  position: absolute;
+  inset: -7px 12% -7px;
+  border-radius: inherit;
+  background: rgba(255, 248, 221, 0.34);
+  filter: blur(7px);
+  content: '';
+}
+
+.game-character-attack-flare {
+  position: absolute;
+  left: 52%;
+  top: 46%;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(255, 252, 225, 0.92), rgba(255, 184, 76, 0.42) 30%, transparent 68%);
+  transform: translate(-50%, -50%) scale(0.2);
+  animation: game-character-attack-flare 440ms ease-out forwards;
+}
+
+.game-character-attack-feedback.is-miss .game-character-attack-flare {
+  background: radial-gradient(circle, rgba(225, 246, 255, 0.76), rgba(116, 188, 226, 0.28) 34%, transparent 70%);
+}
+
+.game-character-miss-label {
+  position: absolute;
+  left: 50%;
+  top: 27%;
+  color: #c8e8f5;
+  font-size: 27px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  opacity: 0;
+  text-shadow:
+    0 2px 2px rgba(4, 22, 32, 0.92),
+    0 0 12px rgba(112, 197, 232, 0.66);
+  animation: game-character-miss-label 760ms cubic-bezier(0.18, 0.82, 0.22, 1) 140ms forwards;
+}
+
+.game-character-health-number.is-damage {
+  color: #ff6b6b;
   text-shadow:
     0 2px 2px rgba(32, 0, 0, 0.92),
     0 0 10px rgba(255, 68, 68, 0.72);
   animation: game-character-damage-number 760ms cubic-bezier(0.2, 0.78, 0.22, 1) forwards;
+}
+
+.game-character-health-number.is-heal {
+  color: #8ff0ad;
+  text-shadow:
+    0 2px 2px rgba(0, 28, 13, 0.9),
+    0 0 12px rgba(77, 231, 132, 0.78);
+  animation: game-character-heal-number 880ms cubic-bezier(0.18, 0.82, 0.22, 1) forwards;
 }
 
 @keyframes game-character-damage-number {
@@ -1853,9 +1943,43 @@ button {
   100% { opacity: 0; transform: translate(-50%, -52px) scale(1.04); }
 }
 
+@keyframes game-character-heal-number {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(0.72); }
+  22% { opacity: 1; transform: translate(-50%, -2px) scale(1.12); }
+  68% { opacity: 1; transform: translate(-50%, -34px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -62px) scale(1.03); }
+}
+
+@keyframes game-character-attack-slash {
+  0% { opacity: 0; transform: translate(-30px, 19px) rotate(-24deg) scaleX(0.08); }
+  34% { opacity: 1; transform: translate(-4px, 3px) rotate(-24deg) scaleX(0.92); }
+  62% { opacity: 1; transform: translate(7px, -4px) rotate(-24deg) scaleX(1); }
+  100% { opacity: 0; transform: translate(28px, -17px) rotate(-24deg) scaleX(1.06); }
+}
+
+@keyframes game-character-attack-flare {
+  0%, 24% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  46% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.78); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.22); }
+}
+
+@keyframes game-character-miss-label {
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(0.76); }
+  22% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  68% { opacity: 1; transform: translate(-50%, -24px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -48px) scale(1.03); }
+}
+
 @keyframes game-character-health-loss {
   0%, 32% { width: var(--health-before); opacity: 1; }
   100% { width: var(--health-after); opacity: 0.42; }
+}
+
+@keyframes game-character-health-gain {
+  0% { opacity: 0; transform: scaleX(0.12); }
+  24% { opacity: 1; transform: scaleX(1); }
+  58% { opacity: 0.96; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
 }
 
 .game-character.fallback-character figcaption {
@@ -2002,16 +2126,30 @@ button {
     transition: none;
   }
 
-  .game-character-damage-number {
-    animation: game-character-damage-number-reduced 420ms ease-out forwards;
+  .game-character-health-number.is-damage,
+  .game-character-health-number.is-heal {
+    animation: game-character-health-number-reduced 420ms ease-out forwards;
   }
 
   .game-character-health-loss {
     animation: game-character-health-loss-reduced 420ms ease-out forwards;
   }
+
+  .game-character-health-gain {
+    animation: game-character-health-gain-reduced 420ms ease-out forwards;
+  }
+
+  .game-character-attack-slash,
+  .game-character-attack-flare {
+    animation: game-character-attack-reduced 240ms ease-out forwards;
+  }
+
+  .game-character-miss-label {
+    animation: game-character-miss-label-reduced 420ms ease-out 100ms forwards;
+  }
 }
 
-@keyframes game-character-damage-number-reduced {
+@keyframes game-character-health-number-reduced {
   0% { opacity: 0; transform: translate(-50%, 0) scale(0.92); }
   30% { opacity: 1; transform: translate(-50%, 0) scale(1); }
   100% { opacity: 0; transform: translate(-50%, 0) scale(1); }
@@ -2020,6 +2158,23 @@ button {
 @keyframes game-character-health-loss-reduced {
   0% { width: var(--health-before); opacity: 1; }
   100% { width: var(--health-before); opacity: 0; }
+}
+
+@keyframes game-character-health-gain-reduced {
+  0% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: none; }
+}
+
+@keyframes game-character-attack-reduced {
+  0% { opacity: 0; }
+  45% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+@keyframes game-character-miss-label-reduced {
+  0% { opacity: 0; transform: translate(-50%, 0); }
+  30% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
 }
 
 .game-stage-empty {

@@ -1,25 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { PresentationStageCharacter, WorldActionMenuTarget } from '../types';
+import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
+import {
+  createCharacterHealthChangeEvent,
+  getHealthPercentage,
+  type CharacterHealthChangeEvent,
+  type CharacterHealthSnapshot,
+} from './characterHealthChange';
 
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
 const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
 
-export interface CharacterDamageEvent {
-  id: string;
-  amount: number;
-  fromPercentage: number;
-  toPercentage: number;
-}
-
-interface CharacterHealthSnapshot {
-  currentHitPoints: number;
-  maxHitPoints: number;
-}
-
 interface GameStageCharacterProps {
   character: PresentationStageCharacter;
-  damageEvent?: CharacterDamageEvent;
+  attackFeedbackEvent?: CharacterAttackFeedbackEvent;
+  healthChangeEvent?: CharacterHealthChangeEvent;
   isSpeaking: boolean;
   isPixelHovered: boolean;
   isActionMenuOpen: boolean;
@@ -29,7 +25,8 @@ interface GameStageCharacterProps {
 
 export function GameStageCharacter({
   character,
-  damageEvent,
+  attackFeedbackEvent,
+  healthChangeEvent,
   isSpeaking,
   isPixelHovered,
   isActionMenuOpen,
@@ -41,33 +38,44 @@ export function GameStageCharacter({
 
   useEffect(() => {
     const figure = figureRef.current;
-    if (!figure || !damageEvent) return;
+    if (!figure || !healthChangeEvent) return;
 
     const visual = figure.querySelector<HTMLElement>(':scope > img, :scope > .game-character-missing');
     const caption = figure.querySelector<HTMLElement>(':scope > figcaption');
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isHealing = healthChangeEvent.kind === 'heal';
     const animations: Animation[] = [];
 
     if (visual && typeof visual.animate === 'function') {
       const baseFilter = getComputedStyle(visual).filter;
-      const damageFilter = baseFilter === 'none'
-        ? 'sepia(0.72) saturate(2.4) brightness(1.22)'
-        : `${baseFilter} sepia(0.72) saturate(2.4) brightness(1.22)`;
+      const effectFilterValue = isHealing
+        ? 'sepia(0.36) saturate(1.9) hue-rotate(72deg) brightness(1.2)'
+        : 'sepia(0.72) saturate(2.4) brightness(1.22)';
+      const effectFilter = baseFilter === 'none'
+        ? effectFilterValue
+        : `${baseFilter} ${effectFilterValue}`;
       animations.push(visual.animate(
         prefersReducedMotion
           ? [
               { filter: baseFilter },
-              { filter: damageFilter, offset: 0.34 },
+              { filter: effectFilter, offset: 0.34 },
               { filter: baseFilter },
             ]
+          : isHealing
+            ? [
+                { filter: baseFilter, translate: '0 0' },
+                { filter: effectFilter, translate: '0 -7px', offset: 0.3 },
+                { filter: effectFilter, translate: '0 -3px', offset: 0.62 },
+                { filter: baseFilter, translate: '0 0' },
+              ]
           : [
               { filter: baseFilter, translate: '0 0' },
-              { filter: damageFilter, translate: '-9px 0', offset: 0.2 },
-              { filter: damageFilter, translate: '7px 0', offset: 0.38 },
-              { filter: damageFilter, translate: '-4px 0', offset: 0.56 },
+              { filter: effectFilter, translate: '-9px 0', offset: 0.2 },
+              { filter: effectFilter, translate: '7px 0', offset: 0.38 },
+              { filter: effectFilter, translate: '-4px 0', offset: 0.56 },
               { filter: baseFilter, translate: '0 0' },
             ],
-        { duration: prefersReducedMotion ? 280 : 380, easing: 'ease-out' },
+        { duration: prefersReducedMotion ? 280 : isHealing ? 520 : 380, easing: 'ease-out' },
       ));
     }
 
@@ -75,13 +83,34 @@ export function GameStageCharacter({
       const styles = getComputedStyle(caption);
       animations.push(caption.animate([
         { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor },
-        { backgroundColor: 'rgba(78, 18, 22, 0.88)', borderColor: 'rgba(255, 119, 119, 0.82)', offset: 0.3 },
+        {
+          backgroundColor: isHealing ? 'rgba(13, 66, 44, 0.88)' : 'rgba(78, 18, 22, 0.88)',
+          borderColor: isHealing ? 'rgba(111, 239, 170, 0.82)' : 'rgba(255, 119, 119, 0.82)',
+          offset: 0.3,
+        },
         { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor },
-      ], { duration: 460, easing: 'ease-out' }));
+      ], { duration: isHealing ? 560 : 460, easing: 'ease-out' }));
     }
 
     return () => animations.forEach((animation) => animation.cancel());
-  }, [damageEvent]);
+  }, [healthChangeEvent]);
+
+  useEffect(() => {
+    const figure = figureRef.current;
+    if (!figure || !attackFeedbackEvent || attackFeedbackEvent.hit) return;
+
+    const visual = figure.querySelector<HTMLElement>(':scope > img, :scope > .game-character-missing');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!visual || prefersReducedMotion || typeof visual.animate !== 'function') return;
+
+    const animation = visual.animate([
+      { translate: '0 0' },
+      { translate: '11px -1px', offset: 0.3 },
+      { translate: '-3px 0', offset: 0.64 },
+      { translate: '0 0' },
+    ], { duration: 460, easing: 'cubic-bezier(0.2, 0.78, 0.24, 1)' });
+    return () => animation.cancel();
+  }, [attackFeedbackEvent]);
 
   const displayedCurrentHitPoints = character.vitalState === 'dead'
     ? 0
@@ -139,9 +168,24 @@ export function GameStageCharacter({
       ) : (
         <div className="game-character-missing" />
       )}
-      {damageEvent ? (
-        <span className="game-character-damage-number" key={damageEvent.id} aria-hidden="true">
-          -{damageEvent.amount}
+      {attackFeedbackEvent ? (
+        <span
+          className={`game-character-attack-feedback is-${attackFeedbackEvent.hit ? 'hit' : 'miss'}`}
+          key={attackFeedbackEvent.id}
+          aria-hidden="true"
+        >
+          <span className="game-character-attack-slash" />
+          <span className="game-character-attack-flare" />
+          {attackFeedbackEvent.hit ? null : <span className="game-character-miss-label">MISS</span>}
+        </span>
+      ) : null}
+      {healthChangeEvent ? (
+        <span
+          className={`game-character-health-number is-${healthChangeEvent.kind}`}
+          key={healthChangeEvent.id}
+          aria-hidden="true"
+        >
+          {healthChangeEvent.kind === 'heal' ? '+' : '-'}{healthChangeEvent.amount}
         </span>
       ) : null}
       <figcaption className={[
@@ -174,13 +218,23 @@ export function GameStageCharacter({
             aria-valuenow={displayedCurrentHitPoints}
             aria-valuetext={`${displayedCurrentHitPoints}/${character.health.maxHitPoints}`}
           >
-            {damageEvent ? (
+            {healthChangeEvent?.kind === 'damage' ? (
               <span
                 className="game-character-health-loss"
-                key={damageEvent.id}
+                key={healthChangeEvent.id}
                 style={{
-                  '--health-before': `${damageEvent.fromPercentage}%`,
-                  '--health-after': `${damageEvent.toPercentage}%`,
+                  '--health-before': `${healthChangeEvent.fromPercentage}%`,
+                  '--health-after': `${healthChangeEvent.toPercentage}%`,
+                } as CSSProperties}
+              />
+            ) : null}
+            {healthChangeEvent?.kind === 'heal' ? (
+              <span
+                className="game-character-health-gain"
+                key={healthChangeEvent.id}
+                style={{
+                  '--health-before': `${healthChangeEvent.fromPercentage}%`,
+                  '--health-after': `${healthChangeEvent.toPercentage}%`,
                 } as CSSProperties}
               />
             ) : null}
@@ -195,7 +249,7 @@ export function GameStageCharacter({
   );
 }
 
-export function useCharacterDamageFeedback(
+export function useCharacterHealthFeedback(
   sequenceKey: string,
   characters: PresentationStageCharacter[],
 ) {
@@ -204,7 +258,7 @@ export function useCharacterDamageFeedback(
     healthByEntity: Map<string, CharacterHealthSnapshot>;
   } | null>(null);
   const eventCounterRef = useRef(0);
-  const [eventsByEntity, setEventsByEntity] = useState<Record<string, CharacterDamageEvent>>({});
+  const [eventsByEntity, setEventsByEntity] = useState<Record<string, CharacterHealthChangeEvent>>({});
   const [announcement, setAnnouncement] = useState<{ id: string; text: string } | null>(null);
 
   useEffect(() => {
@@ -226,20 +280,23 @@ export function useCharacterDamageFeedback(
       return;
     }
 
-    const detectedEvents: Array<CharacterDamageEvent & { entityId: string; name: string }> = [];
+    const detectedEvents: Array<CharacterHealthChangeEvent & { entityId: string; name: string }> = [];
     for (const character of characters) {
       if (!character.health) continue;
       const previousHealth = previousSnapshot.healthByEntity.get(character.entityId);
-      if (!previousHealth || character.health.currentHitPoints >= previousHealth.currentHitPoints) continue;
+      if (!previousHealth || character.health.currentHitPoints === previousHealth.currentHitPoints) continue;
 
       eventCounterRef.current += 1;
+      const event = createCharacterHealthChangeEvent(
+        `${character.entityId}:${eventCounterRef.current}`,
+        previousHealth,
+        character.health,
+      );
+      if (!event) continue;
       detectedEvents.push({
-        id: `${character.entityId}:${eventCounterRef.current}`,
+        ...event,
         entityId: character.entityId,
         name: character.name,
-        amount: previousHealth.currentHitPoints - character.health.currentHitPoints,
-        fromPercentage: getHealthPercentage(previousHealth.currentHitPoints, previousHealth.maxHitPoints),
-        toPercentage: getHealthPercentage(character.health.currentHitPoints, character.health.maxHitPoints),
       });
     }
 
@@ -262,7 +319,9 @@ export function useCharacterDamageFeedback(
     if (detectedEvents.length) {
       setAnnouncement({
         id: detectedEvents.map((event) => event.id).join('|'),
-        text: detectedEvents.map((event) => `${event.name}受到${event.amount}点伤害`).join('，'),
+        text: detectedEvents.map((event) => event.kind === 'heal'
+          ? `${event.name}恢复${event.amount}点生命`
+          : `${event.name}受到${event.amount}点伤害`).join('，'),
       });
     }
   }, [characters, sequenceKey]);
@@ -270,19 +329,11 @@ export function useCharacterDamageFeedback(
   return { eventsByEntity, announcement };
 }
 
-function getHealthPercentage(currentHitPoints: number, maxHitPoints: number) {
-  return clamp((currentHitPoints / maxHitPoints) * 100, 0, 100);
-}
-
 function getHealthTone(currentHitPoints: number, maxHitPoints: number) {
   const ratio = currentHitPoints / maxHitPoints;
   if (ratio <= 0.25) return 'is-critical';
   if (ratio <= 0.5) return 'is-wounded';
   return 'is-healthy';
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function getVitalStatus(vitalState: PresentationStageCharacter['vitalState']) {

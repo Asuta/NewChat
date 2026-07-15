@@ -12,6 +12,7 @@ import type {
   WorldMapState,
   WorldOverview,
 } from '../types';
+import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { ChatThread } from './ChatThread';
 import { GameStageCanvas } from './GameStageCanvas';
 
@@ -30,6 +31,7 @@ interface GameViewProps {
   isInventoryLoading: boolean;
   isWorldActionLoading: boolean;
   conversation: Conversation;
+  attackFeedback: CharacterAttackFeedbackEvent | null;
   error: string | null;
   fixedContext: FixedContext;
   onSend: (content: string) => void;
@@ -56,6 +58,7 @@ export function GameView({
   isInventoryLoading,
   isWorldActionLoading,
   conversation,
+  attackFeedback,
   error,
   fixedContext,
   onSend,
@@ -79,6 +82,7 @@ export function GameView({
         worldMap={worldMap}
         dialogueKey={conversation.id}
         dialogueEntries={dialogueEntries}
+        attackFeedback={attackFeedback}
         actionMenuEntityId={actionMenuEntityId}
         isLoading={isLoading}
         isWorldMapLoading={isWorldMapLoading}
