@@ -21,6 +21,7 @@ interface GameStageCharacterProps {
   isActionMenuOpen: boolean;
   isItemTargeting?: boolean;
   isValidItemTarget?: boolean;
+  itemTargetingKind?: 'use' | 'attack';
   onAlphaHoverChange: (entityId: string | null) => void;
   onItemTarget?: (entityId: string) => void;
   onCancelItemTargeting?: () => void;
@@ -36,6 +37,7 @@ export function GameStageCharacter({
   isActionMenuOpen,
   isItemTargeting = false,
   isValidItemTarget = false,
+  itemTargetingKind = 'use',
   onAlphaHoverChange,
   onItemTarget,
   onCancelItemTargeting,
@@ -173,6 +175,7 @@ export function GameStageCharacter({
         isItemTargeting ? 'item-targeting' : '',
         isItemTargeting && isValidItemTarget ? 'item-target-valid' : '',
         isItemTargeting && !isValidItemTarget ? 'item-target-invalid' : '',
+        isItemTargeting && isValidItemTarget && itemTargetingKind === 'attack' ? 'item-target-attack' : '',
         `is-${character.vitalState}`,
       ].filter(Boolean).join(' ')}
       ref={figureRef}

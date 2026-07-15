@@ -2343,6 +2343,72 @@ button {
   transform: translateY(calc(var(--character-vital-offset) - 7px)) scale(1.04);
 }
 
+.item-targeting-banner.is-attack {
+  border-color: rgba(255, 105, 105, 0.68);
+  background: linear-gradient(110deg, rgba(65, 13, 19, 0.96), rgba(28, 8, 14, 0.95));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38), 0 0 22px rgba(255, 68, 84, 0.18);
+}
+
+.item-targeting-banner.is-attack .item-targeting-banner-icon {
+  border-color: rgba(255, 126, 126, 0.48);
+  background: rgba(151, 30, 43, 0.3);
+  color: #ffb1b1;
+}
+
+.item-targeting-banner.is-attack small {
+  color: rgba(255, 218, 218, 0.72);
+}
+
+.item-targeting-cursor.is-attack {
+  color: #ff8686;
+}
+
+.item-targeting-cursor.is-attack::before {
+  border-color: rgba(255, 119, 119, 0.68);
+  background: rgba(89, 8, 20, 0.3);
+  box-shadow: 0 0 17px rgba(255, 59, 78, 0.38);
+}
+
+.item-targeting-cursor.is-attack > svg:last-child {
+  background: #52101a;
+  color: #ffd1d1;
+}
+
+.game-character.item-target-valid.item-target-attack > img,
+.game-character.item-target-valid.item-target-attack > .game-character-missing {
+  filter:
+    var(--character-vital-filter)
+    brightness(1.12)
+    saturate(1.16)
+    drop-shadow(0 0 12px rgba(255, 106, 106, 0.92))
+    drop-shadow(0 0 30px rgba(231, 53, 70, 0.56))
+    drop-shadow(0 26px 28px rgba(0, 0, 0, 0.42));
+}
+
+.game-character.item-target-valid.item-target-attack > figcaption {
+  border-color: rgba(255, 119, 119, 0.82);
+  background: rgba(74, 13, 21, 0.86);
+  color: #fff0f0;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 20px rgba(238, 62, 79, 0.38);
+  animation-name: weapon-attack-target-caption-pulse;
+}
+
+.game-character.item-target-valid.item-target-attack .game-character-health-track {
+  border-color: rgba(255, 135, 135, 0.82);
+  box-shadow: 0 0 9px rgba(238, 62, 79, 0.5);
+}
+
+.game-character.item-target-valid.item-target-attack.pixel-hovered > img,
+.game-character.item-target-valid.item-target-attack:is(:hover, :has(> figcaption:hover)) > .game-character-missing {
+  filter:
+    var(--character-vital-filter)
+    brightness(1.2)
+    saturate(1.2)
+    drop-shadow(0 0 16px rgba(255, 149, 149, 1))
+    drop-shadow(0 0 38px rgba(240, 54, 73, 0.72))
+    drop-shadow(0 28px 30px rgba(0, 0, 0, 0.44));
+}
+
 @keyframes item-target-caption-pulse {
   0%, 100% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32), 0 0 12px rgba(63, 221, 141, 0.22); }
   50% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32), 0 0 24px rgba(83, 241, 161, 0.5); }
@@ -2352,6 +2418,11 @@ button {
   .game-character.item-target-valid > figcaption {
     animation: none;
   }
+}
+
+@keyframes weapon-attack-target-caption-pulse {
+  0%, 100% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 13px rgba(238, 62, 79, 0.28); }
+  50% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 26px rgba(255, 82, 98, 0.62); }
 }
 
 .game-stage-empty {

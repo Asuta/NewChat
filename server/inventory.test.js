@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const WORLD_DB_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'worldDb.js')).href;
 const INVENTORY_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'inventory.js')).href;
+const WORLD_ACTIONS_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'worldActions.js')).href;
 const WORLD_AGENT_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'worldAgent.js')).href;
 
 test('inventory reads ownership as canonical state and migrates legacy item ids', () => {
@@ -78,6 +79,54 @@ test('equipped items must be unequipped before drop and can be picked up again',
   assert.ok(result.dropped.inventory.nearbyItems.some((item) => item.id === 'item_iron_sword'));
   assert.ok(result.pickedUp.inventory.items.some((item) => item.id === 'item_iron_sword'));
   assert.ok(!result.pickedUp.inventory.nearbyItems.some((item) => item.id === 'item_iron_sword'));
+});
+
+test('weapon attacks reject a weapon that is no longer equipped', () => {
+  const result = runIsolatedInventoryScript(`
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const availableBefore = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_elena' }).actions;
+    inventoryApi.executeInventoryAction({ kind: 'item.unequip', itemId: 'item_iron_sword' });
+    let error = '';
+    try {
+      worldActions.executeWorldAction({
+        kind: 'attack.weapon',
+        actorId: 'player',
+        targetId: 'character_elena',
+        weaponId: 'item_iron_sword',
+      });
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    }
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ availableBefore, error }));
+  `);
+
+  assert.equal(result.availableBefore[0]?.kind, 'attack.weapon');
+  assert.match(result.error, /不能执行/);
+});
+
+test('weapon attacks accept the same mechanical weapon classification as inventory equip', () => {
+  const result = runIsolatedInventoryScript(`
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const identity = worldDb.getComponent('item_iron_sword', 'identity') || {};
+    worldDb.upsertComponent('item_iron_sword', 'identity', { ...identity, role: 'relic' });
+    const actions = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_elena' }).actions;
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ actions }));
+  `);
+
+  assert.equal(result.actions[0]?.kind, 'attack.weapon');
+  assert.equal(result.actions[0]?.weaponId, 'item_iron_sword');
 });
 
 test('dropping and picking up a stack preserves its quantity', () => {

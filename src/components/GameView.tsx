@@ -4,11 +4,11 @@ import type {
   ChatMessage,
   Conversation,
   FixedContext,
-  InventoryAction,
   PlayerInventory,
   PresentationStage,
   StageDialogueEntry,
   WorldActionMenuTarget,
+  WorldAction,
   WorldMapState,
   WorldOverview,
 } from '../types';
@@ -38,7 +38,7 @@ interface GameViewProps {
   onStop: () => void;
   onEnterScene: (sceneId: string) => void;
   onInventoryOpenChange: (open: boolean) => void;
-  onExecuteInventoryAction: (action: InventoryAction) => void | Promise<void>;
+  onExecuteInventoryAction: (action: WorldAction) => void | Promise<void>;
   onCloseEntityActions: () => void;
   onOpenEntityActions: (target: WorldActionMenuTarget) => void;
   onOpenSettings: () => void;

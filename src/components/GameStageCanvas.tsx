@@ -11,15 +11,17 @@ import {
   MapPinned,
   Maximize2,
   Minimize2,
+  Sword,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type {
   InventoryItem,
+  ItemTargetingAction,
   PresentationStage,
   StageDialogueEntry,
-  InventoryAction,
   PlayerInventory,
+  WorldAction,
   WorldActionMenuTarget,
   WorldMapState,
   WorldOverview,
@@ -27,6 +29,7 @@ import type {
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { GameStageCharacter, useCharacterHealthFeedback } from './GameStageCharacter';
 import { InventoryPanel } from './InventoryPanel';
+import { createWorldActionForTarget, refreshItemTargetingAction } from './inventoryTargeting';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
   countStageMarkdownCharacters,
@@ -61,13 +64,13 @@ interface GameStageCanvasProps {
   actionComposer?: ReactNode;
   onEnterScene: (sceneId: string) => void;
   onInventoryOpenChange: (open: boolean) => void;
-  onExecuteInventoryAction: (action: InventoryAction) => void | Promise<void>;
+  onExecuteInventoryAction: (action: WorldAction) => void | Promise<void>;
   onCloseEntityActions?: () => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
 
 interface ItemTargetingState {
-  action: InventoryAction;
+  action: ItemTargetingAction;
   item: InventoryItem;
 }
 
@@ -128,10 +131,10 @@ export function GameStageCanvas({
     [visibleCharacters],
   );
   const currentItemTargetingAction = useMemo(() => {
-    if (!itemTargeting || !inventory) return null;
-    const currentItem = inventory.items.find((item) => item.id === itemTargeting.item.id);
-    return currentItem?.actions.find((action) => action.id === itemTargeting.action.id) || null;
+    if (!itemTargeting) return null;
+    return refreshItemTargetingAction(inventory, itemTargeting.item.id, itemTargeting.action);
   }, [inventory, itemTargeting]);
+  const isWeaponAttackTargeting = currentItemTargetingAction?.kind === 'attack.weapon';
   const itemTargetIdSet = useMemo(() => {
     if (!currentItemTargetingAction) return new Set<string>();
     const visibleNpcTargetIdSet = new Set(visibleNpcTargetIds);
@@ -219,8 +222,12 @@ export function GameStageCanvas({
     setItemTargetingPointer(null);
   }
 
-  function beginItemTargeting(action: InventoryAction, item: InventoryItem) {
-    if (!action.requiresTarget || !action.validTargetIds.some((targetId) => visibleNpcTargetIds.includes(targetId))) {
+  function beginItemTargeting(action: ItemTargetingAction, item: InventoryItem) {
+    if (
+      action.disabledReason
+      || !action.requiresTarget
+      || !action.validTargetIds.some((targetId) => visibleNpcTargetIds.includes(targetId))
+    ) {
       return;
     }
     onCloseEntityActions?.();
@@ -233,7 +240,8 @@ export function GameStageCanvas({
 
   function executeItemOnTarget(targetId: string) {
     if (!currentItemTargetingAction || !itemTargetIdSet.has(targetId)) return;
-    const action = { ...currentItemTargetingAction, targetId };
+    const action = createWorldActionForTarget(inventory, currentItemTargetingAction, targetId);
+    if (!action) return;
     cancelItemTargeting();
     void onExecuteInventoryAction(action);
   }
@@ -277,6 +285,7 @@ export function GameStageCanvas({
             stage?.backgroundUrl ? 'has-background' : '',
             actionComposer ? 'has-action-composer' : '',
             itemTargeting ? 'item-targeting-active' : '',
+            isWeaponAttackTargeting ? 'item-targeting-attack' : '',
           ].filter(Boolean).join(' ')}
           aria-label="游戏表现层"
           onContextMenu={itemTargeting ? (event) => {
@@ -295,11 +304,25 @@ export function GameStageCanvas({
           <div className="game-stage-overlay" />
 
           {itemTargeting ? (
-            <div className="item-targeting-banner" role="status" aria-live="polite">
-              <span className="item-targeting-banner-icon"><FlaskConical size={18} /></span>
+            <div
+              className={`item-targeting-banner ${isWeaponAttackTargeting ? 'is-attack' : ''}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="item-targeting-banner-icon">
+                {isWeaponAttackTargeting ? <Sword size={18} /> : <FlaskConical size={18} />}
+              </span>
               <span>
-                <strong>正在使用 {itemTargeting.item.name}</strong>
-                <small>点击发光的 NPC 立绘进行使用</small>
+                <strong>
+                  {isWeaponAttackTargeting
+                    ? `准备使用 ${itemTargeting.item.name} 攻击`
+                    : `正在使用 ${itemTargeting.item.name}`}
+                </strong>
+                <small>
+                  {isWeaponAttackTargeting
+                    ? '点击红色高亮的 NPC 立绘发动攻击'
+                    : '点击发光的 NPC 立绘进行使用'}
+                </small>
               </span>
               <kbd>Esc 取消</kbd>
             </div>
@@ -317,12 +340,12 @@ export function GameStageCanvas({
 
           {itemTargeting && itemTargetingPointer ? (
             <span
-              className="item-targeting-cursor"
+              className={`item-targeting-cursor ${isWeaponAttackTargeting ? 'is-attack' : ''}`}
               style={{ left: itemTargetingPointer.left, top: itemTargetingPointer.top }}
               aria-hidden="true"
             >
               <Crosshair size={31} />
-              <FlaskConical size={13} />
+              {isWeaponAttackTargeting ? <Sword size={13} /> : <FlaskConical size={13} />}
             </span>
           ) : null}
 
@@ -365,6 +388,7 @@ export function GameStageCanvas({
                 isActionMenuOpen={!itemTargeting && character.entityId === actionMenuEntityId}
                 isItemTargeting={Boolean(itemTargeting)}
                 isValidItemTarget={itemTargetIdSet.has(character.entityId)}
+                itemTargetingKind={isWeaponAttackTargeting ? 'attack' : 'use'}
                 onAlphaHoverChange={updateAlphaHoveredEntity}
                 onItemTarget={executeItemOnTarget}
                 onCancelItemTargeting={cancelItemTargeting}

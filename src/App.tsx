@@ -36,7 +36,6 @@ import type {
   EntityBundle,
   FixedContext,
   HealthState,
-  InventoryAction,
   ModelRequestLog,
   ModelId,
   PresentationStage,
@@ -1133,7 +1132,7 @@ export default function App() {
       const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
       setWorld(data.world);
       if (data.inventory) setInventory(data.inventory);
-      if (action.kind.startsWith('item.')) setIsInventoryOpen(false);
+      if (action.kind.startsWith('item.') || action.kind === 'attack.weapon') setIsInventoryOpen(false);
       updateActiveConversation((conversation) => ({
         ...conversation,
         updatedAt: Date.now(),
@@ -1231,7 +1230,7 @@ export default function App() {
             onStop={stopStreaming}
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
-            onExecuteInventoryAction={(action: InventoryAction) => executeWorldAction(action)}
+            onExecuteInventoryAction={(action: WorldAction) => executeWorldAction(action)}
             onCloseEntityActions={closeWorldActionMenu}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}

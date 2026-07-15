@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node server/clear-dev-port.js && concurrently -k -n server,web -c cyan,blue \"pnpm run server\" \"node server/wait-for-dev-port.js && vite --host 127.0.0.1\"",
     "server": "node server/index.js",
-    "test": "tsx --test server/worldTime.test.js server/presentationState.test.js server/inventory.test.js src/components/sceneMapLayout.test.js src/components/characterHealthChange.test.js src/components/characterAttackFeedback.test.js src/components/stageCharacterSelection.test.js",
+    "test": "tsx --test server/worldTime.test.js server/presentationState.test.js server/inventory.test.js src/components/sceneMapLayout.test.js src/components/characterHealthChange.test.js src/components/characterAttackFeedback.test.js src/components/stageCharacterSelection.test.js src/components/inventoryTargeting.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

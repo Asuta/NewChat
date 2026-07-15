@@ -256,6 +256,20 @@ export interface AttackWorldAction {
   weaponName: string;
 }
 
+export interface WeaponAttackTargetingAction {
+  id: string;
+  kind: 'attack.weapon';
+  label: string;
+  actorId: string;
+  weaponId: string;
+  weaponName: string;
+  targetMode: 'character';
+  requiresTarget: true;
+  validTargetIds: string[];
+  disabledReason: string | null;
+  danger: true;
+}
+
 export type InventoryActionKind =
   | 'item.equip'
   | 'item.unequip'
@@ -277,6 +291,8 @@ export interface InventoryAction {
   disabledReason: string | null;
   danger: boolean;
 }
+
+export type ItemTargetingAction = InventoryAction | WeaponAttackTargetingAction;
 
 export interface InventoryTarget {
   id: string;

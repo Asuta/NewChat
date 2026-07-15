@@ -54,12 +54,17 @@ function getWeaponAttackAction({ actorId = 'player', targetId = '', weaponId = '
   if (targetStatus.canAct === false || Number(targetStats.currentHitPoints ?? 1) <= 0) return null;
 
   const inventory = getComponent(actorId, 'inventory') || {};
-  const equippedWeaponId = weaponId || String(inventory.equippedWeaponId || '');
+  const equippedWeaponId = String(inventory.equippedWeaponId || '');
+  if (weaponId && weaponId !== equippedWeaponId) return null;
   if (!equippedWeaponId || !ownsItem(actorId, equippedWeaponId)) return null;
 
   const weapon = getEntity(equippedWeaponId);
   const weaponIdentity = getComponent(equippedWeaponId, 'identity') || {};
-  if (!weapon || weapon.kind !== 'item' || weaponIdentity.role !== 'weapon') return null;
+  const weaponRules = getComponent(equippedWeaponId, 'item') || {};
+  const isWeapon = weaponIdentity.role === 'weapon'
+    || weaponRules.category === 'weapon'
+    || weaponRules.equipSlot === 'weapon';
+  if (!weapon || weapon.kind !== 'item' || !isWeapon) return null;
 
   const weaponName = weapon.name || equippedWeaponId;
   return {

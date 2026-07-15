@@ -9,13 +9,15 @@ import {
   PackageOpen,
   ScrollText,
   Sword,
+  Swords,
   Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { InventoryAction, InventoryItem, PlayerInventory } from '../types';
+import type { InventoryAction, InventoryItem, ItemTargetingAction, PlayerInventory } from '../types';
+import { createWeaponAttackTargetingAction } from './inventoryTargeting';
 
 type InventoryFilter = 'all' | 'weapon' | 'consumable' | 'quest' | 'clue' | 'tool' | 'nearby';
 
@@ -24,7 +26,7 @@ interface InventoryPanelProps {
   isLoading: boolean;
   isDisabled: boolean;
   visibleNpcTargetIds: string[];
-  onBeginTargeting: (action: InventoryAction, item: InventoryItem) => void;
+  onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
   onExecuteAction: (action: InventoryAction) => void | Promise<void>;
 }
 
@@ -325,12 +327,16 @@ function InventoryActionMenu({
   targetIds: Record<string, string>;
   visibleNpcTargetIds: string[];
   onClose: () => void;
-  onBeginTargeting: (action: InventoryAction, item: InventoryItem) => void;
+  onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
   onTargetChange: (actionId: string, targetId: string) => void;
   onExecuteAction: (action: InventoryAction) => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const visibleNpcTargetIdSet = useMemo(() => new Set(visibleNpcTargetIds), [visibleNpcTargetIds]);
+  const weaponAttackAction = createWeaponAttackTargetingAction(inventory, item);
+  const menuActions: ItemTargetingAction[] = weaponAttackAction
+    ? [weaponAttackAction, ...item.actions]
+    : item.actions;
 
   useEffect(() => {
     menuRef.current?.focus();
@@ -362,7 +368,7 @@ function InventoryActionMenu({
         {item.identity.description || '这件道具还没有详细描述。'}
       </p>
       <div className="inventory-popover-actions">
-        {item.actions.map((action) => {
+        {menuActions.map((action) => {
           const validTargets = inventory?.targets.filter((target) => action.validTargetIds.includes(target.id)) || [];
           const visibleNpcTargets = validTargets.filter((target) => visibleNpcTargetIdSet.has(target.id));
           const cachedTargetId = targetIds[action.id];
@@ -373,7 +379,9 @@ function InventoryActionMenu({
               : '';
           const needsSelector = !action.requiresTarget && action.targetMode !== 'none' && validTargets.length > 0;
           const targetingUnavailableReason = action.requiresTarget && !visibleNpcTargets.length
-            ? '当前场景没有可用的 NPC 目标。'
+            ? action.kind === 'attack.weapon'
+              ? '当前场景没有可攻击的 NPC 目标。'
+              : '当前场景没有可用的 NPC 目标。'
             : null;
           const disabledReason = targetingUnavailableReason || action.disabledReason;
           return (
@@ -401,7 +409,7 @@ function InventoryActionMenu({
                 disabled={isDisabled || Boolean(disabledReason)}
                 title={disabledReason || undefined}
                 onClick={() => {
-                  if (action.requiresTarget) {
+                  if (action.kind === 'attack.weapon' || action.requiresTarget) {
                     onBeginTargeting(action, item);
                     return;
                   }
@@ -494,7 +502,8 @@ function categoryLabel(category: string) {
   return '工具';
 }
 
-function actionIcon(kind: InventoryAction['kind']) {
+function actionIcon(kind: ItemTargetingAction['kind']) {
+  if (kind === 'attack.weapon') return <Swords size={15} />;
   if (kind === 'item.pickup' || kind === 'item.drop') return <MapPin size={15} />;
   if (kind === 'item.use') return <HeartPulse size={15} />;
   if (kind === 'item.equip' || kind === 'item.unequip') return <Sword size={15} />;
