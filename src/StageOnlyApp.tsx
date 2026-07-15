@@ -1,3 +1,5 @@
+import App from './App';
+
 export function StageOnlyApp() {
-  return null;
+  return <App stageOnly />;
 }

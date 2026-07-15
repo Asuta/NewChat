@@ -17,6 +17,7 @@ import { ChatThread } from './ChatThread';
 import { GameStageCanvas } from './GameStageCanvas';
 
 interface GameViewProps {
+  standalone?: boolean;
   stage: PresentationStage | null;
   world: WorldOverview | null;
   worldMap: WorldMapState | null;
@@ -45,6 +46,7 @@ interface GameViewProps {
 }
 
 export function GameView({
+  standalone = false,
   stage,
   world,
   worldMap,
@@ -77,7 +79,7 @@ export function GameView({
   );
 
   return (
-    <div className="game-view">
+    <div className={`game-view${standalone ? ' stage-only-game-view' : ''}`}>
       <GameStageCanvas
         stage={stage}
         world={world}
@@ -108,12 +110,14 @@ export function GameView({
         onOpenEntityActions={onOpenEntityActions}
       />
 
-      <ChatThread
-        conversation={conversation}
-        error={error}
-        fixedContext={fixedContext}
-        onOpenSettings={onOpenSettings}
-      />
+      {standalone ? null : (
+        <ChatThread
+          conversation={conversation}
+          error={error}
+          fixedContext={fixedContext}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
     </div>
   );
 }

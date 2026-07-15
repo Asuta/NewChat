@@ -3792,6 +3792,7 @@ button {
 .stage-only-root {
   --game-stage-base-width: 1280px;
   --game-stage-base-height: 720px;
+  --game-stage-chat-min-height: 0px;
   position: fixed;
   inset: 0;
   display: grid;
@@ -3799,7 +3800,16 @@ button {
   height: 100vh;
   overflow: hidden;
   place-items: center;
-  background: transparent;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(42, 72, 108, 0.26), transparent 54%),
+    #050912;
+}
+
+.stage-only-game-view {
+  --game-stage-chat-min-height: 0px;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .stage-only-root .game-stage-frame {

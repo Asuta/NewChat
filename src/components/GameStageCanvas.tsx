@@ -898,10 +898,11 @@ function useGameStageScale() {
       const frameTop = frame.getBoundingClientRect().top;
       const widthBudget = Math.max(0, frame.clientWidth - paddingX);
       const frameIsFullscreen = document.fullscreenElement === frame;
+      const isStandaloneStage = frame.closest('.stage-only-root') !== null;
       const heightBudget = frameIsFullscreen
         ? Math.max(0, frame.clientHeight - paddingY)
         : Math.max(0, window.innerHeight - frameTop - chatMinHeight - paddingY);
-      const maximumScale = frameIsFullscreen ? Number.POSITIVE_INFINITY : 1;
+      const maximumScale = frameIsFullscreen || isStandaloneStage ? Number.POSITIVE_INFINITY : 1;
       const nextScale = clamp(
         Math.min(maximumScale, widthBudget / GAME_STAGE_BASE_WIDTH, heightBudget / GAME_STAGE_BASE_HEIGHT),
         GAME_STAGE_MIN_SCALE,

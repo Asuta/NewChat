@@ -76,7 +76,11 @@ interface QueuedMessage {
 
 type AgentTaskRole = 'user' | 'system';
 
-export default function App() {
+interface AppProps {
+  stageOnly?: boolean;
+}
+
+export default function App({ stageOnly = false }: AppProps) {
   const [conversations, setConversations] = useState<Conversation[]>(getInitialConversations);
   const [activeId, setActiveId] = useState(() => conversations[0]?.id || '');
   const [health, setHealth] = useState<HealthState | null>(null);
@@ -1163,6 +1167,48 @@ export default function App() {
 
   if (!activeConversation) {
     return null;
+  }
+
+  if (stageOnly) {
+    return (
+      <>
+        <main className="stage-only-root" aria-label="全屏游戏模式">
+          <GameView
+            standalone
+            stage={presentationStage}
+            world={world}
+            worldMap={worldMap}
+            actionMenuEntityId={worldActionMenu?.entityId || null}
+            isLoading={isPresentationLoading}
+            isStreaming={isStreaming}
+            isWorldMapLoading={isWorldMapLoading}
+            isNavigationDisabled={isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy}
+            isInputDisabled={isCompressing || isFixedContextSaving || isSaveDataBusy}
+            inventory={inventory}
+            isInventoryOpen={isInventoryOpen}
+            isInventoryLoading={isInventoryLoading}
+            isWorldActionLoading={isWorldLoading}
+            conversation={activeConversation}
+            attackFeedback={characterAttackFeedback}
+            error={error}
+            fixedContext={fixedContext}
+            onSend={sendMessage}
+            onStop={stopStreaming}
+            onEnterScene={enterWorldScene}
+            onInventoryOpenChange={setIsInventoryOpen}
+            onExecuteInventoryAction={(action: WorldAction) => executeWorldAction(action)}
+            onCloseEntityActions={closeWorldActionMenu}
+            onOpenEntityActions={openWorldActionMenu}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        </main>
+        <WorldActionMenu
+          menu={worldActionMenu}
+          onClose={closeWorldActionMenu}
+          onExecuteWorldAction={executeWorldAction}
+        />
+      </>
+    );
   }
 
   return (
