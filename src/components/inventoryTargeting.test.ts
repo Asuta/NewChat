@@ -11,17 +11,15 @@ const sword: InventoryItem = {
   id: 'item_sword',
   name: '测试铁剑',
   quantity: 1,
-  equipped: true,
   category: 'weapon',
   identity: { role: 'weapon' },
-  rules: { category: 'weapon', stackable: false, droppable: true, equipSlot: 'weapon', use: null },
+  rules: { category: 'weapon', stackable: false, droppable: true, equipSlot: null, use: null },
   actions: [],
 };
 
 const inventory: PlayerInventory = {
   actor: { id: 'player', name: '玩家' },
   gold: 0,
-  equippedWeaponId: sword.id,
   totalQuantity: 1,
   items: [sword],
   nearbyItems: [],
@@ -33,7 +31,7 @@ const inventory: PlayerInventory = {
   ],
 };
 
-test('equipped weapon exposes attack targeting for active NPCs only', () => {
+test('owned weapon exposes attack targeting for active NPCs only', () => {
   const action = createWeaponAttackTargetingAction(inventory, sword);
 
   assert.ok(action);
@@ -42,16 +40,18 @@ test('equipped weapon exposes attack targeting for active NPCs only', () => {
   assert.equal(action.disabledReason, null);
 });
 
-test('weapon attack targeting disappears as soon as the weapon is unequipped', () => {
+test('weapon attack targeting disappears as soon as ownership changes', () => {
   const action = createWeaponAttackTargetingAction(inventory, sword);
   assert.ok(action);
 
-  const unequippedInventory = {
+  const transferredInventory = {
     ...inventory,
-    equippedWeaponId: null,
-    items: [{ ...sword, equipped: false }],
+    totalQuantity: 0,
+    items: [],
+    nearbyItems: [sword],
   };
-  assert.equal(refreshItemTargetingAction(unequippedInventory, sword.id, action), null);
+  assert.equal(refreshItemTargetingAction(transferredInventory, sword.id, action), null);
+  assert.equal(createWeaponAttackTargetingAction(transferredInventory, sword), null);
 });
 
 test('weapon attack targeting is disabled while the actor cannot act', () => {

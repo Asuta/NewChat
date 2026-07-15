@@ -2664,7 +2664,6 @@ button {
 }
 
 .inventory-icon-quantity,
-.inventory-icon-equipped,
 .inventory-icon-nearby {
   position: absolute;
   display: grid;
@@ -2682,15 +2681,6 @@ button {
   background: rgba(3, 10, 18, 0.82);
   color: #ffffff;
   font-size: 9px;
-}
-
-.inventory-icon-equipped {
-  top: 5px;
-  left: 5px;
-  width: 18px;
-  height: 18px;
-  background: rgba(14, 116, 144, 0.88);
-  color: #dff8ff;
 }
 
 .inventory-icon-nearby {

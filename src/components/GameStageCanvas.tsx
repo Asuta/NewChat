@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   Backpack,
   BookOpenText,
   ChevronLeft,
@@ -144,6 +145,7 @@ export function GameStageCanvas({
     return refreshItemTargetingAction(inventory, itemTargeting.item.id, itemTargeting.action);
   }, [inventory, itemTargeting]);
   const isWeaponAttackTargeting = currentItemTargetingAction?.kind === 'attack.weapon';
+  const isItemTransferTargeting = currentItemTargetingAction?.kind === 'item.transfer';
   const itemTargetIdSet = useMemo(() => {
     if (!currentItemTargetingAction) return new Set<string>();
     const visibleNpcTargetIdSet = new Set(visibleNpcTargetIds);
@@ -319,18 +321,26 @@ export function GameStageCanvas({
               aria-live="polite"
             >
               <span className="item-targeting-banner-icon">
-                {isWeaponAttackTargeting ? <Sword size={18} /> : <FlaskConical size={18} />}
+                {isWeaponAttackTargeting
+                  ? <Sword size={18} />
+                  : isItemTransferTargeting
+                    ? <ArrowRightLeft size={18} />
+                    : <FlaskConical size={18} />}
               </span>
               <span>
                 <strong>
                   {isWeaponAttackTargeting
                     ? `准备使用 ${itemTargeting.item.name} 攻击`
-                    : `正在使用 ${itemTargeting.item.name}`}
+                    : isItemTransferTargeting
+                      ? `准备转交 ${itemTargeting.item.name}`
+                      : `正在使用 ${itemTargeting.item.name}`}
                 </strong>
                 <small>
                   {isWeaponAttackTargeting
                     ? '点击红色高亮的 NPC 立绘发动攻击'
-                    : '点击发光的 NPC 立绘进行使用'}
+                    : isItemTransferTargeting
+                      ? '点击高亮的 NPC 立绘完成转交'
+                      : '点击发光的 NPC 立绘进行使用'}
                 </small>
               </span>
               <kbd>Esc 取消</kbd>
@@ -354,7 +364,11 @@ export function GameStageCanvas({
               aria-hidden="true"
             >
               <Crosshair size={31} />
-              {isWeaponAttackTargeting ? <Sword size={13} /> : <FlaskConical size={13} />}
+              {isWeaponAttackTargeting
+                ? <Sword size={13} />
+                : isItemTransferTargeting
+                  ? <ArrowRightLeft size={13} />
+                  : <FlaskConical size={13} />}
             </span>
           ) : null}
 

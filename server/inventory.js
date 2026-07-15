@@ -14,10 +14,9 @@ import {
 } from './worldDb.js';
 
 const INVENTORY_ACTION_KINDS = new Set([
-  'item.equip',
-  'item.unequip',
   'item.use',
   'item.present',
+  'item.transfer',
   'item.drop',
   'item.pickup',
 ]);
@@ -39,6 +38,9 @@ export function ensureInventoryConsistency(actorId = 'player') {
     for (const itemId of legacyItemIds) {
       const item = getEntity(itemId);
       if (!item || item.kind !== 'item' || ownedItemIds.has(itemId)) continue;
+      const hasAnyOwner = listRelationships({ entityId: itemId, direction: 'in', type: 'ownership' }).length > 0;
+      const hasLocation = listRelationships({ entityId: itemId, direction: 'out', type: 'located_in' }).length > 0;
+      if (hasAnyOwner || hasLocation) continue;
       upsertRelationship(actorId, itemId, 'ownership', null, {
         source: 'inventory.migration',
         summary: `${actor.name}持有${item.name}。`,
@@ -71,7 +73,7 @@ export function getInventory(actorId = 'player') {
   const targetById = new Map(targets.map((target) => [target.id, target]));
   const ownedRelationships = listRelationships({ entityId: actorId, direction: 'out', type: 'ownership' });
   const items = ownedRelationships
-    .map((relationship) => buildOwnedInventoryItem(actorId, relationship, inventory, targetById))
+    .map((relationship) => buildOwnedInventoryItem(actorId, relationship, targetById))
     .filter(Boolean)
     .sort(compareInventoryItems);
 
@@ -87,7 +89,6 @@ export function getInventory(actorId = 'player') {
   return {
     actor: { id: actor.id, name: actor.name },
     gold: finiteNumber(inventory.gold, 0),
-    equippedWeaponId: typeof inventory.equippedWeaponId === 'string' ? inventory.equippedWeaponId : null,
     totalQuantity: items.reduce((total, item) => total + item.quantity, 0),
     items,
     nearbyItems,
@@ -140,32 +141,6 @@ function resolveInventoryAction({ kind, actorId, itemId, targetId, item, before 
   const entity = getEntity(itemId);
   if (!actor || !entity) throw new Error('动作涉及的实体不存在。');
 
-  if (kind === 'item.equip') {
-    const inventory = getComponent(actorId, 'inventory') || {};
-    const previousWeaponId = typeof inventory.equippedWeaponId === 'string' ? inventory.equippedWeaponId : null;
-    upsertComponent(actorId, 'inventory', { ...inventory, equippedWeaponId: itemId });
-    const summary = `${actor.name}装备了${entity.name}。`;
-    return createResolvedAction({
-      eventType: 'item.equipped', kind, actorId, itemId, targetId: actorId, itemName: entity.name, summary,
-      facts: { previousWeaponId, equippedWeaponId: itemId },
-      stateChanges: [{ entityId: actorId, componentType: 'inventory', path: 'equippedWeaponId', from: previousWeaponId, to: itemId }],
-    });
-  }
-
-  if (kind === 'item.unequip') {
-    const inventory = getComponent(actorId, 'inventory') || {};
-    const previousWeaponId = typeof inventory.equippedWeaponId === 'string' ? inventory.equippedWeaponId : null;
-    const nextInventory = { ...inventory };
-    delete nextInventory.equippedWeaponId;
-    upsertComponent(actorId, 'inventory', nextInventory);
-    const summary = `${actor.name}卸下了${entity.name}。`;
-    return createResolvedAction({
-      eventType: 'item.unequipped', kind, actorId, itemId, targetId: actorId, itemName: entity.name, summary,
-      facts: { previousWeaponId, equippedWeaponId: null },
-      stateChanges: [{ entityId: actorId, componentType: 'inventory', path: 'equippedWeaponId', from: previousWeaponId, to: null }],
-    });
-  }
-
   if (kind === 'item.use') {
     const target = getEntity(targetId);
     if (!target) throw new Error('道具使用目标不存在。');
@@ -199,6 +174,38 @@ function resolveInventoryAction({ kind, actorId, itemId, targetId, item, before 
       eventType: 'item.presented', kind, actorId, itemId, targetId: targetId || null, itemName: entity.name, summary,
       facts: { target: target ? { id: target.id, name: target.name } : null, effect: item.identity.effect || null },
       stateChanges: [],
+    });
+  }
+
+  if (kind === 'item.transfer') {
+    const target = getEntity(targetId);
+    if (!target || target.kind !== 'character') throw new Error('道具转交目标必须是当前场景中的 NPC。');
+    const targetOwnership = listRelationships({ entityId: targetId, direction: 'out', type: 'ownership' })
+      .find((relationship) => relationship.targetEntityId === itemId);
+    const targetQuantityBefore = targetOwnership ? normalizeQuantity(targetOwnership.data?.quantity) : 0;
+    const targetQuantityAfter = targetQuantityBefore + item.quantity;
+    deleteRelationship(actorId, itemId, 'ownership');
+    upsertRelationship(targetId, itemId, 'ownership', targetOwnership?.value ?? null, {
+      ...targetOwnership?.data,
+      source: 'inventory.transfer',
+      summary: `${actor.name}把${entity.name}转交给了${target.name}。`,
+      quantity: targetQuantityAfter,
+    });
+    syncLegacyInventoryMirror(actorId);
+    syncLegacyInventoryMirror(targetId);
+    const summary = `${actor.name}把${item.quantity > 1 ? `${item.quantity}件` : ''}${entity.name}转交给了${target.name}。`;
+    return createResolvedAction({
+      eventType: 'item.transferred', kind, actorId, itemId, targetId, itemName: entity.name, summary,
+      facts: {
+        target: { id: target.id, name: target.name },
+        quantity: item.quantity,
+        targetQuantityBefore,
+        targetQuantityAfter,
+      },
+      stateChanges: [
+        { entityId: actorId, relationshipType: 'ownership', targetEntityId: itemId, from: { quantity: item.quantity }, to: null },
+        { entityId: targetId, relationshipType: 'ownership', targetEntityId: itemId, from: targetOwnership ? { quantity: targetQuantityBefore } : null, to: { quantity: targetQuantityAfter } },
+      ],
     });
   }
 
@@ -267,24 +274,13 @@ function createResolvedAction({ eventType, kind, actorId, itemId, targetId, item
   };
 }
 
-function buildOwnedInventoryItem(actorId, relationship, inventory, targetById) {
+function buildOwnedInventoryItem(actorId, relationship, targetById) {
   const entity = getEntity(relationship.targetEntityId);
   if (!entity || entity.kind !== 'item') return null;
   const identity = getComponent(entity.id, 'identity') || {};
   const rules = normalizeItemRules(identity, getComponent(entity.id, 'item') || {});
   const quantity = normalizeQuantity(relationship.data?.quantity);
-  const equipped = inventory.equippedWeaponId === entity.id;
   const actions = [];
-
-  if (rules.equipSlot === 'weapon' || rules.category === 'weapon') {
-    actions.push(createItemAction({
-      kind: equipped ? 'item.unequip' : 'item.equip',
-      label: equipped ? '卸下' : '装备',
-      actorId,
-      itemId: entity.id,
-      targetMode: 'none',
-    }));
-  }
 
   if (rules.use?.type === 'restore_hit_points') {
     const validTargetIds = Array.from(targetById.values())
@@ -307,6 +303,24 @@ function buildOwnedInventoryItem(actorId, relationship, inventory, targetById) {
     }));
   }
 
+  const transferTargetIds = Array.from(targetById.values())
+    .filter((target) => target.id !== actorId && target.kind === 'character')
+    .map((target) => target.id);
+  actions.push(createItemAction({
+    kind: 'item.transfer',
+    label: quantity > 1 ? '转交全部' : '转交',
+    actorId,
+    itemId: entity.id,
+    targetMode: 'character',
+    requiresTarget: true,
+    validTargetIds: transferTargetIds,
+    disabledReason: rules.droppable === false
+      ? '这是与玩家绑定的道具，不能转交。'
+      : transferTargetIds.length
+        ? null
+        : '当前场景没有可以接收道具的 NPC。',
+  }));
+
   actions.push(createItemAction({
     kind: 'item.drop',
     label: quantity > 1 ? '丢弃全部' : '丢弃',
@@ -315,9 +329,7 @@ function buildOwnedInventoryItem(actorId, relationship, inventory, targetById) {
     targetMode: 'none',
     disabledReason: rules.droppable === false
       ? '这是与玩家绑定的道具，不能丢弃。'
-      : equipped
-        ? '请先卸下这件装备。'
-        : null,
+      : null,
     danger: true,
   }));
 
@@ -325,7 +337,6 @@ function buildOwnedInventoryItem(actorId, relationship, inventory, targetById) {
     id: entity.id,
     name: entity.name,
     quantity,
-    equipped,
     category: rules.category,
     identity,
     rules,
@@ -341,7 +352,6 @@ function buildNearbyInventoryItem(actorId, entity, locationRelationship) {
     id: entity.id,
     name: entity.name,
     quantity: normalizeQuantity(locationRelationship?.data?.quantity),
-    equipped: false,
     category: rules.category,
     identity,
     rules,
@@ -404,13 +414,12 @@ function normalizeItemRules(identity, rules) {
         : role === 'clue'
           ? 'clue'
           : 'tool';
-  const use = rules.use && typeof rules.use === 'object'
-    ? rules.use
-    : role === 'weapon'
-      ? { type: 'equip', target: 'self' }
-      : ['key_item', 'quest_token', 'clue', 'final_choice_key'].includes(role)
-        ? { type: 'narrative', target: 'optional_character' }
-        : null;
+  const configuredUse = rules.use && typeof rules.use === 'object' ? rules.use : null;
+  const use = configuredUse?.type === 'equip'
+    ? null
+    : configuredUse || (['key_item', 'quest_token', 'clue', 'final_choice_key'].includes(role)
+      ? { type: 'narrative', target: 'optional_character' }
+      : null);
   return {
     category: String(rules.category || inferredCategory),
     stackable: rules.stackable === true,
@@ -457,9 +466,7 @@ function syncLegacyInventoryMirror(actorId) {
     .filter((relationship) => getEntity(relationship.targetEntityId)?.kind === 'item')
     .map((relationship) => relationship.targetEntityId);
   const next = { ...inventory, items };
-  if (next.equippedWeaponId && !items.includes(next.equippedWeaponId)) {
-    delete next.equippedWeaponId;
-  }
+  delete next.equippedWeaponId;
   upsertComponent(actorId, 'inventory', next);
 }
 

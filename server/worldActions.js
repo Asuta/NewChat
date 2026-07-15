@@ -12,9 +12,8 @@ import {
 } from './worldDb.js';
 
 export function listWorldActions({ actorId = 'player', targetId = '' } = {}) {
-  const action = getWeaponAttackAction({ actorId, targetId });
   return {
-    actions: action ? [action] : [],
+    actions: getWeaponAttackActions({ actorId, targetId }),
   };
 }
 
@@ -40,6 +39,25 @@ export function executeWorldAction(input = {}) {
 }
 
 function getWeaponAttackAction({ actorId = 'player', targetId = '', weaponId = '' } = {}) {
+  const context = getWeaponAttackContext(actorId, targetId);
+  if (!context) return null;
+  const ownedWeapons = listOwnedWeapons(actorId);
+  const weapon = weaponId
+    ? ownedWeapons.find((candidate) => candidate.id === weaponId)
+    : ownedWeapons.length === 1
+      ? ownedWeapons[0]
+      : null;
+  if (!weapon) return null;
+  return createWeaponAttackAction(context, weapon);
+}
+
+function getWeaponAttackActions({ actorId = 'player', targetId = '' } = {}) {
+  const context = getWeaponAttackContext(actorId, targetId);
+  if (!context) return [];
+  return listOwnedWeapons(actorId).map((weapon) => createWeaponAttackAction(context, weapon));
+}
+
+function getWeaponAttackContext(actorId, targetId) {
   const actor = getEntity(actorId);
   const target = getEntity(targetId);
   if (!actor || !target || target.kind !== 'character') return null;
@@ -53,29 +71,32 @@ function getWeaponAttackAction({ actorId = 'player', targetId = '', weaponId = '
   const targetStats = getComponent(targetId, 'stats') || {};
   if (targetStatus.canAct === false || Number(targetStats.currentHitPoints ?? 1) <= 0) return null;
 
-  const inventory = getComponent(actorId, 'inventory') || {};
-  const equippedWeaponId = String(inventory.equippedWeaponId || '');
-  if (weaponId && weaponId !== equippedWeaponId) return null;
-  if (!equippedWeaponId || !ownsItem(actorId, equippedWeaponId)) return null;
+  return { actor, actorId, target, targetId };
+}
 
-  const weapon = getEntity(equippedWeaponId);
-  const weaponIdentity = getComponent(equippedWeaponId, 'identity') || {};
-  const weaponRules = getComponent(equippedWeaponId, 'item') || {};
-  const isWeapon = weaponIdentity.role === 'weapon'
-    || weaponRules.category === 'weapon'
-    || weaponRules.equipSlot === 'weapon';
-  if (!weapon || weapon.kind !== 'item' || !isWeapon) return null;
+function listOwnedWeapons(actorId) {
+  return listRelationships({ entityId: actorId, direction: 'out', type: 'ownership' })
+    .map((relationship) => getEntity(relationship.targetEntityId))
+    .filter((entity) => entity?.kind === 'item' && isWeaponItem(entity.id));
+}
 
-  const weaponName = weapon.name || equippedWeaponId;
+function isWeaponItem(itemId) {
+  const identity = getComponent(itemId, 'identity') || {};
+  const rules = getComponent(itemId, 'item') || {};
+  return identity.role === 'weapon' || rules.category === 'weapon' || rules.equipSlot === 'weapon';
+}
+
+function createWeaponAttackAction({ actor, actorId, target, targetId }, weapon) {
+  const weaponName = weapon.name || weapon.id;
   return {
-    id: `attack.weapon:${actorId}:${targetId}:${equippedWeaponId}`,
+    id: `attack.weapon:${actorId}:${targetId}:${weapon.id}`,
     kind: 'attack.weapon',
     label: `使用${weaponName}攻击`,
     actorId,
     actorName: actor.name,
     targetId,
     targetName: target.name,
-    weaponId: equippedWeaponId,
+    weaponId: weapon.id,
     weaponName,
   };
 }
@@ -195,12 +216,6 @@ function isEntityInCurrentScene(entityId) {
   if (!sceneId) return false;
   if (entityId === getMeta('playerId', 'player')) return getCurrentLocationId(entityId) === sceneId;
   return getCurrentLocationId(entityId) === sceneId;
-}
-
-function ownsItem(actorId, itemId) {
-  return listRelationships({ entityId: actorId, direction: 'out', type: 'ownership' }).some(
-    (relationship) => relationship.targetEntityId === itemId,
-  );
 }
 
 function rollDie(sides) {

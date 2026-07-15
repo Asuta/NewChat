@@ -4,7 +4,7 @@ export const INVENTORY_ITEM_DRAG_MIME_TYPE = 'application/x-newchat-inventory-it
 
 const ITEM_REFERENCE_CONTEXT_PREFIX = [
   '玩家在本轮明确引用了以下背包道具。',
-  '这些引用只用于消除实体歧义，不代表任何使用、装备、消耗或其他道具动作已经执行。',
+  '这些引用只用于消除实体歧义，不代表任何使用、转交、消耗或其他道具动作已经执行。',
   '如需改变背包或世界状态，必须先读取当前背包，并调用经过校验的道具工具。',
 ].join('');
 
@@ -14,7 +14,6 @@ export function createInventoryItemReference(item: InventoryItem): InventoryItem
     name: item.name,
     category: item.category,
     quantity: item.quantity,
-    equipped: item.equipped,
   };
 }
 
@@ -51,7 +50,6 @@ export function sanitizeInventoryItemReferences(value: unknown): InventoryItemRe
       quantity: typeof record.quantity === 'number' && Number.isFinite(record.quantity)
         ? Math.max(1, Math.floor(record.quantity))
         : 1,
-      equipped: record.equipped === true,
     });
   }
 
@@ -70,7 +68,6 @@ export function formatUserMessageWithItemReferences(
     name: reference.name,
     category: reference.category,
     quantityAtSend: reference.quantity,
-    equippedAtSend: reference.equipped,
   }));
   return [
     ITEM_REFERENCE_CONTEXT_PREFIX,

@@ -12,11 +12,11 @@ export function createWeaponAttackTargetingAction(
   inventory: PlayerInventory | null,
   item: InventoryItem,
 ): WeaponAttackTargetingAction | null {
+  const ownedItem = inventory?.items.find((candidate) => candidate.id === item.id);
   if (
     !inventory
-    || !item.equipped
-    || inventory.equippedWeaponId !== item.id
-    || (item.category !== 'weapon' && item.rules.equipSlot !== 'weapon')
+    || !ownedItem
+    || (ownedItem.category !== 'weapon' && ownedItem.rules.equipSlot !== 'weapon')
   ) return null;
 
   const validTargetIds = inventory.targets
@@ -32,8 +32,8 @@ export function createWeaponAttackTargetingAction(
     kind: 'attack.weapon',
     label: '攻击',
     actorId: inventory.actor.id,
-    weaponId: item.id,
-    weaponName: item.name,
+    weaponId: ownedItem.id,
+    weaponName: ownedItem.name,
     targetMode: 'character',
     requiresTarget: true,
     validTargetIds,

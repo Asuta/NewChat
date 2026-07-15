@@ -171,7 +171,7 @@ export function seedSevenDayCrownWorld(api) {
       description: '玩家刚从黑石棺中醒来，失去大部分记忆，但身体仍能行动。距离王冠仪式还有七天。',
       canAct: true,
     }],
-    ['player', 'inventory', { items: ['item_crown_mark', 'item_iron_sword', 'item_ash_tonic'], equippedWeaponId: 'item_iron_sword' }],
+    ['player', 'inventory', { items: ['item_crown_mark', 'item_iron_sword', 'item_ash_tonic'] }],
     ['scene_ash_chapel', 'scene', {
       description: '一座被焚毁的礼拜堂，焦黑长椅间散落着白色鸦羽。中央黑石棺已经打开，玩家就在这里醒来。这里是主线开场点，适合触发艾蕾娜说明“七天后王冠仪式”的引导。',
       exits: ['scene_outer_gate'], tags: ['开场', '遗迹', '安全点'], visibility: 'public',
@@ -235,7 +235,7 @@ export function seedSevenDayCrownWorld(api) {
     ['item_iron_sword', 'identity', { role: 'weapon', description: '灰烬礼拜堂中拾得的旧铁剑，剑柄刻着白狮纹章。适合低等级近战判定。', weaponCategory: 'martial melee weapon', damageDice: '1d8', versatileDamageDice: '1d10', damageType: 'slashing', attackAbility: 'strength', proficient: true }],
     ['item_ash_tonic', 'identity', { role: 'consumable', description: '一小瓶由礼拜堂残存圣灰调制的药剂，饮下后能缓和伤势。' }],
     ['item_crown_mark', 'item', { category: 'quest', stackable: false, droppable: false, use: { type: 'narrative', target: 'optional_character', label: '展示印记' } }],
-    ['item_iron_sword', 'item', { category: 'weapon', stackable: false, droppable: true, equipSlot: 'weapon', use: { type: 'equip', target: 'self' } }],
+    ['item_iron_sword', 'item', { category: 'weapon', stackable: false, droppable: true }],
     ['item_ash_tonic', 'item', { category: 'consumable', stackable: true, droppable: true, use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 } }],
     ['item_knight_oath', 'identity', { role: 'quest_token', description: '白狮骑士团的誓约印。获得它代表骑士团承认玩家有资格进入王冠厅。', effect: { type: 'unlock', targetEntityId: 'scene_crown_hall' } }],
     ['item_church_oath', 'identity', { role: 'quest_token', description: '圣冠教会的誓约印。它可以来自正式赐予、温和派协助，或玩家揭露禁书真相后的替代仪式。', effect: { type: 'unlock', targetEntityId: 'scene_crown_hall' } }],
@@ -344,6 +344,7 @@ export function ensureSevenDayCrownPlayableState(api) {
     mergeComponentDefaults,
     applyStatsProfile,
     mergeInventoryDefaults,
+    listRelationships,
     upsertRelationship,
     getMeta,
     setMeta,
@@ -371,7 +372,6 @@ export function ensureSevenDayCrownPlayableState(api) {
     });
     mergeInventoryDefaults('player', {
       items: ['item_crown_mark', 'item_iron_sword'],
-      equippedWeaponId: 'item_iron_sword',
     });
     mergeComponentDefaults('item_iron_sword', 'identity', {
       role: 'weapon',
@@ -398,8 +398,6 @@ export function ensureSevenDayCrownPlayableState(api) {
       category: 'weapon',
       stackable: false,
       droppable: true,
-      equipSlot: 'weapon',
-      use: { type: 'equip', target: 'self' },
     });
     mergeComponentDefaults('item_ash_tonic', 'identity', {
       role: 'consumable',
@@ -412,7 +410,11 @@ export function ensureSevenDayCrownPlayableState(api) {
       use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 },
     });
     upsertRelationship('player', 'item_crown_mark', 'ownership', null, { source: 'baseline', summary: '玩家手背带着王冠印记。' });
-    upsertRelationship('player', 'item_iron_sword', 'ownership', null, { source: 'baseline', summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。' });
+    const swordHasOwner = listRelationships({ entityId: 'item_iron_sword', direction: 'in', type: 'ownership' }).length > 0;
+    const swordHasLocation = listRelationships({ entityId: 'item_iron_sword', direction: 'out', type: 'located_in' }).length > 0;
+    if (!swordHasOwner && !swordHasLocation) {
+      upsertRelationship('player', 'item_iron_sword', 'ownership', null, { source: 'baseline', summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。' });
+    }
     if (getMeta('inventory.items.v1', '') !== 'ready') {
       upsertRelationship('player', 'item_ash_tonic', 'ownership', null, { source: 'baseline', summary: '玩家苏醒时随身带着两份灰烬愈合药剂。', quantity: 2 });
       setMeta('inventory.items.v1', 'ready');

@@ -105,7 +105,6 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
                 <PackageOpen size={13} />
                 <span>{reference.name}</span>
                 {reference.quantity > 1 ? <small>×{reference.quantity}</small> : null}
-                {reference.equipped ? <small>已装备</small> : null}
               </span>
             ))}
           </div>

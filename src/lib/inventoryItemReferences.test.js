@@ -11,7 +11,7 @@ import { buildContextEvents } from './chat.ts';
 
 test('inventory item references are deduplicated and malformed entries are ignored', () => {
   const references = sanitizeInventoryItemReferences([
-    { itemId: 'item_sword', name: '礼拜堂铁剑', category: 'weapon', quantity: 1, equipped: true },
+    { itemId: 'item_sword', name: '礼拜堂铁剑', category: 'weapon', quantity: 1 },
     { itemId: 'item_sword', name: '重复的铁剑', category: 'weapon', quantity: 2 },
     { itemId: '', name: '无效道具' },
   ]);
@@ -21,7 +21,6 @@ test('inventory item references are deduplicated and malformed entries are ignor
     name: '礼拜堂铁剑',
     category: 'weapon',
     quantity: 1,
-    equipped: true,
   }]);
 });
 
@@ -31,11 +30,10 @@ test('referenced items add entity context without claiming the action already ha
     name: '礼拜堂铁剑',
     category: 'weapon',
     quantity: 1,
-    equipped: true,
   }]);
 
   assert.match(prompt, /"entityId":"item_sword"/);
-  assert.match(prompt, /不代表任何使用、装备、消耗/);
+  assert.match(prompt, /不代表任何使用、转交、消耗/);
   assert.match(prompt, /我想用它撬开石门。$/);
   assert.equal(formatUserMessageWithItemReferences('普通行动', []), '普通行动');
 });
@@ -46,7 +44,6 @@ test('item references have no count limit and do not duplicate the same item', (
     name: `道具 ${index}`,
     category: 'tool',
     quantity: 1,
-    equipped: false,
   }));
   const references = items.reduce(addInventoryItemReference, []);
   const duplicateResult = addInventoryItemReference(references, items[0]);
@@ -63,7 +60,6 @@ test('an unbounded referenced turn can be excluded from history and sent only as
     name: `任意世界中的测试道具名称 ${index}`,
     category: 'quest',
     quantity: 1,
-    equipped: false,
   }));
   const previousMessage = {
     id: 'previous',

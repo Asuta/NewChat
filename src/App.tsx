@@ -1228,7 +1228,7 @@ export default function App({ stageOnly = false }: AppProps) {
         assistantMessageId: assistantMessage.id,
         prompt: [
           '请根据刚刚的本地硬逻辑动作结果进行 AI DM 叙事。',
-          'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害、治疗、装备状态、持有关系或道具数量。',
+          'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害、治疗、持有关系或道具数量。',
           '请叙事化这个结果，然后判断受影响 NPC 或周围环境是否应立即反应；如需要规则裁定或世界状态变化，请继续调用合适工具。',
         ].join('\n'),
         contextEvents,

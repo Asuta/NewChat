@@ -279,10 +279,9 @@ export interface WeaponAttackTargetingAction {
 }
 
 export type InventoryActionKind =
-  | 'item.equip'
-  | 'item.unequip'
   | 'item.use'
   | 'item.present'
+  | 'item.transfer'
   | 'item.drop'
   | 'item.pickup';
 
@@ -293,7 +292,7 @@ export interface InventoryAction {
   actorId: string;
   itemId: string;
   targetId?: string;
-  targetMode: 'none' | 'self_or_character' | 'optional_character';
+  targetMode: 'none' | 'character' | 'self_or_character' | 'optional_character';
   requiresTarget: boolean;
   validTargetIds: string[];
   disabledReason: string | null;
@@ -317,7 +316,6 @@ export interface InventoryItem {
   id: string;
   name: string;
   quantity: number;
-  equipped: boolean;
   category: 'weapon' | 'consumable' | 'tool' | 'quest' | 'clue' | string;
   identity: {
     role?: string;
@@ -340,13 +338,11 @@ export interface InventoryItemReference {
   name: string;
   category: string;
   quantity: number;
-  equipped: boolean;
 }
 
 export interface PlayerInventory {
   actor: { id: string; name: string };
   gold: number;
-  equippedWeaponId: string | null;
   totalQuantity: number;
   items: InventoryItem[];
   nearbyItems: InventoryItem[];

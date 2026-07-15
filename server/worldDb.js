@@ -151,6 +151,7 @@ export function ensurePlayableCharacterStats() {
       mergeComponentDefaults,
       applyStatsProfile,
       mergeInventoryDefaults,
+      listRelationships,
       upsertRelationship,
       getMeta,
       setMeta,
@@ -1474,6 +1475,9 @@ function applyOperation(operation, index, confirmed, prompt) {
     const sourceEntityId = firstString(operation.sourceEntityId, operation.sourceId);
     const targetEntityId = firstString(operation.targetEntityId, operation.targetId);
     const relationshipType = firstString(operation.relationshipType, operation.relationType, operation.type);
+    if (relationshipType === 'ownership') {
+      throw new Error('道具所有权只能通过背包动作修改。');
+    }
     assertConfirmed(confirmed, [sourceEntityId, targetEntityId], index, prompt);
     const before = listRelationships({ entityId: sourceEntityId, direction: 'out', type: relationshipType })
       .find((relationship) => relationship.targetEntityId === targetEntityId) ?? null;
@@ -1493,6 +1497,9 @@ function applyOperation(operation, index, confirmed, prompt) {
     const sourceEntityId = firstString(operation.sourceEntityId, operation.sourceId);
     const targetEntityId = firstString(operation.targetEntityId, operation.targetId);
     const relationshipType = firstString(operation.relationshipType, operation.relationType, operation.type);
+    if (relationshipType === 'ownership') {
+      throw new Error('道具所有权只能通过背包动作修改。');
+    }
     assertConfirmed(confirmed, [sourceEntityId, targetEntityId], index, prompt);
     const before = listRelationships({ entityId: sourceEntityId, direction: 'out', type: relationshipType })
       .find((relationship) => relationship.targetEntityId === targetEntityId);

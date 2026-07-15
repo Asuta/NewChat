@@ -1,5 +1,5 @@
 import {
-  Check,
+  ArrowRightLeft,
   Coins,
   FlaskConical,
   HeartPulse,
@@ -48,7 +48,7 @@ const ACTION_MENU_WIDTH = 300;
 const ACTION_MENU_MAX_HEIGHT = 340;
 const FILTERS: Array<{ id: InventoryFilter; label: string }> = [
   { id: 'all', label: '全部' },
-  { id: 'weapon', label: '装备' },
+  { id: 'weapon', label: '武器' },
   { id: 'consumable', label: '消耗品' },
   { id: 'tool', label: '工具' },
   { id: 'quest', label: '任务' },
@@ -323,7 +323,7 @@ function InventoryIconButton({
       role="option"
       draggable={isDraggable}
       aria-describedby={tooltipId}
-      aria-label={`${item.name}，${isNearby ? '当前场景可拾取' : categoryLabel(item.category)}${item.equipped ? '，已装备' : ''}${item.quantity > 1 ? `，共 ${item.quantity} 件` : ''}${isDraggable ? '，可拖到行动输入框引用，也可打开操作菜单引用' : ''}`}
+      aria-label={`${item.name}，${isNearby ? '当前场景可拾取' : categoryLabel(item.category)}${item.quantity > 1 ? `，共 ${item.quantity} 件` : ''}${isDraggable ? '，可拖到行动输入框引用，也可打开操作菜单引用' : ''}`}
       aria-roledescription={isDraggable ? '可拖动道具' : undefined}
       aria-selected={isSelected}
       onBlur={onBlur}
@@ -341,7 +341,6 @@ function InventoryIconButton({
     >
       <span className="inventory-icon-glyph"><Icon size={27} /></span>
       <span className="inventory-icon-name">{item.name}</span>
-      {item.equipped ? <span className="inventory-icon-equipped"><Check size={11} /></span> : null}
       {item.quantity > 1 ? <span className="inventory-icon-quantity">×{item.quantity}</span> : null}
       {isNearby ? <span className="inventory-icon-nearby"><MapPin size={10} /></span> : null}
     </button>
@@ -367,7 +366,7 @@ function InventoryTooltip({
         <span className={`inventory-tooltip-icon category-${item.category}`}><Icon size={25} /></span>
         <span>
           <strong>{item.name}</strong>
-          <small>{categoryLabel(item.category)} · {item.quantity} 件{item.equipped ? ' · 已装备' : ''}</small>
+          <small>{categoryLabel(item.category)} · {item.quantity} 件</small>
         </span>
       </header>
       <p>{item.identity.description || '这件道具还没有详细描述。'}</p>
@@ -462,7 +461,7 @@ function InventoryActionMenu({
               <PackageOpen size={15} />
               引用到行动输入框
             </button>
-            <small>只添加引用，不会立即使用、装备或消耗道具。</small>
+            <small>只添加引用，不会立即使用、转交或消耗道具。</small>
           </div>
         ) : null}
         {menuActions.map((action) => {
@@ -478,7 +477,9 @@ function InventoryActionMenu({
           const targetingUnavailableReason = action.requiresTarget && !visibleNpcTargets.length
             ? action.kind === 'attack.weapon'
               ? '当前场景没有可攻击的 NPC 目标。'
-              : '当前场景没有可用的 NPC 目标。'
+              : action.kind === 'item.transfer'
+                ? '当前场景没有可以接收道具的 NPC。'
+                : '当前场景没有可用的 NPC 目标。'
             : null;
           const disabledReason = targetingUnavailableReason || action.disabledReason;
           return (
@@ -592,7 +593,7 @@ function categoryIcon(category: string): LucideIcon {
 }
 
 function categoryLabel(category: string) {
-  if (category === 'weapon') return '装备';
+  if (category === 'weapon') return '武器';
   if (category === 'consumable') return '消耗品';
   if (category === 'quest') return '任务物品';
   if (category === 'clue') return '线索';
@@ -601,8 +602,8 @@ function categoryLabel(category: string) {
 
 function actionIcon(kind: ItemTargetingAction['kind']) {
   if (kind === 'attack.weapon') return <Swords size={15} />;
+  if (kind === 'item.transfer') return <ArrowRightLeft size={15} />;
   if (kind === 'item.pickup' || kind === 'item.drop') return <MapPin size={15} />;
   if (kind === 'item.use') return <HeartPulse size={15} />;
-  if (kind === 'item.equip' || kind === 'item.unequip') return <Sword size={15} />;
   return <ScrollText size={15} />;
 }
