@@ -65,6 +65,7 @@ interface GameStageCanvasProps {
   onEnterScene: (sceneId: string) => void;
   onInventoryOpenChange: (open: boolean) => void;
   onExecuteInventoryAction: (action: WorldAction) => void | Promise<void>;
+  onReferenceInventoryItem: (item: InventoryItem) => void;
   onCloseEntityActions?: () => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
@@ -98,6 +99,7 @@ export function GameStageCanvas({
   onEnterScene,
   onInventoryOpenChange,
   onExecuteInventoryAction,
+  onReferenceInventoryItem,
   onCloseEntityActions,
   onOpenEntityActions,
 }: GameStageCanvasProps) {
@@ -466,6 +468,7 @@ export function GameStageCanvas({
                     visibleNpcTargetIds={visibleNpcTargetIds}
                     onBeginTargeting={beginItemTargeting}
                     onExecuteAction={onExecuteInventoryAction}
+                    onReferenceItem={onReferenceInventoryItem}
                   />
                 </div>
               ) : (

@@ -14,8 +14,14 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
+import { INVENTORY_ITEM_DRAG_MIME_TYPE } from '../lib/inventoryItemReferences';
 import type { InventoryAction, InventoryItem, ItemTargetingAction, PlayerInventory } from '../types';
 import { createWeaponAttackTargetingAction } from './inventoryTargeting';
 
@@ -28,6 +34,7 @@ interface InventoryPanelProps {
   visibleNpcTargetIds: string[];
   onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
   onExecuteAction: (action: InventoryAction) => void | Promise<void>;
+  onReferenceItem: (item: InventoryItem) => void;
 }
 
 interface FloatingItemState {
@@ -56,6 +63,7 @@ export function InventoryPanel({
   visibleNpcTargetIds,
   onBeginTargeting,
   onExecuteAction,
+  onReferenceItem,
 }: InventoryPanelProps) {
   const tooltipId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +72,7 @@ export function InventoryPanel({
   const [hoveredItem, setHoveredItem] = useState<FloatingItemState | null>(null);
   const [actionMenu, setActionMenu] = useState<FloatingItemState | null>(null);
   const [targetIds, setTargetIds] = useState<Record<string, string>>({});
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const visibleItems = useMemo(() => {
     if (!inventory) return [];
     if (filter === 'nearby') return inventory.nearbyItems;
@@ -72,6 +81,10 @@ export function InventoryPanel({
   }, [filter, inventory]);
   const allItems = useMemo(
     () => [...(inventory?.items || []), ...(inventory?.nearbyItems || [])],
+    [inventory],
+  );
+  const ownedItemIds = useMemo(
+    () => new Set((inventory?.items || []).map((item) => item.id)),
     [inventory],
   );
   const tooltipItem = hoveredItem
@@ -130,10 +143,10 @@ export function InventoryPanel({
     });
   }
 
-  function openActionMenu(itemId: string, event: ReactMouseEvent<HTMLButtonElement>) {
-    const stage = overlayRoot || event.currentTarget.closest<HTMLElement>('.game-stage');
+  function openActionMenu(itemId: string, element: HTMLButtonElement) {
+    const stage = overlayRoot || element.closest<HTMLElement>('.game-stage');
     if (!stage) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
     setHoveredItem(null);
     setActionMenu((current) => current?.itemId === itemId
       ? null
@@ -146,6 +159,18 @@ export function InventoryPanel({
             stage,
           ),
         });
+  }
+
+  function beginItemDrag(item: InventoryItem, event: ReactDragEvent<HTMLButtonElement>) {
+    if (isDisabled || isLoading) {
+      event.preventDefault();
+      return;
+    }
+    setHoveredItem(null);
+    setActionMenu(null);
+    setDraggedItemId(item.id);
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData(INVENTORY_ITEM_DRAG_MIME_TYPE, item.id);
   }
 
   return (
@@ -181,15 +206,20 @@ export function InventoryPanel({
           visibleItems.map((item) => (
             <InventoryIconButton
               item={item}
-              isNearby={filter === 'nearby'}
+              isNearby={!ownedItemIds.has(item.id)}
               isSelected={actionMenu?.itemId === item.id}
+              isDraggable={ownedItemIds.has(item.id) && !isDisabled && !isLoading}
+              isDragging={draggedItemId === item.id}
               tooltipId={hoveredItem?.itemId === item.id ? tooltipId : undefined}
               key={item.id}
               onBlur={() => setHoveredItem((current) => current?.itemId === item.id ? null : current)}
-              onClick={(event) => openActionMenu(item.id, event)}
+              onClick={(event) => openActionMenu(item.id, event.currentTarget)}
               onFocus={(element) => showFocusTooltip(item.id, element)}
+              onKeyboardActivate={(element) => openActionMenu(item.id, element)}
               onMouseLeave={() => setHoveredItem((current) => current?.itemId === item.id ? null : current)}
               onMouseMove={(clientX, clientY) => showPointerTooltip(item.id, clientX, clientY)}
+              onDragEnd={() => setDraggedItemId(null)}
+              onDragStart={(event) => beginItemDrag(item, event)}
             />
           ))
         ) : (
@@ -201,7 +231,12 @@ export function InventoryPanel({
       </div>
 
       {tooltipItem && hoveredItem && overlayRoot ? createPortal(
-        <InventoryTooltip id={tooltipId} item={tooltipItem} style={hoveredItem.position} />,
+        <InventoryTooltip
+          id={tooltipId}
+          item={tooltipItem}
+          canReference={ownedItemIds.has(tooltipItem.id)}
+          style={hoveredItem.position}
+        />,
         overlayRoot,
       ) : null}
 
@@ -216,11 +251,16 @@ export function InventoryPanel({
           <InventoryActionMenu
             item={menuItem}
             inventory={inventory}
+            canReference={ownedItemIds.has(menuItem.id)}
             isDisabled={isDisabled || isLoading}
             style={actionMenu.position}
             targetIds={targetIds}
             visibleNpcTargetIds={visibleNpcTargetIds}
             onClose={() => setActionMenu(null)}
+            onReferenceItem={(item) => {
+              setActionMenu(null);
+              onReferenceItem(item);
+            }}
             onBeginTargeting={(action, item) => {
               setActionMenu(null);
               onBeginTargeting(action, item);
@@ -242,37 +282,62 @@ function InventoryIconButton({
   item,
   isNearby,
   isSelected,
+  isDraggable,
+  isDragging,
   tooltipId,
   onBlur,
   onClick,
   onFocus,
+  onKeyboardActivate,
   onMouseLeave,
   onMouseMove,
+  onDragEnd,
+  onDragStart,
 }: {
   item: InventoryItem;
   isNearby: boolean;
   isSelected: boolean;
+  isDraggable: boolean;
+  isDragging: boolean;
   tooltipId?: string;
   onBlur: () => void;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onFocus: (element: HTMLButtonElement) => void;
+  onKeyboardActivate: (element: HTMLButtonElement) => void;
   onMouseLeave: () => void;
   onMouseMove: (clientX: number, clientY: number) => void;
+  onDragEnd: () => void;
+  onDragStart: (event: ReactDragEvent<HTMLButtonElement>) => void;
 }) {
   const Icon = categoryIcon(item.category);
   return (
     <button
-      className={`inventory-icon-button category-${item.category} ${isSelected ? 'selected' : ''}`}
+      className={[
+        'inventory-icon-button',
+        `category-${item.category}`,
+        isSelected ? 'selected' : '',
+        isDraggable ? 'is-draggable' : '',
+        isDragging ? 'is-dragging' : '',
+      ].filter(Boolean).join(' ')}
       type="button"
       role="option"
+      draggable={isDraggable}
       aria-describedby={tooltipId}
-      aria-label={`${item.name}，${isNearby ? '当前场景可拾取' : categoryLabel(item.category)}${item.equipped ? '，已装备' : ''}${item.quantity > 1 ? `，共 ${item.quantity} 件` : ''}`}
+      aria-label={`${item.name}，${isNearby ? '当前场景可拾取' : categoryLabel(item.category)}${item.equipped ? '，已装备' : ''}${item.quantity > 1 ? `，共 ${item.quantity} 件` : ''}${isDraggable ? '，可拖到行动输入框引用，也可打开操作菜单引用' : ''}`}
+      aria-roledescription={isDraggable ? '可拖动道具' : undefined}
       aria-selected={isSelected}
       onBlur={onBlur}
       onClick={onClick}
       onFocus={(event) => onFocus(event.currentTarget)}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onKeyboardActivate(event.currentTarget);
+      }}
       onMouseLeave={onMouseLeave}
       onMouseMove={(event) => onMouseMove(event.clientX, event.clientY)}
+      onDragEnd={onDragEnd}
+      onDragStart={onDragStart}
     >
       <span className="inventory-icon-glyph"><Icon size={27} /></span>
       <span className="inventory-icon-name">{item.name}</span>
@@ -283,7 +348,17 @@ function InventoryIconButton({
   );
 }
 
-function InventoryTooltip({ id, item, style }: { id: string; item: InventoryItem; style: CSSProperties }) {
+function InventoryTooltip({
+  id,
+  item,
+  canReference,
+  style,
+}: {
+  id: string;
+  item: InventoryItem;
+  canReference: boolean;
+  style: CSSProperties;
+}) {
   const Icon = categoryIcon(item.category);
   const disabledReasons = Array.from(new Set(item.actions.map((action) => action.disabledReason).filter(Boolean)));
   return (
@@ -303,7 +378,11 @@ function InventoryTooltip({ id, item, style }: { id: string; item: InventoryItem
         </div>
       ) : null}
       {disabledReasons.map((reason) => <small className="inventory-tooltip-warning" key={reason}>{reason}</small>)}
-      <footer>点击图标查看完整详情与操作</footer>
+      <footer>
+        {canReference
+          ? '拖到下方输入框可引用 · 点击也可选择引用'
+          : '需要先拾取此道具 · 点击查看可用操作'}
+      </footer>
     </aside>
   );
 }
@@ -311,22 +390,26 @@ function InventoryTooltip({ id, item, style }: { id: string; item: InventoryItem
 function InventoryActionMenu({
   item,
   inventory,
+  canReference,
   isDisabled,
   style,
   targetIds,
   visibleNpcTargetIds,
   onClose,
+  onReferenceItem,
   onBeginTargeting,
   onTargetChange,
   onExecuteAction,
 }: {
   item: InventoryItem;
   inventory: PlayerInventory | null;
+  canReference: boolean;
   isDisabled: boolean;
   style: CSSProperties;
   targetIds: Record<string, string>;
   visibleNpcTargetIds: string[];
   onClose: () => void;
+  onReferenceItem: (item: InventoryItem) => void;
   onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
   onTargetChange: (actionId: string, targetId: string) => void;
   onExecuteAction: (action: InventoryAction) => void;
@@ -368,6 +451,20 @@ function InventoryActionMenu({
         {item.identity.description || '这件道具还没有详细描述。'}
       </p>
       <div className="inventory-popover-actions">
+        {canReference ? (
+          <div className="inventory-popover-action inventory-popover-reference-action">
+            <button
+              className="reference"
+              type="button"
+              disabled={isDisabled}
+              onClick={() => onReferenceItem(item)}
+            >
+              <PackageOpen size={15} />
+              引用到行动输入框
+            </button>
+            <small>只添加引用，不会立即使用、装备或消耗道具。</small>
+          </div>
+        ) : null}
         {menuActions.map((action) => {
           const validTargets = inventory?.targets.filter((target) => action.validTargetIds.includes(target.id)) || [];
           const visibleNpcTargets = validTargets.filter((target) => visibleNpcTargetIdSet.has(target.id));

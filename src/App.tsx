@@ -26,6 +26,10 @@ import {
   saveConversations,
   titleFromMessage,
 } from './lib/chat';
+import {
+  formatUserMessageWithItemReferences,
+  sanitizeInventoryItemReferences,
+} from './lib/inventoryItemReferences';
 import type {
   AgentStep,
   ExecuteWorldActionResponse,
@@ -36,6 +40,7 @@ import type {
   EntityBundle,
   FixedContext,
   HealthState,
+  InventoryItemReference,
   ModelRequestLog,
   ModelId,
   PresentationStage,
@@ -68,6 +73,7 @@ type PendingSceneTransition = NonNullable<ChatMessage['sceneTransition']>;
 
 interface SendMessageOptions {
   pendingSceneTransition?: PendingSceneTransition;
+  itemReferences?: InventoryItemReference[];
 }
 
 interface QueuedMessage {
@@ -238,11 +244,19 @@ export default function App({ stageOnly = false }: AppProps) {
       conversationsRef.current.find((conversation) => conversation.id === activeId) || conversationsRef.current[0];
     if (!latestActiveConversation || isStreaming || isCompressing || isFixedContextSaving || isSaveDataBusy) return null;
 
-    const userMessage = createMessage('user', content);
+    const itemReferences = sanitizeInventoryItemReferences(options.itemReferences);
+    const userMessage = {
+      ...createMessage('user', content),
+      ...(itemReferences.length ? { itemReferences } : {}),
+    };
     const assistantMessage = createMessage('assistant', '', 'streaming');
     const shouldRename = latestActiveConversation.messages.length === 0 && latestActiveConversation.title === '新对话';
     const nextMessages = [...latestActiveConversation.messages, userMessage, assistantMessage];
-    const contextEvents = buildContextEvents(latestActiveConversation, [...latestActiveConversation.messages, userMessage]);
+    const contextEvents = buildContextEvents(
+      latestActiveConversation,
+      [...latestActiveConversation.messages, userMessage],
+      userMessage.id,
+    );
 
     updateConversation(latestActiveConversation.id, (conversation) => ({
       ...conversation,
@@ -254,7 +268,7 @@ export default function App({ stageOnly = false }: AppProps) {
     const streamPromise = streamAgentResponse({
       conversationId: latestActiveConversation.id,
       assistantMessageId: assistantMessage.id,
-      prompt: content,
+      prompt: formatUserMessageWithItemReferences(content, itemReferences),
       contextEvents,
       pendingSceneTransition: options.pendingSceneTransition,
     });
@@ -1192,7 +1206,7 @@ export default function App({ stageOnly = false }: AppProps) {
             attackFeedback={characterAttackFeedback}
             error={error}
             fixedContext={fixedContext}
-            onSend={sendMessage}
+          onSend={(content, itemReferences) => Boolean(queueMessage(content, { itemReferences }))}
             onStop={stopStreaming}
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
@@ -1272,7 +1286,7 @@ export default function App({ stageOnly = false }: AppProps) {
             attackFeedback={characterAttackFeedback}
             error={error}
             fixedContext={fixedContext}
-            onSend={sendMessage}
+            onSend={(content, itemReferences) => Boolean(queueMessage(content, { itemReferences }))}
             onStop={stopStreaming}
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}

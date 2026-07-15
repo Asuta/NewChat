@@ -28,6 +28,7 @@ export interface ChatMessage {
   };
   actionResult?: ActionResult;
   agentStep?: AgentStep;
+  itemReferences?: InventoryItemReference[];
 }
 
 export interface Conversation {
@@ -325,6 +326,14 @@ export interface InventoryItem {
     use: Record<string, unknown> | null;
   };
   actions: InventoryAction[];
+}
+
+export interface InventoryItemReference {
+  itemId: string;
+  name: string;
+  category: string;
+  quantity: number;
+  equipped: boolean;
 }
 
 export interface PlayerInventory {

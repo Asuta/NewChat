@@ -1,5 +1,6 @@
-import { Bot, CheckCheck, Copy, LoaderCircle, MapPinned, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
+import { Bot, CheckCheck, Copy, LoaderCircle, MapPinned, PackageOpen, Swords, ThumbsDown, ThumbsUp, UserRound } from 'lucide-react';
 import { formatTime } from '../lib/chat';
+import { sanitizeInventoryItemReferences } from '../lib/inventoryItemReferences';
 import type { ChatMessage } from '../types';
 import { AgentStepTimelineItem } from './AgentStepsTimelineItem';
 import { MarkdownContent } from './MarkdownContent';
@@ -86,6 +87,7 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
   }
 
   const isUser = message.role === 'user';
+  const itemReferences = isUser ? sanitizeInventoryItemReferences(message.itemReferences) : [];
 
   return (
     <article className={`message-row ${isUser ? 'user' : 'assistant'}`}>
@@ -96,6 +98,18 @@ export function MessageBubble({ message, onLayoutChange }: MessageBubbleProps) {
       ) : null}
 
       <div className={`message-bubble ${message.status === 'error' ? 'error' : ''}`}>
+        {itemReferences.length ? (
+          <div className="message-item-references" aria-label="本轮引用的背包道具">
+            {itemReferences.map((reference) => (
+              <span className={`message-item-reference category-${reference.category}`} key={reference.itemId}>
+                <PackageOpen size={13} />
+                <span>{reference.name}</span>
+                {reference.quantity > 1 ? <small>×{reference.quantity}</small> : null}
+                {reference.equipped ? <small>已装备</small> : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {message.content ? (
           isUser ? <p className="message-text">{message.content}</p> : <MarkdownContent content={message.content} />
         ) : (

@@ -8,6 +8,7 @@ import type {
   FixedContext,
   Role,
 } from '../types';
+import { formatUserMessageWithItemReferences } from './inventoryItemReferences';
 
 const STORAGE_KEY = 'newchat.conversations.v1';
 export const DEFAULT_CONTEXT_MODE: ContextMode = 'summary-only';
@@ -369,7 +370,7 @@ function toModelMessages(messages: ChatMessage[], agentStepLedger: AgentStepLedg
     if (message.kind === 'npc-speech' || message.kind === 'assistant-reasoning') {
       return output;
     }
-    output.push({ role: message.role, content: message.content });
+    output.push({ role: message.role, content: formatMessageContentForContext(message) });
     return output;
   });
 }
@@ -418,10 +419,16 @@ function toContextEvents(
     output.push({
       type: 'message',
       role: message.role,
-      content: message.content,
+      content: formatMessageContentForContext(message),
     });
     return output;
   });
+}
+
+function formatMessageContentForContext(message: ChatMessage) {
+  return message.role === 'user'
+    ? formatUserMessageWithItemReferences(message.content, message.itemReferences)
+    : message.content;
 }
 
 function getAgentRunId(message: ChatMessage): number | null {
