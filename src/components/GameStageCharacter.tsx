@@ -8,6 +8,7 @@ import {
   type CharacterHealthChangeEvent,
   type CharacterHealthSnapshot,
 } from './characterHealthChange';
+import { preparePortraitImage } from './portraitImageLoading';
 import { resolveCharacterPortrait } from './portraitState';
 
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
@@ -52,6 +53,7 @@ export function GameStageCharacter({
     portraitState,
     attackFeedbackEvent?.hit === true,
   );
+  const displayedPortrait = useBufferedPortrait(resolvedPortrait);
   const vitalStatus = getVitalStatus(character.vitalState);
 
   useEffect(() => {
@@ -175,8 +177,8 @@ export function GameStageCharacter({
       className={[
         'game-character',
         `slot-${character.slot}`,
-        resolvedPortrait.isFallback ? 'fallback-character' : '',
-        `portrait-state-${resolvedPortrait.state}`,
+        displayedPortrait.isFallback ? 'fallback-character' : '',
+        `portrait-state-${displayedPortrait.state}`,
         isSpeaking ? 'speaking-character' : '',
         hasPointerInteraction ? 'has-actions' : '',
         isPixelHovered ? 'pixel-hovered' : '',
@@ -192,10 +194,9 @@ export function GameStageCharacter({
       onClick={isItemTargeting ? handleClick : undefined}
       onContextMenu={hasPointerInteraction ? handleContextMenu : undefined}
     >
-      {resolvedPortrait.url ? (
+      {displayedPortrait.url ? (
         <img
-          key={resolvedPortrait.url}
-          src={resolvedPortrait.url}
+          src={displayedPortrait.url}
           alt={vitalStatus ? `${character.name}（${vitalStatus.label}）` : character.name}
           onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
           onPointerMove={hasPointerInteraction ? (event) => {
@@ -293,6 +294,55 @@ export function GameStageCharacter({
       </figcaption>
     </figure>
   );
+}
+
+function useBufferedPortrait(target: ReturnType<typeof resolveCharacterPortrait>) {
+  const [displayed, setDisplayed] = useState(target);
+  const preparedImageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    if (target.url === displayed.url) {
+      if (target.state !== displayed.state || target.isFallback !== displayed.isFallback) {
+        setDisplayed(target);
+      }
+      return () => {
+        isCurrentRequest = false;
+      };
+    }
+
+    if (!target.url) {
+      preparedImageRef.current = null;
+      setDisplayed(target);
+      return () => {
+        isCurrentRequest = false;
+      };
+    }
+
+    void preparePortraitImage(target.url)
+      .then((preparedImage) => {
+        if (!isCurrentRequest) return;
+        preparedImageRef.current = preparedImage;
+        setDisplayed(target);
+      })
+      .catch(() => {
+        // Keep the last successfully displayed portrait instead of flashing empty.
+      });
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [
+    displayed.isFallback,
+    displayed.state,
+    displayed.url,
+    target.isFallback,
+    target.state,
+    target.url,
+  ]);
+
+  return displayed;
 }
 
 export function useCharacterHealthFeedback(
