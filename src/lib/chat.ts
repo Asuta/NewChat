@@ -103,11 +103,15 @@ export function createNpcSpeechMessage({
   entityId,
   name,
   content,
+  portraitState = 'neutral',
+  sceneVisitId,
   status = 'done',
 }: {
   entityId: string;
   name: string;
   content: string;
+  portraitState?: NonNullable<ChatMessage['npcSpeech']>['portraitState'];
+  sceneVisitId?: string;
   status?: ChatMessage['status'];
 }): ChatMessage {
   return {
@@ -120,6 +124,8 @@ export function createNpcSpeechMessage({
     npcSpeech: {
       entityId,
       name,
+      portraitState,
+      sceneVisitId,
     },
   };
 }

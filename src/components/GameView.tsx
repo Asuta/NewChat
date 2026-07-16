@@ -24,6 +24,7 @@ import type {
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { ChatThread } from './ChatThread';
 import { GameStageCanvas } from './GameStageCanvas';
+import { buildPortraitStatesByEntity } from './portraitState';
 
 interface GameViewProps {
   standalone?: boolean;
@@ -96,6 +97,13 @@ export function GameView({
     () => buildStageDialogueEntries(conversation.messages),
     [conversation.messages],
   );
+  const portraitStatesByEntity = useMemo(
+    () => buildPortraitStatesByEntity(
+      conversation.messages,
+      world?.time?.currentSceneVisit?.id,
+    ),
+    [conversation.messages, world?.time?.currentSceneVisit?.id],
+  );
   const requestInventoryItemReference = useCallback((item: InventoryItem) => {
     referenceRequestSequence.current += 1;
     setItemReferenceRequest({
@@ -122,6 +130,7 @@ export function GameView({
         worldMap={worldMap}
         dialogueKey={conversation.id}
         dialogueEntries={dialogueEntries}
+        portraitStatesByEntity={portraitStatesByEntity}
         attackFeedback={attackFeedback}
         actionMenuEntityId={actionMenuEntityId}
         isLoading={isLoading}

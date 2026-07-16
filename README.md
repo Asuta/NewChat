@@ -68,6 +68,12 @@ LLM_THINKING=disabled
 - `导出完整存档`：导出当前模板、当前玩家存档、当前固定上下文、展示层数据库、图片素材和浏览器聊天记录。
 - `导入世界包`：导入 `.newchat-save.json` 后覆盖当前模板和当前存档；如果包里包含展示层数据，会整体替换 `data/presentation/` 下的展示数据库和图片素材；如果包里有聊天记录，前端会恢复到 localStorage。
 
+### 角色状态立绘
+
+角色默认立绘仍使用 `presentation_entity_bindings.portrait_asset_id`。可在该绑定的 `metadata.portraits` 中按状态配置额外的素材 id，目前支持 `happy`、`angry`、`disappointed`、`hurt` 和 `wounded`；缺少状态素材时会自动回退默认立绘。
+
+内置角色也支持按文件名自动发现状态立绘，例如艾蕾娜的默认文件为 `characters/npc-character_elena-idle.png`，对应愤怒立绘可放在 `characters/npc-character_elena-angry.png`。服务启动时会自动登记存在的状态文件并保留已经手工配置的绑定。
+
 ## 跑团规则知识库
 
 根目录 `rules/` 是项目自带的出厂规则模板。首次启动时，后端会把它复制到 `data/template/rules/`，再复制到 `data/save/rules/`。运行时世界 Agent 只读取 `data/save/rules/`。

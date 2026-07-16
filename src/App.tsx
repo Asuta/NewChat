@@ -5,6 +5,7 @@ import {
   createCharacterAttackFeedbackEvent,
   type CharacterAttackFeedbackEvent,
 } from './components/characterAttackFeedback';
+import { normalizePortraitState } from './components/portraitState';
 import { Composer } from './components/Composer';
 import { GameView } from './components/GameView';
 import { Sidebar } from './components/Sidebar';
@@ -448,6 +449,8 @@ export default function App({ stageOnly = false }: AppProps) {
             entityId: event.npcEntityId,
             name: event.npcName,
             content: '',
+            portraitState: event.portraitState,
+            sceneVisitId: event.sceneVisitId,
             status: 'streaming',
           });
           if (streamedAnswer) streamedAnswer += '\n\n';
@@ -464,6 +467,8 @@ export default function App({ stageOnly = false }: AppProps) {
               npcSpeech: {
                 entityId: event.npcEntityId,
                 name: event.npcName,
+                portraitState: event.portraitState,
+                sceneVisitId: event.sceneVisitId,
               },
             }));
           } else {
@@ -494,6 +499,8 @@ export default function App({ stageOnly = false }: AppProps) {
             entityId: event.npcEntityId,
             name: event.npcName,
             content: event.content,
+            portraitState: event.portraitState,
+            sceneVisitId: event.sceneVisitId,
             status: 'streaming',
           });
           streamedAnswer = streamedAnswer ? `${streamedAnswer}\n\n${event.content}` : event.content;
@@ -511,6 +518,8 @@ export default function App({ stageOnly = false }: AppProps) {
               npcSpeech: {
                 entityId: event.npcEntityId,
                 name: event.npcName,
+                portraitState: event.portraitState,
+                sceneVisitId: event.sceneVisitId,
               },
             }));
           } else {
@@ -1581,6 +1590,8 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       type: 'npc_speech_start',
       npcEntityId: String(payload.npcEntityId || ''),
       npcName: String(payload.npcName || ''),
+      portraitState: normalizePortraitState(payload.portraitState),
+      sceneVisitId: readOptionalString(payload.sceneVisitId),
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
     };
@@ -1590,6 +1601,8 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       type: 'npc_speech_delta',
       npcEntityId: String(payload.npcEntityId || ''),
       npcName: String(payload.npcName || ''),
+      portraitState: normalizePortraitState(payload.portraitState),
+      sceneVisitId: readOptionalString(payload.sceneVisitId),
       delta: String(payload.delta || ''),
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
@@ -1600,6 +1613,8 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       type: 'npc_speech',
       npcEntityId: String(payload.npcEntityId || ''),
       npcName: String(payload.npcName || ''),
+      portraitState: normalizePortraitState(payload.portraitState),
+      sceneVisitId: readOptionalString(payload.sceneVisitId),
       content: String(payload.content || ''),
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
@@ -1621,6 +1636,10 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
   }
 
   return null;
+}
+
+function readOptionalString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function getCompletedSceneTransition(

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
-import type { PresentationStageCharacter, WorldActionMenuTarget } from '../types';
+import type { PortraitState, PresentationStageCharacter, WorldActionMenuTarget } from '../types';
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import {
   createCharacterHealthChangeEvent,
@@ -8,12 +8,14 @@ import {
   type CharacterHealthChangeEvent,
   type CharacterHealthSnapshot,
 } from './characterHealthChange';
+import { resolveCharacterPortrait } from './portraitState';
 
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
 const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
 
 interface GameStageCharacterProps {
   character: PresentationStageCharacter;
+  portraitState: PortraitState;
   attackFeedbackEvent?: CharacterAttackFeedbackEvent;
   healthChangeEvent?: CharacterHealthChangeEvent;
   isSpeaking: boolean;
@@ -30,6 +32,7 @@ interface GameStageCharacterProps {
 
 export function GameStageCharacter({
   character,
+  portraitState,
   attackFeedbackEvent,
   healthChangeEvent,
   isSpeaking,
@@ -44,6 +47,11 @@ export function GameStageCharacter({
   onOpenEntityActions,
 }: GameStageCharacterProps) {
   const figureRef = useRef<HTMLElement>(null);
+  const resolvedPortrait = resolveCharacterPortrait(
+    character,
+    portraitState,
+    attackFeedbackEvent?.hit === true,
+  );
   const vitalStatus = getVitalStatus(character.vitalState);
 
   useEffect(() => {
@@ -167,7 +175,8 @@ export function GameStageCharacter({
       className={[
         'game-character',
         `slot-${character.slot}`,
-        character.isFallbackPortrait ? 'fallback-character' : '',
+        resolvedPortrait.isFallback ? 'fallback-character' : '',
+        `portrait-state-${resolvedPortrait.state}`,
         isSpeaking ? 'speaking-character' : '',
         hasPointerInteraction ? 'has-actions' : '',
         isPixelHovered ? 'pixel-hovered' : '',
@@ -183,9 +192,10 @@ export function GameStageCharacter({
       onClick={isItemTargeting ? handleClick : undefined}
       onContextMenu={hasPointerInteraction ? handleContextMenu : undefined}
     >
-      {character.portraitUrl ? (
+      {resolvedPortrait.url ? (
         <img
-          src={character.portraitUrl}
+          key={resolvedPortrait.url}
+          src={resolvedPortrait.url}
           alt={vitalStatus ? `${character.name}（${vitalStatus.label}）` : character.name}
           onLoad={(event) => prepareCharacterAlphaMask(event.currentTarget)}
           onPointerMove={hasPointerInteraction ? (event) => {

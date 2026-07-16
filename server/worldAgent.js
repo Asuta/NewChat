@@ -21,11 +21,16 @@ import {
 import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 import { executeInventoryAction, getInventory } from './inventory.js';
+import {
+  normalizePortraitState,
+  NPC_SPEECH_PORTRAIT_STATES,
+} from './presentationPortraits.js';
 
 export const WORLD_AGENT_DEFAULT_MAX_STEPS = 30;
 export const WORLD_AGENT_MIN_STEPS = 1;
 export const WORLD_AGENT_MAX_STEPS = 100;
 const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
+  '调用 npc_speak 时必须根据 NPC 说话时外显的情绪选择 portraitState；只选择 neutral、happy、angry、disappointed，不确定时使用 neutral。',
   '当前后端使用 API 原生工具调用模式。',
   '你不要输出裸 JSON 决策；需要行动时通过 tool_calls 调用工具。',
   '只处理最后一条 role=user 的当前任务；更早的 user/assistant/tool 消息只是历史上下文。',
@@ -141,8 +146,13 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
   }, ['content']),
   createToolSchema('npc_speak', '让一个已存在实体以独立 NPC 对话气泡发言。', {
     npcEntityId: { type: 'string', description: 'NPC 实体 id。' },
+    portraitState: {
+      type: 'string',
+      enum: NPC_SPEECH_PORTRAIT_STATES,
+      description: 'NPC 说话时的情绪立绘状态：neutral、happy、angry 或 disappointed。',
+    },
     content: { type: 'string', description: 'NPC 实际说出口的话，不包含旁白、动作描写、引号或说话人前缀。' },
-  }, ['npcEntityId', 'content']),
+  }, ['npcEntityId', 'portraitState', 'content']),
   createToolSchema('transition_scene', '根据上一场景行动估算耗时，原子地推进世界时间并切换玩家当前场景。普通场景移动必须使用此工具。', {
     sceneId: { type: 'string', description: '目标场景实体 id，优先使用。' },
     exitId: { type: 'number', description: '当前场景 exits 中的出口关系 id。' },
@@ -593,6 +603,7 @@ function compactToolResultForAgentStep(tool, result) {
     const npc = isRecord(result.npc) ? result.npc : {};
     return {
       ok: true,
+      portraitState: normalizePortraitState(result.portraitState),
       npc: {
         id: typeof npc.id === 'string' ? npc.id : '',
         name: typeof npc.name === 'string' ? npc.name : '',
@@ -668,6 +679,10 @@ async function appendNpcSpeakToolResult({ args, result, runId, state, handlers, 
   const npc = isRecord(result.npc) ? result.npc : {};
   const entityId = typeof npc.id === 'string' ? npc.id : '';
   const npcName = typeof npc.name === 'string' ? npc.name : '';
+  const portraitState = normalizePortraitState(result.portraitState || args.portraitState);
+  const sceneVisitId = typeof result.sceneVisitId === 'string' && result.sceneVisitId.trim()
+    ? result.sceneVisitId.trim()
+    : undefined;
   if (!content || !entityId || !npcName) return;
   state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
   addConversation('npc', entityId, npcName, content);
@@ -675,6 +690,8 @@ async function appendNpcSpeakToolResult({ args, result, runId, state, handlers, 
     runId,
     npcEntityId: entityId,
     npcName,
+    portraitState,
+    sceneVisitId,
   };
   handlers.onNpcSpeechStart?.(event);
   await streamTextDeltas(
@@ -932,6 +949,7 @@ export function executeWorldTool(tool, args, prompt = '') {
   if (tool === 'npc_speak') {
     const npcEntityId = String(args.npcEntityId || args.entityId || args.id || '').trim();
     const content = String(args.content || args.text || args.message || '').trim();
+    const portraitState = normalizePortraitState(args.portraitState);
     if (!npcEntityId) {
       return {
         ok: false,
@@ -951,12 +969,15 @@ export function executeWorldTool(tool, args, prompt = '') {
         error: `NPC 实体 ${npcEntityId} 不存在。`,
       };
     }
+    const sceneVisitId = getWorldTimeState().currentSceneVisit?.id;
     return {
       ok: true,
       npc: {
         id: npc.id,
         name: npc.name,
       },
+      portraitState,
+      sceneVisitId: typeof sceneVisitId === 'string' ? sceneVisitId : '',
       content,
       answer: content,
       summary: `${npc.name} 发言成功。`,

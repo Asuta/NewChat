@@ -2,6 +2,11 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR } from './saveManager.js';
+import {
+  mergePortraitAssetIds,
+  PORTRAIT_STATES,
+  readPortraitAssetIds,
+} from './presentationPortraits.js';
 import { derivePresentationVitalState } from './presentationState.js';
 import { getComponent } from './worldDb.js';
 
@@ -112,6 +117,11 @@ export function getCurrentPresentationStage(sceneState) {
       const portraitAsset = binding?.portraitAssetId ? getAsset(database, binding.portraitAssetId) : null;
       const portraitUrl = toAssetUrl(portraitAsset);
       const fallbackPortraitUrl = toAssetUrl(fallbackPortraitAsset);
+      const defaultPortraitUrl = portraitUrl || fallbackPortraitUrl;
+      const portraitUrls = {
+        ...(defaultPortraitUrl ? { neutral: defaultPortraitUrl } : {}),
+        ...getPortraitVariantUrls(database, binding?.metadata),
+      };
       const isFallbackPortrait = !portraitUrl && Boolean(fallbackPortraitUrl);
       const health = getPresentationHealth(entity.id);
       const status = getComponent(entity.id, 'status');
@@ -121,7 +131,8 @@ export function getCurrentPresentationStage(sceneState) {
         kind: entity.kind,
         health,
         vitalState: derivePresentationVitalState(status, health),
-        portraitUrl: portraitUrl || fallbackPortraitUrl,
+        portraitUrl: defaultPortraitUrl,
+        portraitUrls,
         position: binding?.position || 'auto',
         scale: typeof binding?.scale === 'number' ? binding.scale : 1,
         hasBinding: Boolean(binding),
@@ -214,7 +225,25 @@ function seedSevenDayCrownAssets(database) {
         model: 'gpt-image-2',
       },
     });
-    upsertEntityBinding(database, entityId, assetId, 'auto', 1);
+    const portraitAssetIds = {};
+    for (const state of PORTRAIT_STATES) {
+      if (state === 'neutral') continue;
+      const variantPath = assetPath.replace(/-idle\.png$/i, `-${state}.png`);
+      if (variantPath === assetPath || !existsSync(join(PRESENTATION_ASSETS_DIR, variantPath))) continue;
+      const variantAssetId = `${assetId.replace(/_idle$/i, '')}_${state}`;
+      upsertAsset(database, {
+        id: variantAssetId,
+        type: 'portrait',
+        path: variantPath,
+        mimeType: 'image/png',
+        metadata: {
+          discovered: true,
+          portraitState: state,
+        },
+      });
+      portraitAssetIds[state] = variantAssetId;
+    }
+    upsertEntityBinding(database, entityId, assetId, 'auto', 1, { portraits: portraitAssetIds });
   }
 }
 
@@ -241,16 +270,21 @@ function upsertSceneBinding(database, sceneEntityId, backgroundAssetId) {
   ).run(sceneEntityId, backgroundAssetId);
 }
 
-function upsertEntityBinding(database, entityId, portraitAssetId, position, scale) {
+function upsertEntityBinding(database, entityId, portraitAssetId, position, scale, metadata = null) {
+  const currentMetadata = getEntityBinding(database, entityId)?.metadata || {};
+  const nextMetadata = metadata
+    ? mergePortraitAssetIds({ ...metadata, ...currentMetadata }, metadata.portraits)
+    : currentMetadata;
   database.prepare(
     `INSERT INTO presentation_entity_bindings (entity_id, portrait_asset_id, position, scale, metadata, created_at, updated_at)
-     VALUES (?, ?, ?, ?, '{}', ${nowSql}, ${nowSql})
+     VALUES (?, ?, ?, ?, ?, ${nowSql}, ${nowSql})
      ON CONFLICT(entity_id) DO UPDATE SET
        portrait_asset_id = excluded.portrait_asset_id,
        position = excluded.position,
        scale = excluded.scale,
+       metadata = excluded.metadata,
        updated_at = ${nowSql}`,
-  ).run(entityId, portraitAssetId, position, scale);
+  ).run(entityId, portraitAssetId, position, scale, JSON.stringify(nextMetadata));
 }
 
 function getSceneBackgroundAsset(database, sceneEntityId) {
@@ -277,6 +311,15 @@ function getAsset(database, assetId) {
     `SELECT id, type, path, mime_type as mimeType, metadata FROM presentation_assets WHERE id = ?`,
   ).get(assetId);
   return row ? formatAsset(row) : null;
+}
+
+function getPortraitVariantUrls(database, metadata) {
+  const result = {};
+  for (const [state, assetId] of Object.entries(readPortraitAssetIds(metadata))) {
+    const url = toAssetUrl(getAsset(database, assetId));
+    if (url) result[state] = url;
+  }
+  return result;
 }
 
 function assignStageSlots(characters) {

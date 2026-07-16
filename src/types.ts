@@ -3,6 +3,7 @@ export type ThinkingMode = 'enabled' | 'disabled';
 export type ModelId = 'deepseek-v4-flash' | 'deepseek-v4-pro';
 export type ContextMode = 'summary-only' | 'summary-recent' | 'full-history';
 export type DisplayMode = 'chat' | 'game';
+export type PortraitState = 'neutral' | 'happy' | 'angry' | 'disappointed' | 'hurt' | 'wounded';
 
 export interface ChatMessage {
   id: string;
@@ -17,6 +18,8 @@ export interface ChatMessage {
   npcSpeech?: {
     entityId: string;
     name: string;
+    portraitState?: PortraitState;
+    sceneVisitId?: string;
   };
   sceneTransition?: {
     fromSceneId?: string | null;
@@ -178,6 +181,7 @@ export interface PresentationStageCharacter {
   } | null;
   vitalState: 'active' | 'incapacitated' | 'dead';
   portraitUrl: string | null;
+  portraitUrls: Partial<Record<PortraitState, string>>;
   position: string;
   slot: 'left' | 'center' | 'right' | string;
   scale: number;
@@ -565,6 +569,8 @@ export type WorldAgentStreamEvent =
       type: 'npc_speech_start';
       npcEntityId: string;
       npcName: string;
+      portraitState: PortraitState;
+      sceneVisitId?: string;
       runId?: number;
       stepIndex?: number;
     }
@@ -572,6 +578,8 @@ export type WorldAgentStreamEvent =
       type: 'npc_speech_delta';
       npcEntityId: string;
       npcName: string;
+      portraitState: PortraitState;
+      sceneVisitId?: string;
       delta: string;
       runId?: number;
       stepIndex?: number;
@@ -580,6 +588,8 @@ export type WorldAgentStreamEvent =
       type: 'npc_speech';
       npcEntityId: string;
       npcName: string;
+      portraitState: PortraitState;
+      sceneVisitId?: string;
       content: string;
       runId?: number;
       stepIndex?: number;

@@ -20,6 +20,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import type {
   InventoryItem,
   ItemTargetingAction,
+  PortraitState,
   PresentationStage,
   StageDialogueEntry,
   PlayerInventory,
@@ -55,6 +56,7 @@ interface GameStageCanvasProps {
   worldMap: WorldMapState | null;
   dialogueKey: string;
   dialogueEntries: StageDialogueEntry[];
+  portraitStatesByEntity: Record<string, PortraitState>;
   attackFeedback: CharacterAttackFeedbackEvent | null;
   actionMenuEntityId?: string | null;
   isLoading: boolean;
@@ -96,6 +98,7 @@ export function GameStageCanvas({
   worldMap,
   dialogueKey,
   dialogueEntries,
+  portraitStatesByEntity,
   attackFeedback,
   actionMenuEntityId = null,
   isLoading,
@@ -117,6 +120,13 @@ export function GameStageCanvas({
   const sceneName = stage?.scene?.name || '未知场景';
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
   const stageCharacters = useMemo(() => stage?.characters || [], [stage?.characters]);
+  useEffect(() => {
+    const urls = new Set(stageCharacters.flatMap((character) => Object.values(character.portraitUrls)));
+    for (const url of urls) {
+      const preload = new Image();
+      preload.src = url;
+    }
+  }, [stageCharacters]);
   const dialogue = useStageDialogue(
     dialogueKey,
     dialogueEntries,
@@ -419,6 +429,7 @@ export function GameStageCanvas({
               <GameStageCharacter
                 key={character.entityId}
                 character={character}
+                portraitState={portraitStatesByEntity[character.entityId] || 'neutral'}
                 attackFeedbackEvent={attackFeedback?.targetEntityId === character.entityId ? attackFeedback : undefined}
                 healthChangeEvent={healthFeedback.eventsByEntity[character.entityId]}
                 isSpeaking={character.entityId === dialogue.activeEntry.speakerId}
