@@ -1962,6 +1962,7 @@ button {
 }
 
 .game-character {
+  --character-motion-delay: 0ms;
   --character-scale: 1;
   --character-vital-filter: grayscale(0) saturate(1) brightness(1) contrast(1);
   --character-vital-opacity: 1;
@@ -1978,6 +1979,8 @@ button {
   margin: 0;
   transform: translateX(-50%) scale(var(--character-scale));
   transform-origin: bottom center;
+  transition: left 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: left;
 }
 
 .game-character.slot-left {
@@ -1990,6 +1993,123 @@ button {
 
 .game-character.slot-right {
   left: 72%;
+}
+
+.game-character.motion-entering:not(.motion-ready) {
+  opacity: 0;
+  filter: blur(4px);
+  scale: 0.97;
+  translate: 0 18px;
+}
+
+.game-character.motion-entering.motion-ready {
+  animation: game-character-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) var(--character-motion-delay) both;
+}
+
+.game-character.motion-entering.motion-ready figcaption {
+  animation: game-character-caption-enter 180ms ease-out calc(var(--character-motion-delay) + 100ms) both;
+}
+
+.game-character.motion-exiting.motion-ready {
+  animation: game-character-exit 240ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.game-character.motion-exiting.motion-ready figcaption {
+  animation: game-character-caption-exit 120ms ease-in both;
+}
+
+.game-character.motion-focus-entering:not(.motion-ready) {
+  opacity: 0;
+  filter: blur(2px);
+  scale: 0.985;
+}
+
+.game-character.motion-focus-entering.motion-ready {
+  animation: game-character-focus-enter 180ms ease-out both;
+}
+
+.game-character.motion-focus-entering.motion-ready figcaption {
+  animation: game-character-caption-enter 140ms ease-out 30ms both;
+}
+
+.game-character.motion-focus-exiting.motion-ready {
+  z-index: 4;
+  animation: game-character-focus-exit 180ms ease-in both;
+}
+
+.game-character.motion-focus-exiting.motion-ready figcaption {
+  animation: game-character-caption-exit 110ms ease-in both;
+}
+
+@keyframes game-character-enter {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    scale: 0.97;
+    translate: 0 18px;
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes game-character-exit {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    scale: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    filter: blur(3px);
+    scale: 0.985;
+    translate: 0 10px;
+  }
+}
+
+@keyframes game-character-focus-enter {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    scale: 0.985;
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    scale: 1;
+  }
+}
+
+@keyframes game-character-focus-exit {
+  from { opacity: 1; filter: blur(0); scale: 1; }
+  to { opacity: 0; filter: blur(2px); scale: 0.99; }
+}
+
+@keyframes game-character-caption-enter {
+  from { opacity: 0; translate: 0 5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes game-character-caption-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes game-character-reduced-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes game-character-reduced-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .game-character img {
@@ -2454,6 +2574,34 @@ button {
   .game-character-missing,
   .game-character figcaption {
     transition: none;
+  }
+
+  .game-character {
+    transition: none;
+  }
+
+  .game-character.motion-entering:not(.motion-ready),
+  .game-character.motion-focus-entering:not(.motion-ready) {
+    filter: none;
+    scale: 1;
+    translate: 0 0;
+  }
+
+  .game-character.motion-entering.motion-ready,
+  .game-character.motion-focus-entering.motion-ready {
+    animation: game-character-reduced-enter 120ms linear both;
+  }
+
+  .game-character.motion-exiting.motion-ready,
+  .game-character.motion-focus-exiting.motion-ready {
+    animation: game-character-reduced-exit 120ms linear both;
+  }
+
+  .game-character.motion-entering.motion-ready figcaption,
+  .game-character.motion-exiting.motion-ready figcaption,
+  .game-character.motion-focus-entering.motion-ready figcaption,
+  .game-character.motion-focus-exiting.motion-ready figcaption {
+    animation: none;
   }
 
   .game-character.has-actions:is(.action-menu-open, .pixel-hovered, :has(> .game-character-missing:hover, > figcaption:hover)) > img,

@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type {
+  AnimationEvent as ReactAnimationEvent,
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+} from 'react';
 import type { PortraitState, PresentationStageCharacter, WorldActionMenuTarget } from '../types';
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import {
@@ -10,9 +14,27 @@ import {
 } from './characterHealthChange';
 import { preparePortraitImage } from './portraitImageLoading';
 import { resolveCharacterPortrait } from './portraitState';
+import {
+  isEnteringPhase,
+  type StageCharacterMotionPhase,
+} from './stageCharacterTransitions';
 
 const CHARACTER_ALPHA_MASK_MAX_SIZE = 512;
 const CHARACTER_ALPHA_HIT_THRESHOLD = 16;
+const CHARACTER_MOTION_FALLBACK_MS: Record<Exclude<StageCharacterMotionPhase, 'stable'>, number> = {
+  entering: 510,
+  exiting: 340,
+  'focus-entering': 300,
+  'focus-exiting': 300,
+};
+const CHARACTER_MOTION_ANIMATION_NAMES = new Set([
+  'game-character-enter',
+  'game-character-exit',
+  'game-character-focus-enter',
+  'game-character-focus-exit',
+  'game-character-reduced-enter',
+  'game-character-reduced-exit',
+]);
 
 interface GameStageCharacterProps {
   character: PresentationStageCharacter;
@@ -25,9 +47,13 @@ interface GameStageCharacterProps {
   isItemTargeting?: boolean;
   isValidItemTarget?: boolean;
   itemTargetingKind?: 'use' | 'attack';
+  motionDelayMs?: number;
+  motionId?: number;
+  motionPhase?: StageCharacterMotionPhase;
   onAlphaHoverChange: (entityId: string | null) => void;
   onItemTarget?: (entityId: string) => void;
   onCancelItemTargeting?: () => void;
+  onMotionComplete?: (entityId: string, motionId: number) => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
 
@@ -42,9 +68,13 @@ export function GameStageCharacter({
   isItemTargeting = false,
   isValidItemTarget = false,
   itemTargetingKind = 'use',
+  motionDelayMs = 0,
+  motionId = 0,
+  motionPhase = 'stable',
   onAlphaHoverChange,
   onItemTarget,
   onCancelItemTargeting,
+  onMotionComplete,
   onOpenEntityActions,
 }: GameStageCharacterProps) {
   const figureRef = useRef<HTMLElement>(null);
@@ -55,6 +85,20 @@ export function GameStageCharacter({
   );
   const displayedPortrait = useBufferedPortrait(resolvedPortrait);
   const vitalStatus = getVitalStatus(character.vitalState);
+  const isMotionReady = useCharacterMotionReadiness(
+    motionId,
+    motionPhase,
+    resolvedPortrait.url,
+  );
+
+  useEffect(() => {
+    if (motionPhase === 'stable' || !isMotionReady || !onMotionComplete) return;
+    const timer = window.setTimeout(
+      () => onMotionComplete(character.entityId, motionId),
+      CHARACTER_MOTION_FALLBACK_MS[motionPhase] + motionDelayMs,
+    );
+    return () => window.clearTimeout(timer);
+  }, [character.entityId, isMotionReady, motionDelayMs, motionId, motionPhase, onMotionComplete]);
 
   useEffect(() => {
     const figure = figureRef.current;
@@ -172,6 +216,14 @@ export function GameStageCharacter({
     onItemTarget(character.entityId);
   }
 
+  function handleAnimationEnd(event: ReactAnimationEvent<HTMLElement>) {
+    if (
+      event.target !== event.currentTarget
+      || !CHARACTER_MOTION_ANIMATION_NAMES.has(event.animationName)
+    ) return;
+    onMotionComplete?.(character.entityId, motionId);
+  }
+
   return (
     <figure
       className={[
@@ -187,10 +239,16 @@ export function GameStageCharacter({
         isItemTargeting && isValidItemTarget ? 'item-target-valid' : '',
         isItemTargeting && !isValidItemTarget ? 'item-target-invalid' : '',
         isItemTargeting && isValidItemTarget && itemTargetingKind === 'attack' ? 'item-target-attack' : '',
+        motionPhase !== 'stable' ? `motion-${motionPhase}` : '',
+        motionPhase !== 'stable' && isMotionReady ? 'motion-ready' : '',
         `is-${character.vitalState}`,
       ].filter(Boolean).join(' ')}
       ref={figureRef}
-      style={{ '--character-scale': String(character.scale || 1) } as CSSProperties}
+      style={{
+        '--character-motion-delay': `${motionDelayMs}ms`,
+        '--character-scale': String(character.scale || 1),
+      } as CSSProperties}
+      onAnimationEnd={motionPhase !== 'stable' ? handleAnimationEnd : undefined}
       onClick={isItemTargeting ? handleClick : undefined}
       onContextMenu={hasPointerInteraction ? handleContextMenu : undefined}
     >
@@ -294,6 +352,54 @@ export function GameStageCharacter({
       </figcaption>
     </figure>
   );
+}
+
+function useCharacterMotionReadiness(
+  motionId: number,
+  motionPhase: StageCharacterMotionPhase,
+  portraitUrl: string | null,
+) {
+  const initialReadyMotionId = isEnteringPhase(motionPhase) ? -1 : motionId;
+  const readyMotionIdRef = useRef(initialReadyMotionId);
+  const [readyMotionId, setReadyMotionId] = useState(initialReadyMotionId);
+
+  useEffect(() => {
+    if (!isEnteringPhase(motionPhase)) {
+      readyMotionIdRef.current = motionId;
+      setReadyMotionId(motionId);
+      return;
+    }
+
+    // Once this motion has started, portrait-state changes are buffered separately and
+    // must not hide the character or restart its entrance.
+    if (readyMotionIdRef.current === motionId) return;
+
+    let cancelled = false;
+    let frame: number | undefined;
+    setReadyMotionId(-1);
+
+    const reveal = () => {
+      if (cancelled) return;
+      frame = window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        readyMotionIdRef.current = motionId;
+        setReadyMotionId(motionId);
+      });
+    };
+
+    if (!portraitUrl) {
+      reveal();
+    } else {
+      void preparePortraitImage(portraitUrl).then(reveal).catch(reveal);
+    }
+
+    return () => {
+      cancelled = true;
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+    };
+  }, [motionId, motionPhase, portraitUrl]);
+
+  return motionPhase === 'stable' || readyMotionId === motionId;
 }
 
 function useBufferedPortrait(target: ReturnType<typeof resolveCharacterPortrait>) {

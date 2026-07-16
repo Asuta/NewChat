@@ -43,6 +43,10 @@ import {
 } from './StageMarkdownContent';
 import type { StageMarkdownMark, StageMarkdownSegment } from './StageMarkdownContent';
 import { getVisibleStageCharacters } from './stageCharacterSelection';
+import {
+  isExitingPhase,
+  useStageCharacterTransitions,
+} from './stageCharacterTransitions';
 
 const GAME_STAGE_BASE_WIDTH = 1280;
 const GAME_STAGE_BASE_HEIGHT = 720;
@@ -139,6 +143,11 @@ export function GameStageCanvas({
   const visibleCharacters = useMemo(
     () => getVisibleStageCharacters(stageCharacters, activeSpeakerId, attackFeedback?.targetEntityId),
     [activeSpeakerId, attackFeedback?.targetEntityId, stageCharacters],
+  );
+  const stageCharacterTransitions = useStageCharacterTransitions(
+    stage?.scene?.id ?? '',
+    stageCharacters,
+    visibleCharacters,
   );
   const healthFeedback = useCharacterHealthFeedback(
     `${dialogueKey}:${stage?.scene?.id ?? 'scene'}`,
@@ -428,25 +437,33 @@ export function GameStageCanvas({
           />
 
           <div className="game-character-layer" aria-label="当前场景人物">
-            {visibleCharacters.map((character) => (
-              <GameStageCharacter
-                key={character.entityId}
-                character={character}
-                portraitState={portraitStatesByEntity[character.entityId] || 'neutral'}
-                attackFeedbackEvent={attackFeedback?.targetEntityId === character.entityId ? attackFeedback : undefined}
-                healthChangeEvent={healthFeedback.eventsByEntity[character.entityId]}
-                isSpeaking={character.entityId === dialogue.activeEntry.speakerId}
-                isPixelHovered={character.entityId === alphaHoveredEntityId}
-                isActionMenuOpen={!itemTargeting && character.entityId === actionMenuEntityId}
-                isItemTargeting={Boolean(itemTargeting)}
-                isValidItemTarget={itemTargetIdSet.has(character.entityId)}
-                itemTargetingKind={isWeaponAttackTargeting ? 'attack' : 'use'}
-                onAlphaHoverChange={updateAlphaHoveredEntity}
-                onItemTarget={executeItemOnTarget}
-                onCancelItemTargeting={cancelItemTargeting}
-                onOpenEntityActions={onOpenEntityActions}
-              />
-            ))}
+            {stageCharacterTransitions.rendered.map((entry) => {
+              const character = entry.character;
+              const isExiting = isExitingPhase(entry.phase);
+              return (
+                <GameStageCharacter
+                  key={`${stage?.scene?.id ?? 'scene'}:${character.entityId}`}
+                  character={character}
+                  portraitState={portraitStatesByEntity[character.entityId] || 'neutral'}
+                  attackFeedbackEvent={attackFeedback?.targetEntityId === character.entityId ? attackFeedback : undefined}
+                  healthChangeEvent={healthFeedback.eventsByEntity[character.entityId]}
+                  isSpeaking={!isExiting && character.entityId === dialogue.activeEntry.speakerId}
+                  isPixelHovered={character.entityId === alphaHoveredEntityId}
+                  isActionMenuOpen={!itemTargeting && character.entityId === actionMenuEntityId}
+                  isItemTargeting={Boolean(itemTargeting)}
+                  isValidItemTarget={itemTargetIdSet.has(character.entityId)}
+                  itemTargetingKind={isWeaponAttackTargeting ? 'attack' : 'use'}
+                  motionDelayMs={entry.motionDelayMs}
+                  motionId={entry.motionId}
+                  motionPhase={entry.phase}
+                  onAlphaHoverChange={updateAlphaHoveredEntity}
+                  onItemTarget={executeItemOnTarget}
+                  onCancelItemTargeting={cancelItemTargeting}
+                  onMotionComplete={stageCharacterTransitions.completeMotion}
+                  onOpenEntityActions={isExiting ? undefined : onOpenEntityActions}
+                />
+              );
+            })}
           </div>
 
           <span className="game-stage-health-announcement" aria-live="polite" aria-atomic="true">
@@ -465,7 +482,7 @@ export function GameStageCanvas({
             ) : null}
           </span>
 
-          {!visibleCharacters.length ? (
+          {!stageCharacterTransitions.rendered.length ? (
             <div className="game-stage-empty">
               <ImageOff size={20} />
               <span>当前场景暂无可显示立绘</span>
