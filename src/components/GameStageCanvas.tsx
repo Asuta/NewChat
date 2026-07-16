@@ -12,6 +12,7 @@ import {
   MapPinned,
   Maximize2,
   Minimize2,
+  RotateCcw,
   Sword,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -68,6 +69,7 @@ interface GameStageCanvasProps {
   onInventoryOpenChange: (open: boolean) => void;
   onExecuteInventoryAction: (action: WorldAction) => void | Promise<void>;
   onReferenceInventoryItem: (item: InventoryItem) => void;
+  onResetSaveData: () => void;
   onCloseEntityActions?: () => void;
   onOpenEntityActions?: (target: WorldActionMenuTarget) => void;
 }
@@ -108,6 +110,7 @@ export function GameStageCanvas({
   onInventoryOpenChange,
   onExecuteInventoryAction,
   onReferenceInventoryItem,
+  onResetSaveData,
   onCloseEntityActions,
   onOpenEntityActions,
 }: GameStageCanvasProps) {
@@ -373,15 +376,27 @@ export function GameStageCanvas({
           ) : null}
 
           <header className="game-stage-header">
-            <div className="game-stage-heading">
-              <MapPinned size={17} />
-              <strong>{sceneName}</strong>
-              {world?.time ? (
-                <span className="game-stage-time">
-                  <Clock3 size={14} />
-                  {world.time.clock.fullLabel}
-                </span>
-              ) : null}
+            <div className="game-stage-header-main">
+              <div className="game-stage-heading">
+                <MapPinned size={17} />
+                <strong>{sceneName}</strong>
+                {world?.time ? (
+                  <span className="game-stage-time">
+                    <Clock3 size={14} />
+                    {world.time.clock.fullLabel}
+                  </span>
+                ) : null}
+              </div>
+              <button
+                className="game-stage-reset"
+                type="button"
+                disabled={isNavigationDisabled}
+                title={isNavigationDisabled ? '当前正在处理，暂时不能重置游戏' : '重置当前游戏数据'}
+                onClick={onResetSaveData}
+              >
+                <RotateCcw size={14} />
+                <span>重置游戏</span>
+              </button>
             </div>
             {isLoading ? (
               <span className="game-stage-loading">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChatThread } from './components/ChatThread';
 import {
   createCharacterAttackFeedbackEvent,
@@ -1246,6 +1247,42 @@ export default function App({ stageOnly = false }: AppProps) {
     return null;
   }
 
+  const resetConfirmationContent = isResetConfirmOpen ? (
+    <div className="confirmation-backdrop" role="presentation">
+      <section
+        ref={resetDialogRef}
+        className="confirmation-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-save-title"
+        onKeyDown={handleResetConfirmKeyDown}
+      >
+        <div className="confirmation-copy">
+          <strong id="reset-save-title">重新开始？</strong>
+          <p>这会用当前世界模板覆盖玩家存档，并清空当前聊天记录。这个操作无法撤销。</p>
+        </div>
+        <div className="confirmation-actions">
+          <button
+            ref={resetCancelButtonRef}
+            className="settings-secondary"
+            type="button"
+            disabled={isSaveDataBusy}
+            onClick={() => setIsResetConfirmOpen(false)}
+          >
+            取消
+          </button>
+          <button className="settings-danger" type="button" disabled={isSaveDataBusy} onClick={() => void resetSaveData()}>
+            重新开始
+          </button>
+        </div>
+      </section>
+    </div>
+  ) : null;
+  const resetDialogFullscreenHost = typeof document !== 'undefined' ? document.fullscreenElement : null;
+  const resetConfirmationDialog = resetConfirmationContent && resetDialogFullscreenHost
+    ? createPortal(resetConfirmationContent, resetDialogFullscreenHost)
+    : resetConfirmationContent;
+
   if (stageOnly) {
     return (
       <>
@@ -1269,11 +1306,12 @@ export default function App({ stageOnly = false }: AppProps) {
             attackFeedback={characterAttackFeedback}
             error={error}
             fixedContext={fixedContext}
-          onSend={(content, itemReferences) => Boolean(queueMessage(content, { itemReferences }))}
+            onSend={(content, itemReferences) => Boolean(queueMessage(content, { itemReferences }))}
             onStop={stopStreaming}
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
             onExecuteInventoryAction={(action: WorldAction) => executeWorldAction(action)}
+            onResetSaveData={requestResetSaveData}
             onCloseEntityActions={closeWorldActionMenu}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -1284,6 +1322,7 @@ export default function App({ stageOnly = false }: AppProps) {
           onClose={closeWorldActionMenu}
           onExecuteWorldAction={executeWorldAction}
         />
+        {resetConfirmationDialog}
       </>
     );
   }
@@ -1354,6 +1393,7 @@ export default function App({ stageOnly = false }: AppProps) {
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
             onExecuteInventoryAction={(action: WorldAction) => executeWorldAction(action)}
+            onResetSaveData={requestResetSaveData}
             onCloseEntityActions={closeWorldActionMenu}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -1391,37 +1431,7 @@ export default function App({ stageOnly = false }: AppProps) {
         onClose={closeWorldActionMenu}
         onExecuteWorldAction={executeWorldAction}
       />
-      {isResetConfirmOpen ? (
-        <div className="confirmation-backdrop" role="presentation">
-          <section
-            ref={resetDialogRef}
-            className="confirmation-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="reset-save-title"
-            onKeyDown={handleResetConfirmKeyDown}
-          >
-            <div className="confirmation-copy">
-              <strong id="reset-save-title">重新开始？</strong>
-              <p>这会用当前世界模板覆盖玩家存档，并清空当前聊天记录。这个操作无法撤销。</p>
-            </div>
-            <div className="confirmation-actions">
-              <button
-                ref={resetCancelButtonRef}
-                className="settings-secondary"
-                type="button"
-                disabled={isSaveDataBusy}
-                onClick={() => setIsResetConfirmOpen(false)}
-              >
-                取消
-              </button>
-              <button className="settings-danger" type="button" disabled={isSaveDataBusy} onClick={() => void resetSaveData()}>
-                重新开始
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+      {resetConfirmationDialog}
     </main>
   );
 }

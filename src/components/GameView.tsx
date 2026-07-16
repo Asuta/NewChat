@@ -49,6 +49,7 @@ interface GameViewProps {
   onEnterScene: (sceneId: string) => void;
   onInventoryOpenChange: (open: boolean) => void;
   onExecuteInventoryAction: (action: WorldAction) => void | Promise<void>;
+  onResetSaveData: () => void;
   onCloseEntityActions: () => void;
   onOpenEntityActions: (target: WorldActionMenuTarget) => void;
   onOpenSettings: () => void;
@@ -84,6 +85,7 @@ export function GameView({
   onEnterScene,
   onInventoryOpenChange,
   onExecuteInventoryAction,
+  onResetSaveData,
   onCloseEntityActions,
   onOpenEntityActions,
   onOpenSettings,
@@ -146,6 +148,7 @@ export function GameView({
         onInventoryOpenChange={onInventoryOpenChange}
         onExecuteInventoryAction={onExecuteInventoryAction}
         onReferenceInventoryItem={requestInventoryItemReference}
+        onResetSaveData={onResetSaveData}
         onCloseEntityActions={onCloseEntityActions}
         onOpenEntityActions={onOpenEntityActions}
       />
