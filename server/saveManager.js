@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
+  SEVEN_DAY_CROWN_CHARACTER_HIT_POINTS,
   SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
   SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
   SEVEN_DAY_CROWN_PLAYER_PROFILE_ID,
@@ -92,12 +93,12 @@ export function ensureTemplateDbFromSaveIfMissing() {
   }
 }
 
-export function ensureTemplatePlayableDefaults() {
-  if (!hasWorldDbSchema(TEMPLATE_DB_FILE)) {
+export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE) {
+  if (!hasWorldDbSchema(templateDbFile)) {
     return;
   }
 
-  const database = new DatabaseSync(TEMPLATE_DB_FILE);
+  const database = new DatabaseSync(templateDbFile);
   try {
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
@@ -173,6 +174,12 @@ export function ensureTemplatePlayableDefaults() {
       quantity: 2,
     });
     database.prepare("INSERT INTO meta (key, value) VALUES ('inventory.items.v1', 'ready') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+    for (const [entityId, maxHitPoints] of Object.entries(SEVEN_DAY_CROWN_CHARACTER_HIT_POINTS)) {
+      mergeTemplateComponent(database, entityId, 'stats', {
+        maxHitPoints,
+        currentHitPoints: maxHitPoints,
+      });
+    }
     mergeTemplateStats(database, 'character_elena', getSevenDayCrownElenaStats(), SEVEN_DAY_CROWN_ELENA_PROFILE_ID);
     mergeTemplateStats(database, 'character_hollow_knight', getSevenDayCrownHollowKnightStats(), SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID);
     database.exec('COMMIT;');
