@@ -189,6 +189,20 @@ export interface PresentationStageCharacter {
   isFallbackPortrait: boolean;
 }
 
+export interface PresentationPlayerStatus {
+  entityId: string;
+  name: string;
+  level: number | null;
+  armorClass: number | null;
+  health: {
+    currentHitPoints: number;
+    maxHitPoints: number;
+  } | null;
+  vitalState: 'active' | 'incapacitated' | 'dead';
+  statusLabel: string;
+  canAct: boolean;
+}
+
 export interface PresentationStage {
   scene: {
     id: string;
@@ -196,6 +210,7 @@ export interface PresentationStage {
     description: string;
   } | null;
   backgroundUrl: string | null;
+  player: PresentationPlayerStatus | null;
   characters: PresentationStageCharacter[];
   hiddenCharacterCount: number;
 }

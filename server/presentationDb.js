@@ -8,7 +8,7 @@ import {
   readPortraitAssetIds,
 } from './presentationPortraits.js';
 import { derivePresentationVitalState } from './presentationState.js';
-import { getComponent } from './worldDb.js';
+import { getComponent, getEntity } from './worldDb.js';
 
 export { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR };
 
@@ -148,12 +148,38 @@ export function getCurrentPresentationStage(sceneState) {
           }
         : null,
       backgroundUrl: toAssetUrl(backgroundAsset),
+      player: getPresentationPlayer(sceneState?.playerId),
       characters: assignStageSlots(stageCharacters),
       hiddenCharacterCount: Math.max(0, stageCharacters.length - 3),
     };
   } finally {
     database.close();
   }
+}
+
+function getPresentationPlayer(playerId) {
+  const entityId = typeof playerId === 'string' ? playerId.trim() : '';
+  const player = entityId ? getEntity(entityId) : null;
+  if (!player) return null;
+
+  const identity = getComponent(entityId, 'identity') || {};
+  const stats = getComponent(entityId, 'stats') || {};
+  const status = getComponent(entityId, 'status') || {};
+  const health = getPresentationHealth(entityId);
+  const vitalState = derivePresentationVitalState(status, health);
+  const level = toFiniteNumber(stats.level ?? identity.level);
+  const armorClass = toFiniteNumber(stats.armorClass ?? stats.ac);
+
+  return {
+    entityId,
+    name: player.name,
+    level: level === null ? null : Math.max(1, Math.floor(level)),
+    armorClass: armorClass === null ? null : Math.max(0, Math.floor(armorClass)),
+    health,
+    vitalState,
+    statusLabel: typeof status.label === 'string' ? status.label.trim() : '',
+    canAct: vitalState === 'active' && status.canAct !== false,
+  };
 }
 
 function getPresentationHealth(entityId) {

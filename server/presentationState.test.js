@@ -85,11 +85,19 @@ test('current presentation stage exposes normalized incapacitated and dead state
 
     const findElena = (stage) => stage.characters.find((character) => character.entityId === 'character_elena');
     console.log(JSON.stringify({
+      player: incapacitatedStage.player,
       incapacitated: findElena(incapacitatedStage),
       dead: findElena(deadStage),
     }));
   `);
 
+  assert.equal(result.player.entityId, 'player');
+  assert.equal(result.player.name, '失忆王选者');
+  assert.equal(result.player.level, 1);
+  assert.equal(result.player.armorClass, 14);
+  assert.deepEqual(result.player.health, { currentHitPoints: 12, maxHitPoints: 12 });
+  assert.equal(result.player.statusLabel, '刚刚苏醒');
+  assert.equal(result.player.canAct, true);
   assert.equal(result.incapacitated.vitalState, 'incapacitated');
   assert.equal(result.incapacitated.health.currentHitPoints, 0);
   assert.equal(result.dead.vitalState, 'dead');

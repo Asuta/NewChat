@@ -1699,6 +1699,245 @@ button {
   font-weight: 650;
 }
 
+.player-status-hud {
+  position: absolute;
+  top: 64px;
+  left: 24px;
+  z-index: 4;
+  display: grid;
+  width: 270px;
+  min-height: 76px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid rgba(128, 188, 224, 0.34);
+  border-radius: 10px;
+  padding: 10px 12px 9px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  color: rgba(241, 248, 255, 0.96);
+  background:
+    linear-gradient(108deg, rgba(7, 21, 34, 0.9), rgba(7, 28, 43, 0.76)),
+    rgba(6, 18, 29, 0.82);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.28),
+    inset 3px 0 0 rgba(93, 190, 228, 0.78);
+  backdrop-filter: blur(12px);
+}
+
+.player-status-hud::after {
+  position: absolute;
+  right: -34px;
+  bottom: -50px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(79, 168, 205, 0.14), transparent 68%);
+  content: '';
+}
+
+.player-status-emblem {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  align-self: start;
+  border: 1px solid rgba(224, 198, 127, 0.5);
+  border-radius: 9px;
+  color: #efd794;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(242, 211, 130, 0.2), transparent 62%),
+    rgba(53, 42, 25, 0.62);
+  box-shadow: inset 0 0 16px rgba(247, 207, 109, 0.08);
+}
+
+.player-status-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.player-status-content > header,
+.player-status-content > footer,
+.player-status-health-row,
+.player-status-health-label,
+.player-status-content > footer > span {
+  display: flex;
+  align-items: center;
+}
+
+.player-status-content > header {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.player-status-content > header strong {
+  overflow: hidden;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-status-content > header > span {
+  flex: 0 0 auto;
+  color: rgba(225, 235, 243, 0.68);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.player-status-health-row {
+  position: relative;
+  gap: 6px;
+}
+
+.player-status-health-label {
+  flex: 0 0 auto;
+  gap: 3px;
+  color: #ff9c9c;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.player-status-health-track {
+  position: relative;
+  height: 7px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(1, 8, 14, 0.72);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.56);
+}
+
+.player-status-health-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a92f3b, #f05a64 70%, #ff898d);
+  box-shadow: 0 0 9px rgba(240, 73, 84, 0.34);
+  transition: width 260ms ease-out, filter 180ms ease;
+}
+
+.player-status-health-value {
+  min-width: 43px;
+  flex: 0 0 auto;
+  color: rgba(247, 250, 252, 0.88);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.player-status-health-feedback {
+  position: absolute;
+  top: -15px;
+  right: 0;
+  font-size: 12px;
+  font-weight: 900;
+  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.8);
+  animation: player-status-number-rise 900ms ease-out both;
+}
+
+.player-status-health-feedback.is-damage { color: #ff8383; }
+.player-status-health-feedback.is-heal { color: #75e2a7; }
+
+.player-status-content > footer {
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(211, 226, 237, 0.66);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.player-status-content > footer > span { gap: 4px; }
+
+.player-status-condition {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(219, 234, 243, 0.78);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-status-condition i {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #61d6a0;
+  box-shadow: 0 0 7px rgba(97, 214, 160, 0.6);
+}
+
+.player-status-hud.is-wounded {
+  border-color: rgba(234, 167, 78, 0.46);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), inset 3px 0 0 rgba(224, 151, 58, 0.9);
+}
+
+.player-status-hud.is-wounded .player-status-condition i { background: #eab15d; }
+
+.player-status-hud.is-unknown .player-status-condition i {
+  background: #9aaab5;
+  box-shadow: none;
+}
+
+.player-status-hud.is-critical,
+.player-status-hud.has-damage {
+  border-color: rgba(248, 96, 100, 0.54);
+}
+
+.player-status-hud.is-critical .player-status-condition i,
+.player-status-hud.has-damage .player-status-condition i {
+  background: #ff686d;
+  box-shadow: 0 0 8px rgba(255, 92, 98, 0.72);
+}
+
+.player-status-hud.is-critical .player-status-health-track > span {
+  filter: saturate(1.18) brightness(1.12);
+  animation: player-status-critical-pulse 1.25s ease-in-out infinite;
+}
+
+.player-status-hud.is-incapacitated,
+.player-status-hud.is-dead {
+  filter: grayscale(0.62);
+  opacity: 0.82;
+}
+
+.player-status-hud.is-incapacitated .player-status-condition i,
+.player-status-hud.is-dead .player-status-condition i {
+  background: #a8b1b8;
+  box-shadow: none;
+}
+
+.player-status-hud.has-damage { animation: player-status-damage-flash 420ms ease-out; }
+.player-status-hud.has-heal { animation: player-status-heal-flash 520ms ease-out; }
+
+@keyframes player-status-number-rise {
+  0% { opacity: 0; transform: translateY(5px) scale(0.82); }
+  22% { opacity: 1; transform: translateY(0) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-17px) scale(1); }
+}
+
+@keyframes player-status-damage-flash {
+  0%, 100% { filter: none; transform: translateX(0); }
+  28% { filter: brightness(1.28) saturate(1.35); transform: translateX(-3px); }
+  52% { transform: translateX(2px); }
+}
+
+@keyframes player-status-heal-flash {
+  0%, 100% { box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), inset 3px 0 0 rgba(93, 190, 228, 0.78); }
+  36% { box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), inset 3px 0 0 rgba(80, 221, 148, 0.92), 0 0 18px rgba(75, 210, 139, 0.24); }
+}
+
+@keyframes player-status-critical-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
 .game-stage-loading {
   color: rgba(248, 250, 252, 0.82);
   font-size: 13px;
@@ -2210,6 +2449,13 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .player-status-hud,
+  .player-status-health-track > span,
+  .player-status-health-feedback {
+    animation: none;
+    transition: none;
+  }
+
   .game-character img,
   .game-character-missing,
   .game-character figcaption {

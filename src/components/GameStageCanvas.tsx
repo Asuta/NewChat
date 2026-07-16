@@ -32,6 +32,7 @@ import type {
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { GameStageCharacter, useCharacterHealthFeedback } from './GameStageCharacter';
 import { InventoryPanel } from './InventoryPanel';
+import { PlayerStatusHud } from './PlayerStatusHud';
 import { createWorldActionForTarget, refreshItemTargetingAction } from './inventoryTargeting';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
@@ -415,6 +416,8 @@ export function GameStageCanvas({
               </span>
             ) : null}
           </header>
+
+          {stage?.player ? <PlayerStatusHud player={stage.player} /> : null}
 
           <SceneMiniMap
             worldMap={worldMap}
