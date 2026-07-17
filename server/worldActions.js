@@ -60,7 +60,7 @@ function getWeaponAttackActions({ actorId = 'player', targetId = '' } = {}) {
 function getWeaponAttackContext(actorId, targetId) {
   const actor = getEntity(actorId);
   const target = getEntity(targetId);
-  if (!actor || !target || target.kind !== 'character') return null;
+  if (!actor || !target || !['character', 'player'].includes(target.kind)) return null;
   if (!isEntityInCurrentScene(targetId) || !isEntityInCurrentScene(actorId)) return null;
 
   const actorStatus = getComponent(actorId, 'status') || {};
@@ -145,6 +145,8 @@ function resolveWeaponAttack(action) {
         label: '失能',
         description: `${action.targetName} 因伤势倒下，暂时无法行动。`,
         canAct: false,
+        incapacitatedReason: 'zero_hit_points',
+        statusBeforeIncapacitation: targetStatusBefore,
       };
       upsertComponent(action.targetId, 'status', nextStatus);
       stateChanges.push({

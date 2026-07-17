@@ -1,10 +1,18 @@
 import { Crown, Heart, Shield } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import type { PresentationPlayerStatus } from '../types';
+import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { createCharacterHealthChangeEvent } from './characterHealthChange';
 
 interface PlayerStatusHudProps {
   player: PresentationPlayerStatus;
+  attackFeedbackEvent?: CharacterAttackFeedbackEvent;
+  isItemTargeting?: boolean;
+  isValidItemTarget?: boolean;
+  itemTargetingKind?: 'use' | 'attack';
+  onItemTarget?: (entityId: string) => void;
+  onCancelItemTargeting?: () => void;
 }
 
 interface PlayerHealthFeedback {
@@ -13,7 +21,15 @@ interface PlayerHealthFeedback {
   amount: number;
 }
 
-export function PlayerStatusHud({ player }: PlayerStatusHudProps) {
+export function PlayerStatusHud({
+  player,
+  attackFeedbackEvent,
+  isItemTargeting = false,
+  isValidItemTarget = false,
+  itemTargetingKind = 'use',
+  onItemTarget,
+  onCancelItemTargeting,
+}: PlayerStatusHudProps) {
   const previousHealthRef = useRef<{
     entityId: string;
     currentHitPoints: number;
@@ -22,6 +38,7 @@ export function PlayerStatusHud({ player }: PlayerStatusHudProps) {
   const feedbackCounterRef = useRef(0);
   const [healthFeedback, setHealthFeedback] = useState<PlayerHealthFeedback | null>(null);
   const view = getPlayerStatusHudView(player);
+  const isInteractiveTarget = isItemTargeting && isValidItemTarget && Boolean(onItemTarget);
 
   useEffect(() => {
     const health = player.health;
@@ -54,10 +71,54 @@ export function PlayerStatusHud({ player }: PlayerStatusHudProps) {
     return () => window.clearTimeout(timer);
   }, [healthFeedback]);
 
+  function selectPlayerTarget() {
+    if (!isInteractiveTarget) return;
+    onItemTarget?.(player.entityId);
+  }
+
+  function handleClick(event: ReactMouseEvent<HTMLElement>) {
+    if (!isItemTargeting) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectPlayerTarget();
+  }
+
+  function handleContextMenu(event: ReactMouseEvent<HTMLElement>) {
+    if (!isItemTargeting) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onCancelItemTargeting?.();
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (!isInteractiveTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectPlayerTarget();
+  }
+
+  const targetActionLabel = itemTargetingKind === 'attack'
+    ? `使用武器攻击${player.name}`
+    : `对${player.name}使用道具`;
+
   return (
     <aside
-      className={`player-status-hud is-${view.tone}${healthFeedback ? ` has-${healthFeedback.kind}` : ''}`}
-      aria-label={`玩家状态：${player.name}`}
+      className={[
+        'player-status-hud',
+        `is-${view.tone}`,
+        healthFeedback ? `has-${healthFeedback.kind}` : '',
+        isItemTargeting ? 'item-targeting' : '',
+        isItemTargeting && isValidItemTarget ? 'item-target-valid' : '',
+        isItemTargeting && !isValidItemTarget ? 'item-target-invalid' : '',
+        isItemTargeting && isValidItemTarget && itemTargetingKind === 'attack' ? 'item-target-attack' : '',
+      ].filter(Boolean).join(' ')}
+      aria-label={isInteractiveTarget ? targetActionLabel : `玩家状态：${player.name}`}
+      aria-disabled={isItemTargeting ? !isInteractiveTarget : undefined}
+      role={isInteractiveTarget ? 'button' : undefined}
+      tabIndex={isInteractiveTarget ? 0 : undefined}
+      onClick={isItemTargeting ? handleClick : undefined}
+      onContextMenu={isItemTargeting ? handleContextMenu : undefined}
+      onKeyDown={isInteractiveTarget ? handleKeyDown : undefined}
     >
       <span className="player-status-emblem" aria-hidden="true"><Crown size={18} /></span>
       <div className="player-status-content">
@@ -89,6 +150,15 @@ export function PlayerStatusHud({ player }: PlayerStatusHudProps) {
           <span className="player-status-condition"><i aria-hidden="true" />{view.statusLabel}</span>
         </footer>
       </div>
+      {attackFeedbackEvent ? (
+        <span
+          className={`player-status-attack-feedback is-${attackFeedbackEvent.hit ? 'hit' : 'miss'}`}
+          key={attackFeedbackEvent.id}
+          aria-hidden="true"
+        >
+          {attackFeedbackEvent.hit ? <span className="player-status-attack-slash" /> : <strong>MISS</strong>}
+        </span>
+      ) : null}
     </aside>
   );
 }

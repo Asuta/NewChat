@@ -1916,6 +1916,81 @@ button {
 .player-status-hud.has-damage { animation: player-status-damage-flash 420ms ease-out; }
 .player-status-hud.has-heal { animation: player-status-heal-flash 520ms ease-out; }
 
+.player-status-hud.item-targeting {
+  pointer-events: auto;
+  transition: opacity 160ms ease, filter 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.player-status-hud.item-target-invalid {
+  opacity: 0.5;
+  filter: grayscale(0.72) saturate(0.42) brightness(0.72);
+}
+
+.player-status-hud.item-target-valid {
+  border-color: rgba(102, 238, 169, 0.84);
+  opacity: 1;
+  filter: none;
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.32),
+    inset 3px 0 0 rgba(87, 230, 157, 0.96),
+    0 0 16px rgba(63, 221, 141, 0.42),
+    0 0 34px rgba(49, 203, 130, 0.22);
+  animation: player-status-target-pulse 1.35s ease-in-out infinite;
+}
+
+.player-status-hud.item-target-valid:focus-visible {
+  outline: 2px solid rgba(190, 255, 220, 0.94);
+  outline-offset: 3px;
+}
+
+.player-status-hud.item-target-valid.item-target-attack {
+  border-color: rgba(255, 105, 105, 0.88);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.34),
+    inset 3px 0 0 rgba(255, 84, 96, 0.96),
+    0 0 17px rgba(255, 76, 88, 0.48),
+    0 0 36px rgba(211, 42, 59, 0.24);
+  animation-name: player-status-attack-target-pulse;
+}
+
+.player-status-attack-feedback {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.player-status-attack-slash {
+  position: absolute;
+  top: 48%;
+  left: 8%;
+  width: 84%;
+  height: 4px;
+  border-radius: 999px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, #ffd4bc 24%, #fffceb 50%, #ff8f84 76%, transparent);
+  box-shadow: 0 0 8px rgba(255, 231, 209, 0.94), 0 0 20px rgba(255, 76, 84, 0.68);
+  transform: rotate(-12deg) scaleX(0.12);
+  animation: player-status-attack-slash 460ms cubic-bezier(0.16, 0.78, 0.2, 1) forwards;
+}
+
+.player-status-attack-feedback.is-miss strong {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #c8e8f5;
+  font-size: 21px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  opacity: 0;
+  text-shadow: 0 2px 2px rgba(4, 22, 32, 0.92), 0 0 12px rgba(112, 197, 232, 0.72);
+  transform: translate(-50%, -30%) scale(0.76);
+  animation: player-status-attack-miss 760ms cubic-bezier(0.18, 0.82, 0.22, 1) forwards;
+}
+
 @keyframes player-status-number-rise {
   0% { opacity: 0; transform: translateY(5px) scale(0.82); }
   22% { opacity: 1; transform: translateY(0) scale(1.08); }
@@ -1931,6 +2006,30 @@ button {
 @keyframes player-status-heal-flash {
   0%, 100% { box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), inset 3px 0 0 rgba(93, 190, 228, 0.78); }
   36% { box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), inset 3px 0 0 rgba(80, 221, 148, 0.92), 0 0 18px rgba(75, 210, 139, 0.24); }
+}
+
+@keyframes player-status-target-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32), inset 3px 0 0 rgba(87, 230, 157, 0.96), 0 0 22px rgba(63, 221, 141, 0.58), 0 0 42px rgba(49, 203, 130, 0.3); }
+}
+
+@keyframes player-status-attack-target-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(0, 0, 0, 0.34), inset 3px 0 0 rgba(255, 84, 96, 0.96), 0 0 23px rgba(255, 76, 88, 0.64), 0 0 44px rgba(211, 42, 59, 0.34); }
+}
+
+@keyframes player-status-attack-slash {
+  0% { opacity: 0; transform: translateX(-26px) rotate(-12deg) scaleX(0.12); }
+  34% { opacity: 1; transform: translateX(-4px) rotate(-12deg) scaleX(0.92); }
+  68% { opacity: 1; transform: translateX(6px) rotate(-12deg) scaleX(1); }
+  100% { opacity: 0; transform: translateX(24px) rotate(-12deg) scaleX(1.06); }
+}
+
+@keyframes player-status-attack-miss {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.76); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  68% { opacity: 1; transform: translate(-50%, -72%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -100%) scale(1.03); }
 }
 
 @keyframes player-status-critical-pulse {
@@ -2565,7 +2664,9 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .player-status-hud,
   .player-status-health-track > span,
-  .player-status-health-feedback {
+  .player-status-health-feedback,
+  .player-status-attack-slash,
+  .player-status-attack-feedback.is-miss strong {
     animation: none;
     transition: none;
   }

@@ -31,7 +31,7 @@ interface InventoryPanelProps {
   inventory: PlayerInventory | null;
   isLoading: boolean;
   isDisabled: boolean;
-  visibleNpcTargetIds: string[];
+  visibleTargetIds: string[];
   onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
   onExecuteAction: (action: InventoryAction) => void | Promise<void>;
   onReferenceItem: (item: InventoryItem) => void;
@@ -60,7 +60,7 @@ export function InventoryPanel({
   inventory,
   isLoading,
   isDisabled,
-  visibleNpcTargetIds,
+  visibleTargetIds,
   onBeginTargeting,
   onExecuteAction,
   onReferenceItem,
@@ -255,7 +255,7 @@ export function InventoryPanel({
             isDisabled={isDisabled || isLoading}
             style={actionMenu.position}
             targetIds={targetIds}
-            visibleNpcTargetIds={visibleNpcTargetIds}
+            visibleTargetIds={visibleTargetIds}
             onClose={() => setActionMenu(null)}
             onReferenceItem={(item) => {
               setActionMenu(null);
@@ -393,7 +393,7 @@ function InventoryActionMenu({
   isDisabled,
   style,
   targetIds,
-  visibleNpcTargetIds,
+  visibleTargetIds,
   onClose,
   onReferenceItem,
   onBeginTargeting,
@@ -406,7 +406,7 @@ function InventoryActionMenu({
   isDisabled: boolean;
   style: CSSProperties;
   targetIds: Record<string, string>;
-  visibleNpcTargetIds: string[];
+  visibleTargetIds: string[];
   onClose: () => void;
   onReferenceItem: (item: InventoryItem) => void;
   onBeginTargeting: (action: ItemTargetingAction, item: InventoryItem) => void;
@@ -414,7 +414,7 @@ function InventoryActionMenu({
   onExecuteAction: (action: InventoryAction) => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const visibleNpcTargetIdSet = useMemo(() => new Set(visibleNpcTargetIds), [visibleNpcTargetIds]);
+  const visibleTargetIdSet = useMemo(() => new Set(visibleTargetIds), [visibleTargetIds]);
   const weaponAttackAction = createWeaponAttackTargetingAction(inventory, item);
   const menuActions: ItemTargetingAction[] = weaponAttackAction
     ? [weaponAttackAction, ...item.actions]
@@ -466,7 +466,7 @@ function InventoryActionMenu({
         ) : null}
         {menuActions.map((action) => {
           const validTargets = inventory?.targets.filter((target) => action.validTargetIds.includes(target.id)) || [];
-          const visibleNpcTargets = validTargets.filter((target) => visibleNpcTargetIdSet.has(target.id));
+          const visibleTargets = validTargets.filter((target) => visibleTargetIdSet.has(target.id));
           const cachedTargetId = targetIds[action.id];
           const selectedTargetId = cachedTargetId && validTargets.some((target) => target.id === cachedTargetId)
             ? cachedTargetId
@@ -474,12 +474,12 @@ function InventoryActionMenu({
               ? validTargets[0]?.id || ''
               : '';
           const needsSelector = !action.requiresTarget && action.targetMode !== 'none' && validTargets.length > 0;
-          const targetingUnavailableReason = action.requiresTarget && !visibleNpcTargets.length
+          const targetingUnavailableReason = action.requiresTarget && !visibleTargets.length
             ? action.kind === 'attack.weapon'
-              ? '当前场景没有可攻击的 NPC 目标。'
+              ? '当前场景没有可攻击的目标。'
               : action.kind === 'item.transfer'
                 ? '当前场景没有可以接收道具的 NPC。'
-                : '当前场景没有可用的 NPC 目标。'
+                : '当前场景没有可用目标。'
             : null;
           const disabledReason = targetingUnavailableReason || action.disabledReason;
           return (

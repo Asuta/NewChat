@@ -20,7 +20,7 @@ export function createWeaponAttackTargetingAction(
   ) return null;
 
   const validTargetIds = inventory.targets
-    .filter((target) => isAttackableNpc(target, inventory.actor.id))
+    .filter((target) => isAttackableCharacter(target))
     .map((target) => target.id);
   const actor = inventory.targets.find((target) => target.id === inventory.actor.id);
   const actorCannotAttack = !actor
@@ -69,7 +69,7 @@ export function createWorldActionForTarget(
   if (action.kind !== 'attack.weapon') return { ...action, targetId };
 
   const target = inventory.targets.find((candidate) => candidate.id === targetId);
-  if (!target || !isAttackableNpc(target, action.actorId)) return null;
+  if (!target || !isAttackableCharacter(target)) return null;
   const attackAction: AttackWorldAction = {
     id: `attack.weapon:${action.actorId}:${targetId}:${action.weaponId}`,
     kind: 'attack.weapon',
@@ -83,9 +83,8 @@ export function createWorldActionForTarget(
   return attackAction;
 }
 
-function isAttackableNpc(target: InventoryTarget, actorId: string) {
-  return target.id !== actorId
-    && target.kind === 'character'
+function isAttackableCharacter(target: InventoryTarget) {
+  return (target.kind === 'character' || target.kind === 'player')
     && target.vitalState === 'active'
     && (!target.health || target.health.currentHitPoints > 0);
 }

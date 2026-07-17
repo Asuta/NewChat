@@ -145,6 +145,7 @@ function resolveInventoryAction({ kind, actorId, itemId, targetId, item, before 
     const target = getEntity(targetId);
     if (!target) throw new Error('道具使用目标不存在。');
     const statsBefore = getComponent(targetId, 'stats') || {};
+    const statusBefore = getComponent(targetId, 'status') || null;
     const hpBefore = Math.max(0, finiteNumber(statsBefore.currentHitPoints, 0));
     const maxHitPoints = Math.max(hpBefore, finiteNumber(statsBefore.maxHitPoints, hpBefore));
     const amount = Math.max(1, Math.floor(finiteNumber(item.rules.use?.amount, 1)));
@@ -152,16 +153,39 @@ function resolveInventoryAction({ kind, actorId, itemId, targetId, item, before 
     const restoredHitPoints = hpAfter - hpBefore;
     if (restoredHitPoints <= 0) throw new Error(`${target.name}当前不需要恢复生命值。`);
     upsertComponent(targetId, 'stats', { ...statsBefore, currentHitPoints: hpAfter });
+    const statusRecovery = hpBefore <= 0 && hpAfter > 0
+      ? restoreHitPointIncapacitation(statusBefore, target.name)
+      : null;
+    if (statusRecovery) upsertComponent(targetId, 'status', statusRecovery.status);
     const quantityAfter = consumeOwnedQuantity(actorId, itemId, item.rules.use?.consumeQuantity);
     syncLegacyInventoryMirror(actorId);
-    const summary = `${actor.name}对${target.name}使用${entity.name}，恢复 ${restoredHitPoints} 点生命值。`;
+    const restoredAction = statusRecovery?.restoredAction === true;
+    const summary = `${actor.name}对${target.name}使用${entity.name}，恢复 ${restoredHitPoints} 点生命值。${restoredAction ? `${target.name}恢复了行动能力。` : ''}`;
+    const stateChanges = [
+      { entityId: targetId, componentType: 'stats', path: 'currentHitPoints', from: hpBefore, to: hpAfter },
+      { entityId: actorId, relationshipType: 'ownership', targetEntityId: itemId, path: 'quantity', from: item.quantity, to: quantityAfter },
+    ];
+    if (statusRecovery) {
+      stateChanges.push({
+        entityId: targetId,
+        componentType: 'status',
+        path: '',
+        from: statusBefore,
+        to: statusRecovery.status,
+      });
+    }
     return createResolvedAction({
       eventType: 'item.used', kind, actorId, itemId, targetId, itemName: entity.name, summary,
-      facts: { target: { id: target.id, name: target.name }, hpBefore, hpAfter, maxHitPoints, restoredHitPoints, quantityAfter },
-      stateChanges: [
-        { entityId: targetId, componentType: 'stats', path: 'currentHitPoints', from: hpBefore, to: hpAfter },
-        { entityId: actorId, relationshipType: 'ownership', targetEntityId: itemId, path: 'quantity', from: item.quantity, to: quantityAfter },
-      ],
+      facts: {
+        target: { id: target.id, name: target.name },
+        hpBefore,
+        hpAfter,
+        maxHitPoints,
+        restoredHitPoints,
+        restoredAction,
+        quantityAfter,
+      },
+      stateChanges,
     });
   }
 
@@ -254,6 +278,67 @@ function resolveInventoryAction({ kind, actorId, itemId, targetId, item, before 
   }
 
   throw new Error(`尚未实现背包动作：${kind}`);
+}
+
+function restoreHitPointIncapacitation(statusBefore, targetName) {
+  if (!statusBefore) return null;
+  const hasRecoveryMarker = statusBefore.incapacitatedReason === 'zero_hit_points';
+  if (!hasRecoveryMarker && !isLegacyHitPointIncapacitation(statusBefore)) return null;
+
+  if (hasIndependentIncapacitation(statusBefore)) {
+    if (!hasRecoveryMarker) return null;
+    const remainingStatus = { ...statusBefore };
+    delete remainingStatus.incapacitatedReason;
+    delete remainingStatus.statusBeforeIncapacitation;
+    return { status: remainingStatus, restoredAction: false };
+  }
+
+  const previousStatus = hasRecoveryMarker
+    && statusBefore.statusBeforeIncapacitation
+    && typeof statusBefore.statusBeforeIncapacitation === 'object'
+    && !Array.isArray(statusBefore.statusBeforeIncapacitation)
+    ? statusBefore.statusBeforeIncapacitation
+    : {
+        state: 'active',
+        label: '恢复行动',
+        description: `${targetName}恢复了意识与行动能力。`,
+        canAct: true,
+      };
+  const restoredStatus = { ...statusBefore };
+  for (const field of ['state', 'label', 'description', 'canAct']) {
+    if (Object.hasOwn(previousStatus, field)) restoredStatus[field] = previousStatus[field];
+    else delete restoredStatus[field];
+  }
+  delete restoredStatus.incapacitatedReason;
+  delete restoredStatus.statusBeforeIncapacitation;
+  return { status: restoredStatus, restoredAction: restoredStatus.canAct !== false };
+}
+
+function isLegacyHitPointIncapacitation(status) {
+  return status.state === 'incapacitated'
+    && status.canAct === false
+    && status.label === '失能'
+    && typeof status.description === 'string'
+    && status.description.endsWith('因伤势倒下，暂时无法行动。');
+}
+
+function hasIndependentIncapacitation(status) {
+  if (status.alive === false || status.conscious === false) return true;
+  const conditions = Array.isArray(status.conditions)
+    ? status.conditions.map((condition) => String(condition).trim().toLowerCase())
+    : [];
+  return conditions.some((condition) => [
+    'incapacitated',
+    'paralyzed',
+    'petrified',
+    'stunned',
+    'unconscious',
+    '昏迷',
+    '失能',
+    '麻痹',
+    '石化',
+    '震慑',
+  ].includes(condition));
 }
 
 function createResolvedAction({ eventType, kind, actorId, itemId, targetId, itemName, summary, facts, stateChanges }) {

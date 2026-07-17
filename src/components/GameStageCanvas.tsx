@@ -159,9 +159,12 @@ export function GameStageCanvas({
   const [itemTargetingPointer, setItemTargetingPointer] = useState<ItemTargetingPointer | null>(null);
   const [itemTargetingNotice, setItemTargetingNotice] = useState<string | null>(null);
   const alphaHoveredEntityIdRef = useRef<string | null>(null);
-  const visibleNpcTargetIds = useMemo(
-    () => visibleCharacters.map((character) => character.entityId),
-    [visibleCharacters],
+  const visibleTargetIds = useMemo(
+    () => [
+      ...(stage?.player ? [stage.player.entityId] : []),
+      ...visibleCharacters.map((character) => character.entityId),
+    ],
+    [stage?.player, visibleCharacters],
   );
   const currentItemTargetingAction = useMemo(() => {
     if (!itemTargeting) return null;
@@ -171,9 +174,9 @@ export function GameStageCanvas({
   const isItemTransferTargeting = currentItemTargetingAction?.kind === 'item.transfer';
   const itemTargetIdSet = useMemo(() => {
     if (!currentItemTargetingAction) return new Set<string>();
-    const visibleNpcTargetIdSet = new Set(visibleNpcTargetIds);
-    return new Set(currentItemTargetingAction.validTargetIds.filter((targetId) => visibleNpcTargetIdSet.has(targetId)));
-  }, [currentItemTargetingAction, visibleNpcTargetIds]);
+    const visibleTargetIdSet = new Set(visibleTargetIds);
+    return new Set(currentItemTargetingAction.validTargetIds.filter((targetId) => visibleTargetIdSet.has(targetId)));
+  }, [currentItemTargetingAction, visibleTargetIds]);
   const {
     frameRef,
     stageScale,
@@ -260,7 +263,7 @@ export function GameStageCanvas({
     if (
       action.disabledReason
       || !action.requiresTarget
-      || !action.validTargetIds.some((targetId) => visibleNpcTargetIds.includes(targetId))
+      || !action.validTargetIds.some((targetId) => visibleTargetIds.includes(targetId))
     ) {
       return;
     }
@@ -360,10 +363,10 @@ export function GameStageCanvas({
                 </strong>
                 <small>
                   {isWeaponAttackTargeting
-                    ? '点击红色高亮的 NPC 立绘发动攻击'
+                    ? '点击红色高亮的目标发动攻击'
                     : isItemTransferTargeting
                       ? '点击高亮的 NPC 立绘完成转交'
-                      : '点击发光的 NPC 立绘进行使用'}
+                      : '点击发光的目标进行使用'}
                 </small>
               </span>
               <kbd>Esc 取消</kbd>
@@ -375,7 +378,7 @@ export function GameStageCanvas({
               <span className="item-targeting-banner-icon"><Crosshair size={18} /></span>
               <span>
                 <strong>{itemTargetingNotice}</strong>
-                <small>当前没有可继续使用的 NPC 目标</small>
+                <small>当前没有可继续使用的目标</small>
               </span>
             </div>
           ) : null}
@@ -426,7 +429,17 @@ export function GameStageCanvas({
             ) : null}
           </header>
 
-          {stage?.player ? <PlayerStatusHud player={stage.player} /> : null}
+          {stage?.player ? (
+            <PlayerStatusHud
+              player={stage.player}
+              attackFeedbackEvent={attackFeedback?.targetEntityId === stage.player.entityId ? attackFeedback : undefined}
+              isItemTargeting={Boolean(itemTargeting)}
+              isValidItemTarget={itemTargetIdSet.has(stage.player.entityId)}
+              itemTargetingKind={isWeaponAttackTargeting ? 'attack' : 'use'}
+              onItemTarget={executeItemOnTarget}
+              onCancelItemTargeting={cancelItemTargeting}
+            />
+          ) : null}
 
           <SceneMiniMap
             worldMap={worldMap}
@@ -532,7 +545,7 @@ export function GameStageCanvas({
                     inventory={inventory}
                     isLoading={isInventoryLoading}
                     isDisabled={isInventoryDisabled}
-                    visibleNpcTargetIds={visibleNpcTargetIds}
+                    visibleTargetIds={visibleTargetIds}
                     onBeginTargeting={beginItemTargeting}
                     onExecuteAction={onExecuteInventoryAction}
                     onReferenceItem={onReferenceInventoryItem}

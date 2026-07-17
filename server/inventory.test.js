@@ -90,6 +90,151 @@ test('using a healing item updates hit points and consumes quantity atomically',
   assert.equal(result.ownership, null);
 });
 
+test('the player can attack themself and healing restores hit-point incapacitation', () => {
+  const result = runIsolatedInventoryScript(`
+    Math.random = () => 0.99;
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const playerStats = worldDb.getComponent('player', 'stats') || {};
+    worldDb.upsertComponent('player', 'stats', { ...playerStats, armorClass: 1, currentHitPoints: 1 });
+    const selfActions = worldActions.listWorldActions({ actorId: 'player', targetId: 'player' }).actions;
+    const attack = worldActions.executeWorldAction({
+      kind: 'attack.weapon',
+      actorId: 'player',
+      targetId: 'player',
+      weaponId: 'item_iron_sword',
+    });
+    const statusAfterAttack = worldDb.getComponent('player', 'status');
+    const healing = inventoryApi.executeInventoryAction({
+      kind: 'item.use',
+      itemId: 'item_ash_tonic',
+      targetId: 'player',
+    });
+    const statusAfterHealing = worldDb.getComponent('player', 'status');
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ selfActions, attack, statusAfterAttack, healing, statusAfterHealing }));
+  `);
+
+  assert.equal(result.selfActions[0]?.targetId, 'player');
+  assert.equal(result.attack.result.action.targetId, 'player');
+  assert.equal(result.attack.result.facts.hpAfter, 0);
+  assert.equal(result.statusAfterAttack.incapacitatedReason, 'zero_hit_points');
+  assert.equal(result.statusAfterAttack.canAct, false);
+  assert.equal(result.healing.result.facts.restoredAction, true);
+  assert.equal(result.statusAfterHealing.state, 'healthy');
+  assert.equal(result.statusAfterHealing.canAct, true);
+  assert.equal('incapacitatedReason' in result.statusAfterHealing, false);
+});
+
+test('healing preserves an incapacitating condition added after a hit-point knockout', () => {
+  const result = runIsolatedInventoryScript(`
+    Math.random = () => 0.99;
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const playerStats = worldDb.getComponent('player', 'stats') || {};
+    worldDb.upsertComponent('player', 'stats', { ...playerStats, armorClass: 1, currentHitPoints: 1 });
+    worldActions.executeWorldAction({
+      kind: 'attack.weapon',
+      actorId: 'player',
+      targetId: 'player',
+      weaponId: 'item_iron_sword',
+    });
+    const knockedOutStatus = worldDb.getComponent('player', 'status');
+    worldDb.upsertComponent('player', 'status', {
+      ...knockedOutStatus,
+      label: '麻痹',
+      description: '玩家倒地后又受到魔法麻痹。',
+      conditions: [...(knockedOutStatus.conditions || []), 'paralyzed'],
+    });
+    const healing = inventoryApi.executeInventoryAction({
+      kind: 'item.use',
+      itemId: 'item_ash_tonic',
+      targetId: 'player',
+    });
+    const statusAfterHealing = worldDb.getComponent('player', 'status');
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ healing, statusAfterHealing }));
+  `);
+
+  assert.equal(result.healing.result.facts.hpAfter > 0, true);
+  assert.equal(result.healing.result.facts.restoredAction, false);
+  assert.equal(result.statusAfterHealing.state, 'incapacitated');
+  assert.equal(result.statusAfterHealing.label, '麻痹');
+  assert.deepEqual(result.statusAfterHealing.conditions, ['paralyzed']);
+  assert.equal(result.statusAfterHealing.canAct, false);
+  assert.equal('incapacitatedReason' in result.statusAfterHealing, false);
+  assert.equal('statusBeforeIncapacitation' in result.statusAfterHealing, false);
+});
+
+test('healing restores a legacy hit-point knockout without recovery metadata', () => {
+  const result = runIsolatedInventoryScript(`
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const playerStats = worldDb.getComponent('player', 'stats') || {};
+    worldDb.upsertComponent('player', 'stats', { ...playerStats, currentHitPoints: 0 });
+    worldDb.upsertComponent('player', 'status', {
+      state: 'incapacitated',
+      label: '失能',
+      description: '失忆王选者 因伤势倒下，暂时无法行动。',
+      canAct: false,
+    });
+    const healing = inventoryApi.executeInventoryAction({
+      kind: 'item.use',
+      itemId: 'item_ash_tonic',
+      targetId: 'player',
+    });
+    const statusAfterHealing = worldDb.getComponent('player', 'status');
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ healing, statusAfterHealing }));
+  `);
+
+  assert.equal(result.healing.result.facts.restoredAction, true);
+  assert.equal(result.statusAfterHealing.state, 'active');
+  assert.equal(result.statusAfterHealing.canAct, true);
+});
+
+test('healing hit points does not clear incapacitation from another cause', () => {
+  const result = runIsolatedInventoryScript(`
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    inventoryApi.ensureInventoryConsistency();
+    const playerStats = worldDb.getComponent('player', 'stats') || {};
+    worldDb.upsertComponent('player', 'stats', { ...playerStats, currentHitPoints: 5 });
+    worldDb.upsertComponent('player', 'status', {
+      state: 'incapacitated',
+      label: '麻痹',
+      description: '玩家因魔法麻痹而无法行动。',
+      canAct: false,
+      conditions: ['paralyzed'],
+    });
+    const healing = inventoryApi.executeInventoryAction({
+      kind: 'item.use',
+      itemId: 'item_ash_tonic',
+      targetId: 'player',
+    });
+    const statusAfterHealing = worldDb.getComponent('player', 'status');
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ healing, statusAfterHealing }));
+  `);
+
+  assert.equal(result.healing.result.facts.restoredAction, false);
+  assert.equal(result.statusAfterHealing.label, '麻痹');
+  assert.equal(result.statusAfterHealing.canAct, false);
+});
+
 test('owned weapons can be dropped and picked up without equipment state', () => {
   const result = runIsolatedInventoryScript(`
     const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});

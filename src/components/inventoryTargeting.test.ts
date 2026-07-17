@@ -24,18 +24,18 @@ const inventory: PlayerInventory = {
   items: [sword],
   nearbyItems: [],
   targets: [
-    { id: 'player', name: '玩家', kind: 'character', vitalState: 'active', health: { currentHitPoints: 10, maxHitPoints: 10 } },
+    { id: 'player', name: '玩家', kind: 'player', vitalState: 'active', health: { currentHitPoints: 10, maxHitPoints: 10 } },
     { id: 'npc_active', name: '可攻击 NPC', kind: 'character', vitalState: 'active', health: { currentHitPoints: 8, maxHitPoints: 10 } },
     { id: 'npc_down', name: '失能 NPC', kind: 'character', vitalState: 'incapacitated', health: { currentHitPoints: 0, maxHitPoints: 10 } },
     { id: 'item_target', name: '场景道具', kind: 'item', vitalState: 'active', health: null },
   ],
 };
 
-test('owned weapon exposes attack targeting for active NPCs only', () => {
+test('owned weapon exposes attack targeting for the active player and NPCs', () => {
   const action = createWeaponAttackTargetingAction(inventory, sword);
 
   assert.ok(action);
-  assert.deepEqual(action.validTargetIds, ['npc_active']);
+  assert.deepEqual(action.validTargetIds, ['player', 'npc_active']);
   assert.equal(action.danger, true);
   assert.equal(action.disabledReason, null);
 });
@@ -94,5 +94,6 @@ test('targeting resolves to the existing authoritative weapon attack action shap
   assert.ok(resolved && resolved.kind === 'attack.weapon');
   assert.equal(resolved.targetName, '可攻击 NPC');
   assert.equal(resolved.weaponId, sword.id);
+  assert.equal(createWorldActionForTarget(inventory, action, 'player')?.targetId, 'player');
   assert.equal(createWorldActionForTarget(inventory, action, 'npc_down'), null);
 });
