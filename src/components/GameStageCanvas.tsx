@@ -44,6 +44,12 @@ import {
 import type { StageMarkdownMark, StageMarkdownSegment } from './StageMarkdownContent';
 import { getVisibleStageCharacters } from './stageCharacterSelection';
 import {
+  createStageDialogueUnreadState,
+  markStageDialoguePageRead,
+  reconcileStageDialogueUnreadState,
+  resolveStageDialogueKeyboardAction,
+} from './stageDialogueNavigation';
+import {
   isExitingPhase,
   useStageCharacterTransitions,
 } from './stageCharacterTransitions';
@@ -524,6 +530,9 @@ export function GameStageCanvas({
                   }}
                 >
                   <BookOpenText size={15} />剧情
+                  {isInventoryOpen && dialogue.unreadPageCount > 0 ? (
+                    <span className="stage-output-tab-unread" aria-label={`${dialogue.unreadPageCount} 条未读剧情`} />
+                  ) : null}
                 </button>
                 <button
                   id="stage-inventory-tab"
@@ -552,7 +561,19 @@ export function GameStageCanvas({
                   />
                 </div>
               ) : (
-                <div id="stage-story-panel" role="tabpanel" aria-labelledby="stage-story-tab">
+                <div
+                  id="stage-story-panel"
+                  role="tabpanel"
+                  aria-labelledby="stage-story-tab"
+                  onKeyDown={(event) => {
+                    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                    const action = resolveStageDialogueKeyboardAction(event.key);
+                    if (!action) return;
+                    event.preventDefault();
+                    if (action === 'previous') dialogue.previous();
+                    if (action === 'advance') dialogue.advance();
+                  }}
+                >
                   <div
                     className="stage-dialogue-content"
                     role="button"
@@ -571,13 +592,18 @@ export function GameStageCanvas({
                       speakerLabel={dialogue.speakerLabel}
                     />
                   </div>
-                  <span className="stage-dialogue-progress">
+                  <span className={`stage-dialogue-progress${dialogue.hasUnreadContinuation ? ' has-unread' : ''}`}>
                     {dialogue.pageCount > 1 ? `${dialogue.pageIndex + 1} / ${dialogue.pageCount}` : null}
                   </span>
                   <div className="stage-dialogue-navigation" role="group" aria-label="本轮输出翻页">
+                    {dialogue.hasUnreadContinuation ? (
+                      <span className="stage-dialogue-unread-prompt" role="status" aria-live="polite">
+                        新内容 · 点击继续
+                      </span>
+                    ) : null}
                     {dialogue.pageCount > 1 ? (
                       <button
-                        className="stage-dialogue-page-button"
+                        className={`stage-dialogue-page-button${dialogue.hasUnreadContinuation ? ' has-unread' : ''}`}
                         type="button"
                         aria-label="上一页"
                         title="上一页"
@@ -751,6 +777,14 @@ function useStageDialogue(
     }),
     [activeEntries, paginator],
   );
+  const dialogueSourceVersion = activeEntries
+    .map((entry) => `${entry.id}:${entry.content.length}`)
+    .join('|');
+  const pageIds = useMemo(() => pages.map((page) => page.id), [pages]);
+  const pageIdsKey = pageIds.join('\u0000');
+  const [unreadState, setUnreadState] = useState(() => (
+    createStageDialogueUnreadState(sequenceKey, dialogueSourceVersion, pageIds)
+  ));
   const safePageIndex = Math.min(pageIndex, pages.length - 1);
   const activePage = pages[safePageIndex];
   const activeEntry = activePage?.entry || fallbackEntry;
@@ -767,6 +801,14 @@ function useStageDialogue(
   const canAdvance = isPageRevealed && hasNextPage;
   const canUseForwardControl = !isPageRevealed || hasNextPage;
   const isWaiting = isPageRevealed && !canAdvance && activeEntry.status === 'streaming';
+  const unreadPageIds = unreadState.sequenceKey === sequenceKey
+    ? new Set(unreadState.unreadPageIds)
+    : new Set<string>();
+  const unreadPageCount = pages
+    .slice(safePageIndex + 1)
+    .filter((page) => unreadPageIds.has(page.id))
+    .length;
+  const hasUnreadContinuation = isPageRevealed && unreadPageCount > 0;
 
   pageLengthRef.current = pageLength;
   activePageIsStreamingRef.current = activeEntry.status === 'streaming' && !hasNextPage;
@@ -797,6 +839,15 @@ function useStageDialogue(
     measure();
     return () => observer.disconnect();
   }, [isTextVisible]);
+
+  useEffect(() => {
+    setUnreadState((current) => reconcileStageDialogueUnreadState(
+      current,
+      sequenceKey,
+      dialogueSourceVersion,
+      pageIds,
+    ));
+  }, [dialogueSourceVersion, pageIdsKey, sequenceKey]);
 
   useEffect(() => {
     const activePageId = activePage?.id;
@@ -841,6 +892,7 @@ function useStageDialogue(
     const nextPage = pages[nextPageIndex];
     if (!nextPage) return;
     const wasRevealed = revealedPageIdsRef.current.has(nextPage.id);
+    setUnreadState((current) => markStageDialoguePageRead(current, sequenceKey, nextPage.id));
     setRevealedLength(wasRevealed ? nextPage.characterCount : 0);
     setPageIndex(nextPageIndex);
   }
@@ -855,12 +907,16 @@ function useStageDialogue(
     canAdvance,
     canUseForwardControl,
     isWaiting,
+    hasUnreadContinuation,
+    unreadPageCount,
     advance,
     previous,
     actionLabel: !isPageRevealed
       ? '显示当前页全部文字'
       : canAdvance
-        ? '显示下一页文字'
+        ? hasUnreadContinuation
+          ? '有新内容，显示下一页文字'
+          : '显示下一页文字'
         : activeEntry.status === 'streaming'
           ? '正在等待后续文字'
           : '当前对话已结束',

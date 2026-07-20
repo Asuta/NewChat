@@ -4113,6 +4113,16 @@ button {
   text-align: center;
 }
 
+.stage-output-tab-unread {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+  background: var(--dialogue-accent);
+  box-shadow: 0 0 0 3px rgba(111, 203, 233, 0.16), 0 0 10px var(--dialogue-accent);
+  animation: stage-dialogue-unread-dot 760ms ease-out 2;
+}
+
 .game-stage.has-action-composer .stage-dialogue-box {
   height: 145px;
   border-radius: 6px 6px 0 0;
@@ -4234,6 +4244,12 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.stage-dialogue-progress.has-unread {
+  color: var(--dialogue-speaker);
+  font-weight: 800;
+  text-shadow: 0 0 10px var(--dialogue-accent);
+}
+
 .stage-dialogue-navigation {
   position: absolute;
   right: 16px;
@@ -4272,6 +4288,52 @@ button {
   cursor: default;
 }
 
+.stage-dialogue-page-button.has-unread {
+  border-color: var(--dialogue-accent);
+  background: rgba(20, 63, 91, 0.88);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.12),
+    0 0 16px var(--dialogue-accent);
+}
+
+.stage-dialogue-page-button.has-unread svg {
+  animation: stage-dialogue-unread-chevron 760ms ease-out 2;
+}
+
+.stage-dialogue-unread-prompt {
+  position: absolute;
+  right: 0;
+  bottom: 39px;
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  padding: 0 9px;
+  background: var(--dialogue-accent);
+  color: #04111d;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.42), 0 0 15px var(--dialogue-accent);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: stage-dialogue-unread-prompt 760ms ease-out 2;
+}
+
+.stage-dialogue-unread-prompt::after {
+  position: absolute;
+  right: 11px;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: var(--dialogue-accent);
+  content: '';
+  transform: rotate(45deg);
+}
+
 .stage-dialogue-indicator {
   border-color: transparent;
   background: transparent;
@@ -4281,6 +4343,30 @@ button {
 @keyframes stage-dialogue-prompt {
   0%, 100% { transform: translateY(0); opacity: 0.58; }
   50% { transform: translateY(4px); opacity: 1; }
+}
+
+@keyframes stage-dialogue-unread-prompt {
+  0% { opacity: 0; transform: translateY(5px) scale(0.92); }
+  45% { opacity: 1; transform: translateY(-2px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes stage-dialogue-unread-chevron {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+@keyframes stage-dialogue-unread-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.68; transform: scale(1.42); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-output-tab-unread,
+  .stage-dialogue-page-button.has-unread svg,
+  .stage-dialogue-unread-prompt {
+    animation: none;
+  }
 }
 
 .game-view .thread-scroll {
