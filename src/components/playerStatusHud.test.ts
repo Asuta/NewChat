@@ -6,7 +6,7 @@ import { getPlayerStatusHudView } from './PlayerStatusHud';
 function createPlayer(overrides: Partial<PresentationPlayerStatus> = {}): PresentationPlayerStatus {
   return {
     entityId: 'player',
-    name: '失忆王选者',
+    name: '马大帅',
     level: 1,
     armorClass: 14,
     health: { currentHitPoints: 12, maxHitPoints: 12 },

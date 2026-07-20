@@ -15,3 +15,4 @@ data/presentation/*.sqlite-wal
 data/presentation/*.sqlite-shm
 data/template/
 data/save/
+data/generated-assets/

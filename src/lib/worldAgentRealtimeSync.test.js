@@ -14,7 +14,7 @@ const successfulTransition = {
 
 const successfulWorldPatch = {
   tool: 'apply_world_patch',
-  args: { operations: [{ op: 'set_location', entityId: 'character_elena' }] },
+  args: { operations: [{ op: 'set_location', entityId: 'character_yufen' }] },
   result: { ok: true },
 };
 

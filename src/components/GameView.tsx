@@ -394,7 +394,7 @@ function GameActionComposer({
         ref={textareaRef}
         id="game-action-input"
         aria-label="输入你的游戏行动"
-        placeholder="你想怎么做？例如：询问艾蕾娜关于王冠，或检查黑石棺。"
+        placeholder="你想怎么做？例如：问玉芬范德彪在哪，或检查丢失地址的线索。"
         rows={2}
         disabled={isDisabled}
         value={value}

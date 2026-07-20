@@ -1,4 +1,4 @@
-﻿# 世界 Agent 输出格式
+# 世界 Agent 输出格式
 
 后端会通过 API 原生工具调用协议执行工具。需要行动时，使用可用工具；不要输出裸 JSON、Markdown 代码块、工具名说明或内部流程。
 
@@ -72,9 +72,9 @@
   "operations": [
     {
       "op": "set_location",
-      "entityId": "character_elena",
-      "sceneId": "scene_people_theater",
-      "summary": "艾蕾娜跟随玩家抵达旧剧场议会。"
+      "entityId": "character_yufen",
+      "sceneId": "scene_construction_site",
+      "summary": "玉芬跟随玩家抵达建筑工地。"
     }
   ],
   "dryRun": false

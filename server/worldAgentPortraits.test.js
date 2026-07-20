@@ -16,12 +16,12 @@ test('npc_speak returns a normalized portrait state with its visible speech', ()
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     const angry = worldAgent.executeWorldTool('npc_speak', {
-      npcEntityId: 'character_elena',
+      npcEntityId: 'character_yufen',
       portraitState: 'angry',
       content: '立刻离开。',
     });
     const legacy = worldAgent.executeWorldTool('npc_speak', {
-      npcEntityId: 'character_elena',
+      npcEntityId: 'character_yufen',
       content: '旧调用仍然可用。',
     });
     worldDb.closeWorldDb();

@@ -17,12 +17,12 @@ test('transitionScene advances time atomically and starts a new scene visit', ()
     const before = worldDb.getWorldTimeState();
     const beforeAgain = worldDb.getWorldTimeState();
     const context = worldDb.getWorldTimeContext();
-    const transition = worldDb.transitionScene('scene_outer_gate', {
+    const transition = worldDb.transitionScene('scene_city_street', {
       sceneTimeSegments: [],
       travelMinutes: 30,
       throughConversationId: context.latestConversationId,
       travelReason: '交谈并调查礼拜堂。',
-      previousSceneSummary: '玩家完成调查后离开灰烬礼拜堂。',
+      previousSceneSummary: '玩家完成调查后离开城市客运站。',
     });
     const after = worldDb.getWorldTimeState();
     const events = worldDb.listEvents(10).filter((event) => event.type === 'scene.transition');
@@ -34,7 +34,7 @@ test('transitionScene advances time atomically and starts a new scene visit', ()
   assert.equal(result.beforeAgain.currentSceneVisit.id, result.before.currentSceneVisit.id);
   assert.equal(result.transition.clockAfter.fullLabel, '第 1 日 12:30');
   assert.equal(result.after.clock.absoluteMinutes, 750);
-  assert.equal(result.after.currentSceneVisit.sceneId, 'scene_outer_gate');
+  assert.equal(result.after.currentSceneVisit.sceneId, 'scene_city_street');
   assert.equal(result.after.currentSceneVisit.enteredAt, 750);
   assert.equal(result.events.length, 1);
   assert.equal(result.events[0].payload.elapsedMinutes, 30);
@@ -49,7 +49,7 @@ test('a rejected scene transition leaves time and location unchanged', () => {
     let error = '';
     try {
       const context = worldDb.getWorldTimeContext();
-      worldDb.transitionScene('scene_crown_hall', {
+      worldDb.transitionScene('scene_victoria', {
         sceneTimeSegments: [],
         travelMinutes: 90,
         throughConversationId: context.latestConversationId,
@@ -76,7 +76,7 @@ test('world clock rolls over to the next day', () => {
     worldDb.seedWorldIfEmpty();
     worldDb.setMeta('worldClock.absoluteMinutes', '1430');
     const context = worldDb.getWorldTimeContext();
-    const transition = worldDb.transitionScene('scene_outer_gate', {
+    const transition = worldDb.transitionScene('scene_city_street', {
       sceneTimeSegments: [],
       travelMinutes: 20,
       throughConversationId: context.latestConversationId,
@@ -100,7 +100,7 @@ test('transitionScene rejects missing DM time evidence without changing state', 
     const before = worldDb.getWorldOverview();
     let error = '';
     try {
-      worldDb.transitionScene('scene_outer_gate', {});
+      worldDb.transitionScene('scene_city_street', {});
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught);
     }
@@ -123,7 +123,7 @@ test('transitionScene rejects duplicate entry into the current scene', () => {
     let error = '';
     try {
       const context = worldDb.getWorldTimeContext();
-      worldDb.transitionScene('scene_ash_chapel', {
+      worldDb.transitionScene('scene_bus_station', {
         sceneTimeSegments: [],
         travelMinutes: 10,
         throughConversationId: context.latestConversationId,
@@ -154,7 +154,7 @@ test('world agent cannot move the player through apply_world_patch', () => {
       operations: [{
         op: 'set_location',
         entityId: 'player',
-        sceneId: 'scene_outer_gate',
+        sceneId: 'scene_city_street',
         summary: '绕过场景切换。',
       }],
     }, '测试玩家移动保护');
@@ -162,7 +162,7 @@ test('world agent cannot move the player through apply_world_patch', () => {
       operations: [{
         op: 'move_entity',
         entityId: 'player',
-        sceneId: 'scene_outer_gate',
+        sceneId: 'scene_city_street',
         summary: '通过移动别名绕过场景切换。',
       }],
     }, '测试玩家移动别名保护');
@@ -187,10 +187,10 @@ test('world agent transition tool advances the clock exposed by get_time_state',
     worldDb.seedWorldIfEmpty();
     const before = worldAgent.executeWorldTool('get_time_state', {});
     const transition = worldAgent.executeWorldTool('transition_scene', {
-      sceneId: 'scene_outer_gate',
+      sceneId: 'scene_city_street',
       sceneTimeSegments: [],
       travelMinutes: 30,
-      travelReason: '从礼拜堂沿碎石路前往王都外门。',
+      travelReason: '从客运站出口前往城里街面。',
       throughConversationId: before.timeContext.latestConversationId,
       previousSceneSummary: '玩家查明礼拜堂现状后出发。',
     });
@@ -203,7 +203,7 @@ test('world agent transition tool advances the clock exposed by get_time_state',
   assert.equal(result.transition.clockAfter.fullLabel, '第 1 日 12:30');
   assert.equal(result.time.ok, true);
   assert.equal(result.time.time.clock.fullLabel, '第 1 日 12:30');
-  assert.equal(result.time.time.currentSceneVisit.sceneId, 'scene_outer_gate');
+  assert.equal(result.time.time.currentSceneVisit.sceneId, 'scene_city_street');
 });
 
 test('world agent rejects hidden enter_scene calls', () => {
@@ -212,7 +212,7 @@ test('world agent rejects hidden enter_scene calls', () => {
     const worldAgent = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'server', 'worldAgent.js')).href)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
-    const toolResult = worldAgent.executeWorldTool('enter_scene', { sceneId: 'scene_outer_gate' });
+    const toolResult = worldAgent.executeWorldTool('enter_scene', { sceneId: 'scene_city_street' });
     const after = worldDb.getWorldOverview();
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ toolResult, after }));
@@ -220,7 +220,7 @@ test('world agent rejects hidden enter_scene calls', () => {
 
   assert.equal(result.toolResult.ok, false);
   assert.match(result.toolResult.error, /未知工具/);
-  assert.equal(result.after.currentScene.scene.id, 'scene_ash_chapel');
+  assert.equal(result.after.currentScene.scene.id, 'scene_bus_station');
   assert.equal(result.after.time.clock.absoluteMinutes, 720);
 });
 
@@ -234,7 +234,7 @@ test('world agent rejects relationship-form player location patches', () => {
       operations: [{
         op: 'set_relationship',
         sourceEntityId: 'player',
-        targetEntityId: 'scene_outer_gate',
+        targetEntityId: 'scene_city_street',
         relationshipType: 'located_in',
       }],
     }, '测试关系形式的位置绕过');
@@ -242,10 +242,10 @@ test('world agent rejects relationship-form player location patches', () => {
       operations: [{
         op: 'delete_relationship',
         sourceEntityId: 'player',
-        targetEntityId: 'scene_ash_chapel',
+        targetEntityId: 'scene_bus_station',
         relationshipType: 'located_in',
       }],
-      confirmedTargetIds: ['player', 'scene_ash_chapel'],
+      confirmedTargetIds: ['player', 'scene_bus_station'],
     }, '测试删除当前位置关系');
     const after = worldDb.getWorldOverview();
     worldDb.closeWorldDb();
@@ -256,7 +256,7 @@ test('world agent rejects relationship-form player location patches', () => {
   assert.match(result.setResult.error, /transition_scene/);
   assert.equal(result.deleteResult.ok, false);
   assert.match(result.deleteResult.error, /transition_scene/);
-  assert.equal(result.after.currentScene.scene.id, 'scene_ash_chapel');
+  assert.equal(result.after.currentScene.scene.id, 'scene_bus_station');
   assert.equal(result.after.time.clock.absoluteMinutes, 720);
 });
 
@@ -267,12 +267,12 @@ test('time checkpoint exposes only unsettled story events and prevents double co
     worldDb.seedWorldIfEmpty();
 
     const initial = worldDb.getWorldTimeContext();
-    worldDb.addConversation('user', 'player', '玩家', '和艾蕾娜交谈后睡到晚上八点。');
+    worldDb.addConversation('user', 'player', '玩家', '和玉芬交谈后睡到晚上八点。');
     worldDb.addConversation('assistant', null, '世界 Agent', '天色已经完全暗了。');
     const beforeSettlement = worldDb.getWorldTimeContext();
     const firstSettlement = worldDb.updateWorldTime({
       timeSegments: [
-        { label: '简短交谈', minutes: 10, evidence: '玩家与艾蕾娜交换信息。' },
+        { label: '简短交谈', minutes: 10, evidence: '玩家与玉芬交换信息。' },
         { label: '睡到晚上八点', minutes: 470, evidence: '明确绝对时间锚点为 20:00。' },
       ],
       throughConversationId: beforeSettlement.latestConversationId,
@@ -332,12 +332,12 @@ test('scene transition settles new scene events plus travel after an earlier tim
       summary: '玩家睡到晚上八点。',
     });
 
-    worldDb.addConversation('user', 'player', '玩家', '与艾蕾娜交谈并整理装备。');
+    worldDb.addConversation('user', 'player', '玩家', '与玉芬交谈并整理装备。');
     const transitionContext = worldDb.getWorldTimeContext();
-    const transition = worldDb.transitionScene('scene_outer_gate', {
+    const transition = worldDb.transitionScene('scene_city_street', {
       sceneTimeSegments: [{ label: '交谈和整理装备', minutes: 10, evidence: '检查点之后的新剧情。' }],
       travelMinutes: 25,
-      travelReason: '沿碎石小路前往王都外门。',
+      travelReason: '沿客运站出口前往城里街面。',
       throughConversationId: transitionContext.latestConversationId,
       previousSceneSummary: '玩家休息、交谈并完成出发准备。',
     });
@@ -352,7 +352,7 @@ test('scene transition settles new scene events plus travel after an earlier tim
   assert.equal(result.transition.clockAfter.fullLabel, '第 1 日 20:35');
   assert.equal(result.transition.completedVisit.elapsedMinutes, 515);
   assert.equal(result.after.pendingEvents.length, 0);
-  assert.equal(result.after.checkpoint.sceneId, 'scene_outer_gate');
+  assert.equal(result.after.checkpoint.sceneId, 'scene_city_street');
 });
 
 test('scene transition cannot leave pending story events behind', () => {
@@ -361,15 +361,15 @@ test('scene transition cannot leave pending story events behind', () => {
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     worldDb.getWorldTimeContext();
-    worldDb.addConversation('user', 'player', '玩家', '先和艾蕾娜谈话。');
+    worldDb.addConversation('user', 'player', '玩家', '先和玉芬谈话。');
     worldDb.addConversation('user', 'player', '玩家', '然后整理装备准备出发。');
     const context = worldDb.getWorldTimeContext();
     let error = '';
     try {
-      worldDb.transitionScene('scene_outer_gate', {
+      worldDb.transitionScene('scene_city_street', {
         sceneTimeSegments: [{ label: '只分析第一条事件', minutes: 5, evidence: 'Only the first event was reviewed.' }],
         travelMinutes: 25,
-        travelReason: '前往王都外门。',
+        travelReason: '前往城里街面。',
         throughConversationId: context.pendingEvents[0].id,
         previousSceneSummary: '错误地遗漏了后续剧情。',
       });
@@ -382,7 +382,7 @@ test('scene transition cannot leave pending story events behind', () => {
   `);
 
   assert.match(result.error, /全部未结算剧情/);
-  assert.equal(result.after.currentScene.scene.id, 'scene_ash_chapel');
+  assert.equal(result.after.currentScene.scene.id, 'scene_bus_station');
   assert.equal(result.after.time.clock.absoluteMinutes, 720);
   assert.equal(result.after.time.pendingEventCount, 2);
 });
@@ -423,7 +423,7 @@ test('legacy scene transition timing cannot bypass pending story settlement', ()
     worldDb.addConversation('user', 'player', 'Player', 'Sleep until 22:00.');
     let error = '';
     try {
-      worldDb.transitionScene('scene_outer_gate', {
+      worldDb.transitionScene('scene_city_street', {
         elapsedMinutes: 25,
         elapsedReason: 'Travel to the gate.',
         previousSceneSummary: 'The player slept and then departed.',
@@ -439,7 +439,7 @@ test('legacy scene transition timing cannot bypass pending story settlement', ()
   assert.match(result.error, /sceneTimeSegments/);
   assert.equal(result.after.time.clock.absoluteMinutes, 720);
   assert.equal(result.after.time.pendingEventCount, 1);
-  assert.equal(result.after.currentScene.scene.id, 'scene_ash_chapel');
+  assert.equal(result.after.currentScene.scene.id, 'scene_bus_station');
 });
 
 test('replaying a settled conversation cursor cannot advance time twice', () => {
@@ -480,7 +480,7 @@ test('scene transition cannot add scene time when no story events are pending', 
     const context = worldDb.getWorldTimeContext();
     let error = '';
     try {
-      worldDb.transitionScene('scene_outer_gate', {
+      worldDb.transitionScene('scene_city_street', {
         sceneTimeSegments: [{ label: 'Already-settled rest', minutes: 480, evidence: 'This rest was already settled.' }],
         travelMinutes: 25,
         travelReason: 'Travel to the gate.',
@@ -497,7 +497,7 @@ test('scene transition cannot add scene time when no story events are pending', 
 
   assert.match(result.error, /no pending story events|nonzero/i);
   assert.equal(result.after.time.clock.absoluteMinutes, 720);
-  assert.equal(result.after.currentScene.scene.id, 'scene_ash_chapel');
+  assert.equal(result.after.currentScene.scene.id, 'scene_bus_station');
 });
 
 test('an explicit clock target rejects an inconsistent short duration', () => {
@@ -539,7 +539,7 @@ test('scene transition cannot swallow a pending absolute-time action with empty 
     const context = worldDb.getWorldTimeContext();
     let error = '';
     try {
-      worldDb.transitionScene('scene_outer_gate', {
+      worldDb.transitionScene('scene_city_street', {
         sceneTimeSegments: [],
         travelMinutes: 25,
         travelReason: 'Travel to the gate.',
@@ -647,10 +647,10 @@ test('a later explicit cancellation clears an earlier sleep target', () => {
     worldDb.addConversation('user', 'player', '玩家', '我想睡到晚上十点。');
     worldDb.addConversation('user', 'player', '玩家', '算了，不睡了，现在就出发。');
     const context = worldDb.getWorldTimeContext();
-    const transition = worldDb.transitionScene('scene_outer_gate', {
+    const transition = worldDb.transitionScene('scene_city_street', {
       sceneTimeSegments: [],
       travelMinutes: 25,
-      travelReason: '沿碎石路前往王都外门。',
+      travelReason: '沿碎石路前往城里街面。',
       throughConversationId: context.latestConversationId,
       previousSceneSummary: '玩家改变主意后立即出发。',
     });

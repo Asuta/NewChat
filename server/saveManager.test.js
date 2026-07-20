@@ -74,7 +74,7 @@ test('导入世界不会因为战役 ID 相同而被注入内置剧情', () => {
     for (const databaseFile of [templateDatabaseFile, saveDatabaseFile]) {
       const database = new DatabaseSync(databaseFile);
       createWorldDbSchema(database);
-      database.prepare("INSERT INTO meta (key, value) VALUES ('campaignId', 'seven-day-crown')").run();
+      database.prepare("INSERT INTO meta (key, value) VALUES ('campaignId', 'ma-dashuai-city-life')").run();
       database.close();
     }
 
@@ -137,7 +137,7 @@ test('内置战役缺少剧情蓝图时只补齐一次', () => {
   }
 });
 
-test('旧模板升级后重置游戏可获得全部角色生命值', () => {
+test('马大帅旧模板升级后重置游戏可获得全部角色生命值', () => {
   const directory = mkdtempSync(join(tmpdir(), 'newchat-template-'));
   const databaseFile = join(directory, 'template.sqlite');
   const database = new DatabaseSync(databaseFile);
@@ -149,17 +149,18 @@ test('旧模板升级后重置游戏可获得全部角色生命值', () => {
       VALUES (?, ?, ?, ?, ?)
     `);
     const now = new Date().toISOString();
-    insertEntity.run('player', 'player', '失忆王选者', now, now);
+    insertEntity.run('player', 'player', '马大帅', now, now);
+    database.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('campaignId', 'ma-dashuai-city-life');
 
     const expectedHitPoints = new Map([
-      ['character_elena', 22],
-      ['character_rowan', 14],
-      ['character_milo', 10],
-      ['character_aldric', 30],
-      ['character_eve', 18],
-      ['character_kaen', 20],
-      ['character_hollow_knight', 18],
-      ['character_crown_will', 36],
+      ['character_yufen', 14],
+      ['character_fan_debiao', 18],
+      ['character_ma_xiaocui', 12],
+      ['character_guiying', 14],
+      ['character_wu', 16],
+      ['character_awei', 12],
+      ['character_yu_fugui', 16],
+      ['character_gangzi', 20],
     ]);
     for (const entityId of expectedHitPoints.keys()) {
       insertEntity.run(entityId, 'character', entityId, now, now);

@@ -74,7 +74,7 @@ LLM_THINKING=disabled
 
 角色默认立绘仍使用 `presentation_entity_bindings.portrait_asset_id`。可在该绑定的 `metadata.portraits` 中按状态配置额外的素材 id，目前支持 `happy`、`angry`、`disappointed`、`hurt` 和 `wounded`；缺少状态素材时会自动回退默认立绘。
 
-内置角色也支持按文件名自动发现状态立绘，例如艾蕾娜的默认文件为 `characters/npc-character_elena-idle.png`，对应愤怒立绘可放在 `characters/npc-character_elena-angry.png`。服务启动时会自动登记存在的状态文件并保留已经手工配置的绑定。
+内置角色也支持按文件名自动发现状态立绘，例如玉芬的默认文件为 `characters/npc-character_yufen-idle.png`，对应愤怒立绘可放在 `characters/npc-character_yufen-angry.png`。服务启动时会自动登记存在的状态文件并保留已经手工配置的绑定。
 
 ## 跑团规则知识库
 

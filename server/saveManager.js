@@ -13,15 +13,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
-  SEVEN_DAY_CROWN_CAMPAIGN_ID,
-  SEVEN_DAY_CROWN_CHARACTER_HIT_POINTS,
-  SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
-  SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
-  SEVEN_DAY_CROWN_PLAYER_PROFILE_ID,
-  getSevenDayCrownElenaStats,
-  getSevenDayCrownHollowKnightStats,
-  getSevenDayCrownPlayerStats,
-  seedSevenDayCrownWorld,
+  MA_DASHUAI_CAMPAIGN_ID,
+  MA_DASHUAI_CHARACTER_HIT_POINTS,
+  MA_DASHUAI_GANGZI_PROFILE_ID,
+  MA_DASHUAI_PLAYER_PROFILE_ID,
+  MA_DASHUAI_YUFEN_PROFILE_ID,
+  getMaDashuaiGangziStats,
+  getMaDashuaiPlayerStats,
+  getMaDashuaiYufenStats,
+  seedMaDashuaiWorld,
 } from './defaultWorld.js';
 
 export const DATA_DIR = resolve(process.cwd(), 'data');
@@ -113,13 +113,13 @@ export function ensureBuiltInStoryBlueprintDefaults({
     databaseFile: templateDatabaseFile,
     contextDir: templateContextDir,
     factoryStoryFile,
-    campaignId: SEVEN_DAY_CROWN_CAMPAIGN_ID,
+    campaignId: MA_DASHUAI_CAMPAIGN_ID,
   });
   ensureStoryBlueprintForCampaign({
     databaseFile: saveDatabaseFile,
     contextDir: saveContextDir,
     factoryStoryFile,
-    campaignId: SEVEN_DAY_CROWN_CAMPAIGN_ID,
+    campaignId: MA_DASHUAI_CAMPAIGN_ID,
   });
 }
 
@@ -130,88 +130,93 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
 
   const database = new DatabaseSync(templateDbFile);
   try {
+    const campaign = database.prepare("SELECT value FROM meta WHERE key = 'campaignId'").get();
+    if (campaign?.value !== MA_DASHUAI_CAMPAIGN_ID) {
+      return;
+    }
+
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
-    upsertTemplateEntity(database, 'item_crown_mark', 'item', '王冠印记');
-    upsertTemplateEntity(database, 'item_iron_sword', 'item', '礼拜堂铁剑');
-    upsertTemplateEntity(database, 'item_ash_tonic', 'item', '灰烬愈合药剂');
-    setTemplateAliases(database, 'player', ['玩家', '殿下', '第四王选者', '无记忆继承者']);
-    setTemplateAliases(database, 'item_iron_sword', ['铁剑', '长剑', 'Iron Sword']);
-    setTemplateAliases(database, 'item_ash_tonic', ['愈合药剂', '治疗药剂', '药水']);
+    upsertTemplateEntity(database, 'item_erhu', 'item', '旧二胡');
+    upsertTemplateEntity(database, 'item_wooden_pole', 'item', '行李木棍');
+    upsertTemplateEntity(database, 'item_honghua_oil', 'item', '红花油');
+    setTemplateAliases(database, 'player', ['玩家', '老马', '大帅', '马叔', '马校长']);
+    setTemplateAliases(database, 'item_wooden_pole', ['木棍', '挑行李的木棍', '棍子']);
+    setTemplateAliases(database, 'item_honghua_oil', ['药油', '红花油', '跌打药']);
     mergeTemplateComponent(database, 'player', 'identity', {
-      role: '失忆王选者',
-      description: '玩家从灰烬礼拜堂的黑石棺中醒来，手背带着发光的王冠印记。',
-      class: 'fighter',
+      role: '进城寻找女儿的农民',
+      description: '玩家扮演马大帅。小翠逃婚进城后，他来城里找女儿，却在长途车上丢了钱包和地址。',
+      class: 'civilian',
       level: 1,
     });
-    mergeTemplateStats(database, 'player', getSevenDayCrownPlayerStats(), SEVEN_DAY_CROWN_PLAYER_PROFILE_ID);
+    mergeTemplateStats(database, 'player', getMaDashuaiPlayerStats(), MA_DASHUAI_PLAYER_PROFILE_ID);
     mergeTemplateComponent(database, 'player', 'status', {
       state: 'healthy',
-      label: '刚刚苏醒',
-      description: '玩家刚从黑石棺中醒来，失去大部分记忆，但身体仍能行动。',
+      label: '刚刚进城',
+      description: '马大帅刚下长途车，钱包和地址都丢了，只剩随身行李和一把旧二胡。',
       canAct: true,
     });
     mergeTemplateInventory(database, 'player', {
-      items: ['item_crown_mark', 'item_iron_sword', 'item_ash_tonic'],
+      items: ['item_erhu', 'item_wooden_pole', 'item_honghua_oil'],
     });
-    mergeTemplateComponent(database, 'item_crown_mark', 'identity', {
-      role: 'key_item',
-      description: '玩家手背上的发光王冠印记。它证明玩家拥有王选资格，也会在玩家迷路时指向下一条主线线索。',
+    mergeTemplateComponent(database, 'item_erhu', 'identity', {
+      role: 'tool',
+      description: '马大帅随身带来的旧二胡，没钱时可以在街边拉琴换些饭钱。',
       effect: { type: 'quest_guidance', targetQuestId: 'quest_main' },
     });
-    mergeTemplateComponent(database, 'item_iron_sword', 'identity', {
+    mergeTemplateComponent(database, 'item_wooden_pole', 'identity', {
       role: 'weapon',
-      description: '灰烬礼拜堂中拾得的旧铁剑，剑柄刻着白狮纹章。适合低等级近战判定。',
-      weaponCategory: 'martial melee weapon',
-      damageDice: '1d8',
-      versatileDamageDice: '1d10',
-      damageType: 'slashing',
+      description: '原本用来挑行李的结实木棍，必要时也能当作临时武器。',
+      weaponCategory: 'improvised melee weapon',
+      damageDice: '1d4',
+      versatileDamageDice: '1d6',
+      damageType: 'bludgeoning',
       attackAbility: 'strength',
       proficient: true,
     });
-    mergeTemplateComponent(database, 'item_crown_mark', 'item', {
-      category: 'quest',
+    mergeTemplateComponent(database, 'item_erhu', 'item', {
+      category: 'tool',
       stackable: false,
       droppable: false,
-      use: { type: 'narrative', target: 'optional_character', label: '展示印记' },
+      use: { type: 'narrative', target: 'optional_character', label: '拉一段二胡' },
     });
-    mergeTemplateComponent(database, 'item_iron_sword', 'item', {
+    mergeTemplateComponent(database, 'item_wooden_pole', 'item', {
       category: 'weapon',
       stackable: false,
       droppable: true,
     });
-    mergeTemplateComponent(database, 'item_ash_tonic', 'identity', {
+    mergeTemplateComponent(database, 'item_honghua_oil', 'identity', {
       role: 'consumable',
-      description: '一小瓶由礼拜堂残存圣灰调制的药剂，饮下后能缓和伤势。',
+      description: '一小瓶红花油，干重活或挨碰以后能暂时缓和疼痛。',
     });
-    mergeTemplateComponent(database, 'item_ash_tonic', 'item', {
+    mergeTemplateComponent(database, 'item_honghua_oil', 'item', {
       category: 'consumable',
       stackable: true,
       droppable: true,
       use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 },
     });
-    upsertTemplateRelationship(database, 'player', 'item_crown_mark', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_erhu', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家手背带着王冠印记。',
+      summary: '马大帅随身带着一把旧二胡。',
     });
-    upsertTemplateRelationship(database, 'player', 'item_iron_sword', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_wooden_pole', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家从灰烬礼拜堂拾得一把旧铁剑。',
+      summary: '马大帅用一根木棍挑着行李进城。',
     });
-    upsertTemplateRelationship(database, 'player', 'item_ash_tonic', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_honghua_oil', 'ownership', null, {
       source: 'baseline',
-      summary: '玩家苏醒时随身带着两份灰烬愈合药剂。',
+      summary: '马大帅带着两份干活受伤时用的红花油。',
       quantity: 2,
     });
     database.prepare("INSERT INTO meta (key, value) VALUES ('inventory.items.v1', 'ready') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
-    for (const [entityId, maxHitPoints] of Object.entries(SEVEN_DAY_CROWN_CHARACTER_HIT_POINTS)) {
+    for (const [entityId, maxHitPoints] of Object.entries(MA_DASHUAI_CHARACTER_HIT_POINTS)) {
       mergeTemplateComponent(database, entityId, 'stats', {
         maxHitPoints,
         currentHitPoints: maxHitPoints,
       });
     }
-    mergeTemplateStats(database, 'character_elena', getSevenDayCrownElenaStats(), SEVEN_DAY_CROWN_ELENA_PROFILE_ID);
-    mergeTemplateStats(database, 'character_hollow_knight', getSevenDayCrownHollowKnightStats(), SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID);
+    mergeTemplateStats(database, 'character_yufen', getMaDashuaiYufenStats(), MA_DASHUAI_YUFEN_PROFILE_ID);
+    mergeTemplateStats(database, 'character_gangzi', getMaDashuaiGangziStats(), MA_DASHUAI_GANGZI_PROFILE_ID);
     database.exec('COMMIT;');
   } catch (error) {
     try {
@@ -245,7 +250,7 @@ export function restoreTemplateFromFactoryDefaults() {
     database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     createWorldDbSchema(database);
     database.exec('BEGIN;');
-    seedSevenDayCrownWorld({
+    seedMaDashuaiWorld({
       upsertEntity: (id, kind, name) => upsertTemplateEntity(database, id, kind, name),
       setAliases: (entityId, aliases) => setTemplateAliases(database, entityId, aliases),
       upsertComponent: (entityId, type, data) => writeTemplateComponent(database, entityId, type, data),

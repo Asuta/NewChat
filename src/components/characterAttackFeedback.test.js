@@ -6,13 +6,13 @@ test('attack feedback preserves an authoritative hit result', () => {
   const event = createCharacterAttackFeedbackEvent(42, {
     type: 'attack.resolved',
     action: {
-      id: 'attack.weapon:player:character_elena:item_iron_sword',
+      id: 'attack.weapon:player:character_yufen:item_wooden_pole',
       kind: 'attack.weapon',
       label: '攻击',
       actorId: 'player',
-      targetId: 'character_elena',
-      targetName: '艾蕾娜',
-      weaponId: 'item_iron_sword',
+      targetId: 'character_yufen',
+      targetName: '玉芬',
+      weaponId: 'item_wooden_pole',
       weaponName: '礼拜堂铁剑',
     },
     facts: { hit: true, critical: true },
@@ -23,8 +23,8 @@ test('attack feedback preserves an authoritative hit result', () => {
 
   assert.deepEqual(event, {
     id: 'attack:42',
-    targetEntityId: 'character_elena',
-    targetName: '艾蕾娜',
+    targetEntityId: 'character_yufen',
+    targetName: '玉芬',
     hit: true,
     critical: true,
   });
@@ -34,12 +34,12 @@ test('attack feedback represents a miss without requiring a health change', () =
   const event = createCharacterAttackFeedbackEvent('miss-7', {
     type: 'attack.resolved',
     action: {
-      id: 'attack.weapon:player:character_elena:item_iron_sword',
+      id: 'attack.weapon:player:character_yufen:item_wooden_pole',
       kind: 'attack.weapon',
       label: '攻击',
       actorId: 'player',
-      targetId: 'character_elena',
-      weaponId: 'item_iron_sword',
+      targetId: 'character_yufen',
+      weaponId: 'item_wooden_pole',
       weaponName: '礼拜堂铁剑',
     },
     facts: { hit: false, damage: 0 },
@@ -50,8 +50,8 @@ test('attack feedback represents a miss without requiring a health change', () =
 
   assert.deepEqual(event, {
     id: 'attack:miss-7',
-    targetEntityId: 'character_elena',
-    targetName: 'character_elena',
+    targetEntityId: 'character_yufen',
+    targetName: 'character_yufen',
     hit: false,
     critical: false,
   });

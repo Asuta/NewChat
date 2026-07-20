@@ -15,27 +15,27 @@ export { PRESENTATION_ASSETS_DIR, PRESENTATION_DB_FILE, PRESENTATION_DIR };
 const nowSql = "datetime('now')";
 const FALLBACK_CHARACTER_ASSET_ID = 'asset_character_placeholder';
 
-const SEVEN_DAY_CROWN_SCENE_ASSETS = [
-  ['scene_ash_chapel', 'asset_scene_ash_chapel_backdrop', 'scenes/scene-scene_ash_chapel-backdrop.png'],
-  ['scene_outer_gate', 'asset_scene_outer_gate_backdrop', 'scenes/scene-scene_outer_gate-backdrop.png'],
-  ['scene_registry', 'asset_scene_registry_backdrop', 'scenes/scene-scene_registry-backdrop.png'],
-  ['scene_knight_hall', 'asset_scene_knight_hall_backdrop', 'scenes/scene-scene_knight_hall-backdrop.png'],
-  ['scene_sanctum', 'asset_scene_sanctum_backdrop', 'scenes/scene-scene_sanctum-backdrop.png'],
-  ['scene_people_theater', 'asset_scene_people_theater_backdrop', 'scenes/scene-scene_people_theater-backdrop.png'],
-  ['scene_blackstone_tomb', 'asset_scene_blackstone_tomb_backdrop', 'scenes/scene-scene_blackstone_tomb-backdrop.png'],
-  ['scene_mirror_archive', 'asset_scene_mirror_archive_backdrop', 'scenes/scene-scene_mirror_archive-backdrop.png'],
-  ['scene_crown_hall', 'asset_scene_crown_hall_backdrop', 'scenes/scene-scene_crown_hall-backdrop.png'],
+const MA_DASHUAI_SCENE_ASSETS = [
+  ['scene_bus_station', 'asset_scene_bus_station_backdrop', 'scenes/scene-scene_bus_station-backdrop.png'],
+  ['scene_city_street', 'asset_scene_city_street_backdrop', 'scenes/scene-scene_city_street-backdrop.png'],
+  ['scene_victoria', 'asset_scene_victoria_backdrop', 'scenes/scene-scene_victoria-backdrop.png'],
+  ['scene_guiying_restaurant', 'asset_scene_guiying_restaurant_backdrop', 'scenes/scene-scene_guiying_restaurant-backdrop.png'],
+  ['scene_construction_site', 'asset_scene_construction_site_backdrop', 'scenes/scene-scene_construction_site-backdrop.png'],
+  ['scene_bathhouse', 'asset_scene_bathhouse_backdrop', 'scenes/scene-scene_bathhouse-backdrop.png'],
+  ['scene_yufen_home', 'asset_scene_yufen_home_backdrop', 'scenes/scene-scene_yufen_home-backdrop.png'],
+  ['scene_majia_village', 'asset_scene_majia_village_backdrop', 'scenes/scene-scene_majia_village-backdrop.png'],
+  ['scene_migrant_school', 'asset_scene_migrant_school_backdrop', 'scenes/scene-scene_migrant_school-backdrop.png'],
 ];
 
-const SEVEN_DAY_CROWN_CHARACTER_ASSETS = [
-  ['character_elena', 'asset_character_elena_idle', 'characters/npc-character_elena-idle.png'],
-  ['character_rowan', 'asset_character_rowan_idle', 'characters/npc-character_rowan-idle.png'],
-  ['character_milo', 'asset_character_milo_idle', 'characters/npc-character_milo-idle.png'],
-  ['character_aldric', 'asset_character_aldric_idle', 'characters/npc-character_aldric-idle.png'],
-  ['character_eve', 'asset_character_eve_idle', 'characters/npc-character_eve-idle.png'],
-  ['character_kaen', 'asset_character_kaen_idle', 'characters/npc-character_kaen-idle.png'],
-  ['character_hollow_knight', 'asset_character_hollow_knight_idle', 'characters/npc-character_hollow_knight-idle.png'],
-  ['character_crown_will', 'asset_character_crown_will_idle', 'characters/npc-character_crown_will-idle.png'],
+const MA_DASHUAI_CHARACTER_ASSETS = [
+  ['character_yufen', 'asset_character_yufen_idle', 'characters/npc-character_yufen-idle.png'],
+  ['character_fan_debiao', 'asset_character_fan_debiao_idle', 'characters/npc-character_fan_debiao-idle.png'],
+  ['character_ma_xiaocui', 'asset_character_ma_xiaocui_idle', 'characters/npc-character_ma_xiaocui-idle.png'],
+  ['character_guiying', 'asset_character_guiying_idle', 'characters/npc-character_guiying-idle.png'],
+  ['character_wu', 'asset_character_wu_idle', 'characters/npc-character_wu-idle.png'],
+  ['character_awei', 'asset_character_awei_idle', 'characters/npc-character_awei-idle.png'],
+  ['character_yu_fugui', 'asset_character_yu_fugui_idle', 'characters/npc-character_yu_fugui-idle.png'],
+  ['character_gangzi', 'asset_character_gangzi_idle', 'characters/npc-character_gangzi-idle.png'],
 ];
 
 export function ensurePresentationDb() {
@@ -217,39 +217,31 @@ function seedDefaults(database) {
     metadata: { label: '临时 NPC 默认站位图', fallback: true },
   });
 
-  upsertEntityBinding(database, 'character_elena', FALLBACK_CHARACTER_ASSET_ID, 'auto', 1);
-  seedSevenDayCrownAssets(database);
+  upsertEntityBinding(database, 'character_yufen', FALLBACK_CHARACTER_ASSET_ID, 'auto', 1);
+  seedMaDashuaiAssets(database);
 }
 
-function seedSevenDayCrownAssets(database) {
-  for (const [sceneEntityId, assetId, assetPath] of SEVEN_DAY_CROWN_SCENE_ASSETS) {
+function seedMaDashuaiAssets(database) {
+  for (const [sceneEntityId, assetId, assetPath] of MA_DASHUAI_SCENE_ASSETS) {
     if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
     upsertAsset(database, {
       id: assetId,
       type: 'background',
       path: assetPath,
       mimeType: 'image/png',
-      metadata: {
-        generated: true,
-        provider: 'ai-pixel-image2',
-        model: 'gpt-image-2',
-      },
+      metadata: { generated: true, campaignId: 'ma-dashuai-city-life' },
     });
     upsertSceneBinding(database, sceneEntityId, assetId);
   }
 
-  for (const [entityId, assetId, assetPath] of SEVEN_DAY_CROWN_CHARACTER_ASSETS) {
+  for (const [entityId, assetId, assetPath] of MA_DASHUAI_CHARACTER_ASSETS) {
     if (!existsSync(join(PRESENTATION_ASSETS_DIR, assetPath))) continue;
     upsertAsset(database, {
       id: assetId,
       type: 'portrait',
       path: assetPath,
       mimeType: 'image/png',
-      metadata: {
-        generated: true,
-        provider: 'ai-pixel-image2',
-        model: 'gpt-image-2',
-      },
+      metadata: { generated: true, campaignId: 'ma-dashuai-city-life' },
     });
     const portraitAssetIds = {};
     for (const state of PORTRAIT_STATES) {
@@ -262,10 +254,7 @@ function seedSevenDayCrownAssets(database) {
         type: 'portrait',
         path: variantPath,
         mimeType: 'image/png',
-        metadata: {
-          discovered: true,
-          portraitState: state,
-        },
+        metadata: { discovered: true, portraitState: state, campaignId: 'ma-dashuai-city-life' },
       });
       portraitAssetIds[state] = variantAssetId;
     }

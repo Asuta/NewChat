@@ -65,38 +65,38 @@ test('current presentation stage exposes normalized incapacitated and dead state
     worldDb.seedWorldIfEmpty();
     presentationDb.ensurePresentationDb();
 
-    worldDb.upsertComponent('character_elena', 'stats', { currentHitPoints: 0, maxHitPoints: 22 });
-    worldDb.upsertComponent('character_elena', 'status', {
+    worldDb.upsertComponent('character_yufen', 'stats', { currentHitPoints: 0, maxHitPoints: 14 });
+    worldDb.upsertComponent('character_yufen', 'status', {
       state: 'incapacitated',
       label: '失能',
-      description: '艾蕾娜因伤势倒下。',
+      description: '玉芬因伤势倒下。',
       canAct: false,
     });
     const incapacitatedStage = presentationDb.getCurrentPresentationStage(worldDb.getCurrentScene());
 
-    worldDb.upsertComponent('character_elena', 'status', {
+    worldDb.upsertComponent('character_yufen', 'status', {
       state: 'dead',
       label: '死亡',
-      description: '艾蕾娜已经死亡。',
+      description: '玉芬已经死亡。',
       canAct: false,
     });
     const deadStage = presentationDb.getCurrentPresentationStage(worldDb.getCurrentScene());
     worldDb.closeWorldDb();
 
-    const findElena = (stage) => stage.characters.find((character) => character.entityId === 'character_elena');
+    const findYufen = (stage) => stage.characters.find((character) => character.entityId === 'character_yufen');
     console.log(JSON.stringify({
       player: incapacitatedStage.player,
-      incapacitated: findElena(incapacitatedStage),
-      dead: findElena(deadStage),
+      incapacitated: findYufen(incapacitatedStage),
+      dead: findYufen(deadStage),
     }));
   `);
 
   assert.equal(result.player.entityId, 'player');
-  assert.equal(result.player.name, '失忆王选者');
+  assert.equal(result.player.name, '马大帅');
   assert.equal(result.player.level, 1);
-  assert.equal(result.player.armorClass, 14);
-  assert.deepEqual(result.player.health, { currentHitPoints: 12, maxHitPoints: 12 });
-  assert.equal(result.player.statusLabel, '刚刚苏醒');
+  assert.equal(result.player.armorClass, 11);
+  assert.deepEqual(result.player.health, { currentHitPoints: 14, maxHitPoints: 14 });
+  assert.equal(result.player.statusLabel, '刚刚进城');
   assert.equal(result.player.canAct, true);
   assert.equal(result.incapacitated.vitalState, 'incapacitated');
   assert.equal(result.incapacitated.health.currentHitPoints, 0);

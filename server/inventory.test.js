@@ -17,24 +17,24 @@ test('inventory keeps transferred items with their actual owner instead of resto
     const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
-    worldDb.deleteRelationship('player', 'item_iron_sword', 'ownership');
-    worldDb.upsertRelationship('character_elena', 'item_iron_sword', 'ownership', null, { quantity: 1 });
+    worldDb.deleteRelationship('player', 'item_wooden_pole', 'ownership');
+    worldDb.upsertRelationship('character_yufen', 'item_wooden_pole', 'ownership', null, { quantity: 1 });
     inventoryApi.ensureInventoryConsistency();
     const inventory = inventoryApi.getInventory();
     const playerInventoryComponent = worldDb.getComponent('player', 'inventory');
-    const elenaOwnership = worldDb.listRelationships({ entityId: 'character_elena', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_iron_sword') || null;
+    const yufenOwnership = worldDb.listRelationships({ entityId: 'character_yufen', direction: 'out', type: 'ownership' })
+      .find((relationship) => relationship.targetEntityId === 'item_wooden_pole') || null;
     worldDb.closeWorldDb();
-    console.log(JSON.stringify({ inventory, playerInventoryComponent, elenaOwnership }));
+    console.log(JSON.stringify({ inventory, playerInventoryComponent, yufenOwnership }));
   `);
 
   assert.equal(result.inventory.totalQuantity, 3);
-  assert.equal(result.inventory.items.find((item) => item.id === 'item_ash_tonic').quantity, 2);
-  assert.ok(!result.inventory.items.some((item) => item.id === 'item_iron_sword'));
-  assert.ok(!result.playerInventoryComponent.items.includes('item_iron_sword'));
+  assert.equal(result.inventory.items.find((item) => item.id === 'item_honghua_oil').quantity, 2);
+  assert.ok(!result.inventory.items.some((item) => item.id === 'item_wooden_pole'));
+  assert.ok(!result.playerInventoryComponent.items.includes('item_wooden_pole'));
   assert.equal('equippedWeaponId' in result.playerInventoryComponent, false);
-  assert.equal(result.elenaOwnership.data.quantity, 1);
-  assert.match(result.inventory.items.find((item) => item.id === 'item_crown_mark').actions.find((action) => action.kind === 'item.drop').disabledReason, /不能丢弃/);
+  assert.equal(result.yufenOwnership.data.quantity, 1);
+  assert.match(result.inventory.items.find((item) => item.id === 'item_erhu').actions.find((action) => action.kind === 'item.drop').disabledReason, /不能丢弃/);
 });
 
 test('startup playable-state repair preserves a transferred weapon owner', () => {
@@ -47,22 +47,22 @@ test('startup playable-state repair preserves a transferred weapon owner', () =>
     inventoryApi.ensureInventoryConsistency();
     inventoryApi.executeInventoryAction({
       kind: 'item.transfer',
-      itemId: 'item_iron_sword',
-      targetId: 'character_elena',
+      itemId: 'item_wooden_pole',
+      targetId: 'character_yufen',
     });
     worldDb.ensurePlayableCharacterStats();
     inventoryApi.ensureInventoryConsistency();
-    const owners = worldDb.listRelationships({ entityId: 'item_iron_sword', direction: 'in', type: 'ownership' })
+    const owners = worldDb.listRelationships({ entityId: 'item_wooden_pole', direction: 'in', type: 'ownership' })
       .map((relationship) => relationship.sourceEntityId);
     const playerInventory = inventoryApi.getInventory('player');
-    const elenaInventory = inventoryApi.getInventory('character_elena');
+    const yufenInventory = inventoryApi.getInventory('character_yufen');
     worldDb.closeWorldDb();
-    console.log(JSON.stringify({ owners, playerInventory, elenaInventory }));
+    console.log(JSON.stringify({ owners, playerInventory, yufenInventory }));
   `);
 
-  assert.deepEqual(result.owners, ['character_elena']);
-  assert.ok(!result.playerInventory.items.some((item) => item.id === 'item_iron_sword'));
-  assert.ok(result.elenaInventory.items.some((item) => item.id === 'item_iron_sword'));
+  assert.deepEqual(result.owners, ['character_yufen']);
+  assert.ok(!result.playerInventory.items.some((item) => item.id === 'item_wooden_pole'));
+  assert.ok(result.yufenInventory.items.some((item) => item.id === 'item_wooden_pole'));
 });
 
 test('using a healing item updates hit points and consumes quantity atomically', () => {
@@ -73,10 +73,10 @@ test('using a healing item updates hit points and consumes quantity atomically',
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
     worldDb.upsertComponent('player', 'stats', { ...worldDb.getComponent('player', 'stats'), currentHitPoints: 5 });
-    const first = inventoryApi.executeInventoryAction({ kind: 'item.use', itemId: 'item_ash_tonic', targetId: 'player' });
-    const second = inventoryApi.executeInventoryAction({ kind: 'item.use', itemId: 'item_ash_tonic', targetId: 'player' });
+    const first = inventoryApi.executeInventoryAction({ kind: 'item.use', itemId: 'item_honghua_oil', targetId: 'player' });
+    const second = inventoryApi.executeInventoryAction({ kind: 'item.use', itemId: 'item_honghua_oil', targetId: 'player' });
     const ownership = worldDb.listRelationships({ entityId: 'player', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_ash_tonic') || null;
+      .find((relationship) => relationship.targetEntityId === 'item_honghua_oil') || null;
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ first, second, ownership }));
   `);
@@ -84,8 +84,8 @@ test('using a healing item updates hit points and consumes quantity atomically',
   assert.equal(result.first.result.facts.hpBefore, 5);
   assert.equal(result.first.result.facts.hpAfter, 9);
   assert.equal(result.first.result.facts.quantityAfter, 1);
-  assert.equal(result.second.result.facts.hpAfter, 12);
-  assert.equal(result.second.result.facts.restoredHitPoints, 3);
+  assert.equal(result.second.result.facts.hpAfter, 13);
+  assert.equal(result.second.result.facts.restoredHitPoints, 4);
   assert.equal(result.second.result.facts.quantityAfter, 0);
   assert.equal(result.ownership, null);
 });
@@ -106,12 +106,12 @@ test('the player can attack themself and healing restores hit-point incapacitati
       kind: 'attack.weapon',
       actorId: 'player',
       targetId: 'player',
-      weaponId: 'item_iron_sword',
+      weaponId: 'item_wooden_pole',
     });
     const statusAfterAttack = worldDb.getComponent('player', 'status');
     const healing = inventoryApi.executeInventoryAction({
       kind: 'item.use',
-      itemId: 'item_ash_tonic',
+      itemId: 'item_honghua_oil',
       targetId: 'player',
     });
     const statusAfterHealing = worldDb.getComponent('player', 'status');
@@ -145,7 +145,7 @@ test('healing preserves an incapacitating condition added after a hit-point knoc
       kind: 'attack.weapon',
       actorId: 'player',
       targetId: 'player',
-      weaponId: 'item_iron_sword',
+      weaponId: 'item_wooden_pole',
     });
     const knockedOutStatus = worldDb.getComponent('player', 'status');
     worldDb.upsertComponent('player', 'status', {
@@ -156,7 +156,7 @@ test('healing preserves an incapacitating condition added after a hit-point knoc
     });
     const healing = inventoryApi.executeInventoryAction({
       kind: 'item.use',
-      itemId: 'item_ash_tonic',
+      itemId: 'item_honghua_oil',
       targetId: 'player',
     });
     const statusAfterHealing = worldDb.getComponent('player', 'status');
@@ -186,12 +186,12 @@ test('healing restores a legacy hit-point knockout without recovery metadata', (
     worldDb.upsertComponent('player', 'status', {
       state: 'incapacitated',
       label: '失能',
-      description: '失忆王选者 因伤势倒下，暂时无法行动。',
+      description: '马大帅因伤势倒下，暂时无法行动。',
       canAct: false,
     });
     const healing = inventoryApi.executeInventoryAction({
       kind: 'item.use',
-      itemId: 'item_ash_tonic',
+      itemId: 'item_honghua_oil',
       targetId: 'player',
     });
     const statusAfterHealing = worldDb.getComponent('player', 'status');
@@ -222,7 +222,7 @@ test('healing hit points does not clear incapacitation from another cause', () =
     });
     const healing = inventoryApi.executeInventoryAction({
       kind: 'item.use',
-      itemId: 'item_ash_tonic',
+      itemId: 'item_honghua_oil',
       targetId: 'player',
     });
     const statusAfterHealing = worldDb.getComponent('player', 'status');
@@ -242,16 +242,16 @@ test('owned weapons can be dropped and picked up without equipment state', () =>
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
-    const dropped = inventoryApi.executeInventoryAction({ kind: 'item.drop', itemId: 'item_iron_sword' });
-    const pickedUp = inventoryApi.executeInventoryAction({ kind: 'item.pickup', itemId: 'item_iron_sword' });
+    const dropped = inventoryApi.executeInventoryAction({ kind: 'item.drop', itemId: 'item_wooden_pole' });
+    const pickedUp = inventoryApi.executeInventoryAction({ kind: 'item.pickup', itemId: 'item_wooden_pole' });
     const inventoryComponent = worldDb.getComponent('player', 'inventory');
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ dropped, pickedUp, inventoryComponent }));
   `);
 
-  assert.ok(result.dropped.inventory.nearbyItems.some((item) => item.id === 'item_iron_sword'));
-  assert.ok(result.pickedUp.inventory.items.some((item) => item.id === 'item_iron_sword'));
-  assert.ok(!result.pickedUp.inventory.nearbyItems.some((item) => item.id === 'item_iron_sword'));
+  assert.ok(result.dropped.inventory.nearbyItems.some((item) => item.id === 'item_wooden_pole'));
+  assert.ok(result.pickedUp.inventory.items.some((item) => item.id === 'item_wooden_pole'));
+  assert.ok(!result.pickedUp.inventory.nearbyItems.some((item) => item.id === 'item_wooden_pole'));
   assert.equal('equippedWeaponId' in result.inventoryComponent, false);
 });
 
@@ -264,25 +264,25 @@ test('transferring an item moves the full owned quantity and synchronizes both l
     inventoryApi.ensureInventoryConsistency();
     const transferred = inventoryApi.executeInventoryAction({
       kind: 'item.transfer',
-      itemId: 'item_ash_tonic',
-      targetId: 'character_elena',
+      itemId: 'item_honghua_oil',
+      targetId: 'character_yufen',
     });
     const playerOwnership = worldDb.listRelationships({ entityId: 'player', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_ash_tonic') || null;
-    const elenaOwnership = worldDb.listRelationships({ entityId: 'character_elena', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_ash_tonic') || null;
+      .find((relationship) => relationship.targetEntityId === 'item_honghua_oil') || null;
+    const yufenOwnership = worldDb.listRelationships({ entityId: 'character_yufen', direction: 'out', type: 'ownership' })
+      .find((relationship) => relationship.targetEntityId === 'item_honghua_oil') || null;
     const playerInventoryComponent = worldDb.getComponent('player', 'inventory');
-    const elenaInventoryComponent = worldDb.getComponent('character_elena', 'inventory');
+    const yufenInventoryComponent = worldDb.getComponent('character_yufen', 'inventory');
     worldDb.closeWorldDb();
-    console.log(JSON.stringify({ transferred, playerOwnership, elenaOwnership, playerInventoryComponent, elenaInventoryComponent }));
+    console.log(JSON.stringify({ transferred, playerOwnership, yufenOwnership, playerInventoryComponent, yufenInventoryComponent }));
   `);
 
   assert.equal(result.transferred.result.type, 'item.transferred');
   assert.equal(result.transferred.result.facts.quantity, 2);
   assert.equal(result.playerOwnership, null);
-  assert.equal(result.elenaOwnership.data.quantity, 2);
-  assert.ok(!result.playerInventoryComponent.items.includes('item_ash_tonic'));
-  assert.ok(result.elenaInventoryComponent.items.includes('item_ash_tonic'));
+  assert.equal(result.yufenOwnership.data.quantity, 2);
+  assert.ok(!result.playerInventoryComponent.items.includes('item_honghua_oil'));
+  assert.ok(result.yufenInventoryComponent.items.includes('item_honghua_oil'));
 });
 
 test('weapon attacks reject a weapon that is no longer owned', () => {
@@ -293,19 +293,19 @@ test('weapon attacks reject a weapon that is no longer owned', () => {
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
-    const availableBefore = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_elena' }).actions;
+    const availableBefore = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_yufen' }).actions;
     const transferred = inventoryApi.executeInventoryAction({
       kind: 'item.transfer',
-      itemId: 'item_iron_sword',
-      targetId: 'character_elena',
+      itemId: 'item_wooden_pole',
+      targetId: 'character_yufen',
     });
     let error = '';
     try {
       worldActions.executeWorldAction({
         kind: 'attack.weapon',
         actorId: 'player',
-        targetId: 'character_elena',
-        weaponId: 'item_iron_sword',
+        targetId: 'character_yufen',
+        weaponId: 'item_wooden_pole',
       });
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught);
@@ -315,7 +315,7 @@ test('weapon attacks reject a weapon that is no longer owned', () => {
   `);
 
   assert.equal(result.availableBefore[0]?.kind, 'attack.weapon');
-  assert.ok(!result.transferred.inventory.items.some((item) => item.id === 'item_iron_sword'));
+  assert.ok(!result.transferred.inventory.items.some((item) => item.id === 'item_wooden_pole'));
   assert.match(result.error, /不能执行/);
 });
 
@@ -327,15 +327,15 @@ test('weapon attacks accept mechanically classified owned weapons', () => {
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
-    const identity = worldDb.getComponent('item_iron_sword', 'identity') || {};
-    worldDb.upsertComponent('item_iron_sword', 'identity', { ...identity, role: 'relic' });
-    const actions = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_elena' }).actions;
+    const identity = worldDb.getComponent('item_wooden_pole', 'identity') || {};
+    worldDb.upsertComponent('item_wooden_pole', 'identity', { ...identity, role: 'relic' });
+    const actions = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_yufen' }).actions;
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ actions }));
   `);
 
   assert.equal(result.actions[0]?.kind, 'attack.weapon');
-  assert.equal(result.actions[0]?.weaponId, 'item_iron_sword');
+  assert.equal(result.actions[0]?.weaponId, 'item_wooden_pole');
 });
 
 test('multiple owned weapons produce separate attack choices and require an explicit weapon', () => {
@@ -350,10 +350,10 @@ test('multiple owned weapons produce separate attack choices and require an expl
     worldDb.upsertComponent('item_test_spear', 'identity', { role: 'weapon', damageDice: '1d6', damageType: 'piercing' });
     worldDb.upsertComponent('item_test_spear', 'item', { category: 'weapon', droppable: true });
     worldDb.upsertRelationship('player', 'item_test_spear', 'ownership', null, { quantity: 1 });
-    const actions = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_elena' }).actions;
+    const actions = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_yufen' }).actions;
     let ambiguousError = '';
     try {
-      worldActions.executeWorldAction({ kind: 'attack.weapon', actorId: 'player', targetId: 'character_elena' });
+      worldActions.executeWorldAction({ kind: 'attack.weapon', actorId: 'player', targetId: 'character_yufen' });
     } catch (caught) {
       ambiguousError = caught instanceof Error ? caught.message : String(caught);
     }
@@ -361,7 +361,7 @@ test('multiple owned weapons produce separate attack choices and require an expl
     console.log(JSON.stringify({ actions, ambiguousError }));
   `);
 
-  assert.deepEqual(result.actions.map((action) => action.weaponId).sort(), ['item_iron_sword', 'item_test_spear']);
+  assert.deepEqual(result.actions.map((action) => action.weaponId).sort(), ['item_test_spear', 'item_wooden_pole']);
   assert.match(result.ambiguousError, /不能执行/);
 });
 
@@ -372,20 +372,20 @@ test('dropping and picking up a stack preserves its quantity', () => {
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
-    const dropped = inventoryApi.executeInventoryAction({ kind: 'item.drop', itemId: 'item_ash_tonic' });
-    const location = worldDb.listRelationships({ entityId: 'item_ash_tonic', direction: 'out', type: 'located_in' })[0];
-    const pickedUp = inventoryApi.executeInventoryAction({ kind: 'item.pickup', itemId: 'item_ash_tonic' });
+    const dropped = inventoryApi.executeInventoryAction({ kind: 'item.drop', itemId: 'item_honghua_oil' });
+    const location = worldDb.listRelationships({ entityId: 'item_honghua_oil', direction: 'out', type: 'located_in' })[0];
+    const pickedUp = inventoryApi.executeInventoryAction({ kind: 'item.pickup', itemId: 'item_honghua_oil' });
     const ownership = worldDb.listRelationships({ entityId: 'player', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_ash_tonic');
+      .find((relationship) => relationship.targetEntityId === 'item_honghua_oil');
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ dropped, location, pickedUp, ownership }));
   `);
 
-  assert.equal(result.dropped.inventory.nearbyItems.find((item) => item.id === 'item_ash_tonic').quantity, 2);
+  assert.equal(result.dropped.inventory.nearbyItems.find((item) => item.id === 'item_honghua_oil').quantity, 2);
   assert.equal(result.location.data.quantity, 2);
   assert.equal(result.pickedUp.result.facts.quantity, 2);
   assert.equal(result.ownership.data.quantity, 2);
-  assert.equal(result.pickedUp.inventory.items.find((item) => item.id === 'item_ash_tonic').quantity, 2);
+  assert.equal(result.pickedUp.inventory.items.find((item) => item.id === 'item_honghua_oil').quantity, 2);
 });
 
 test('inventory nearby items and pickup use the requested actor actual scene', () => {
@@ -395,29 +395,30 @@ test('inventory nearby items and pickup use the requested actor actual scene', (
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
-    worldDb.deleteRelationship('player', 'item_ash_tonic', 'ownership');
-    worldDb.setCurrentLocation('item_ash_tonic', 'scene_people_theater', 'test');
-    const location = worldDb.listRelationships({ entityId: 'item_ash_tonic', direction: 'out', type: 'located_in' })[0];
-    worldDb.upsertRelationship('item_ash_tonic', 'scene_people_theater', 'located_in', location.value, {
+    worldDb.deleteRelationship('player', 'item_honghua_oil', 'ownership');
+    worldDb.setCurrentLocation('item_honghua_oil', 'scene_construction_site', 'test');
+    worldDb.setCurrentLocation('character_gangzi', 'scene_construction_site', 'test');
+    const location = worldDb.listRelationships({ entityId: 'item_honghua_oil', direction: 'out', type: 'located_in' })[0];
+    worldDb.upsertRelationship('item_honghua_oil', 'scene_construction_site', 'located_in', location.value, {
       ...location.data,
       quantity: 3,
     });
     const playerInventory = inventoryApi.getInventory('player');
-    const actorInventory = inventoryApi.getInventory('character_kaen');
+    const actorInventory = inventoryApi.getInventory('character_gangzi');
     const pickedUp = inventoryApi.executeInventoryAction({
       kind: 'item.pickup',
-      actorId: 'character_kaen',
-      itemId: 'item_ash_tonic',
+      actorId: 'character_gangzi',
+      itemId: 'item_honghua_oil',
     });
-    const ownership = worldDb.listRelationships({ entityId: 'character_kaen', direction: 'out', type: 'ownership' })
-      .find((relationship) => relationship.targetEntityId === 'item_ash_tonic');
+    const ownership = worldDb.listRelationships({ entityId: 'character_gangzi', direction: 'out', type: 'ownership' })
+      .find((relationship) => relationship.targetEntityId === 'item_honghua_oil');
     worldDb.closeWorldDb();
     console.log(JSON.stringify({ playerInventory, actorInventory, pickedUp, ownership }));
   `);
 
-  assert.ok(!result.playerInventory.nearbyItems.some((item) => item.id === 'item_ash_tonic'));
-  assert.equal(result.actorInventory.nearbyItems.find((item) => item.id === 'item_ash_tonic').quantity, 3);
-  assert.equal(result.pickedUp.result.facts.sceneId, 'scene_people_theater');
+  assert.ok(!result.playerInventory.nearbyItems.some((item) => item.id === 'item_honghua_oil'));
+  assert.equal(result.actorInventory.nearbyItems.find((item) => item.id === 'item_honghua_oil').quantity, 3);
+  assert.equal(result.pickedUp.result.facts.sceneId, 'scene_construction_site');
   assert.equal(result.ownership.data.quantity, 3);
 });
 
@@ -430,17 +431,17 @@ test('provided targets are rejected when an action has no valid targets', () => 
     worldDb.upsertEntity('scene_inventory_test', 'scene', 'Inventory test scene');
     worldDb.upsertEntity('faction_inventory_test', 'faction', 'Inventory test actor');
     worldDb.setCurrentLocation('faction_inventory_test', 'scene_inventory_test', 'test');
-    worldDb.deleteRelationship('player', 'item_crown_mark', 'ownership');
-    worldDb.upsertRelationship('faction_inventory_test', 'item_crown_mark', 'ownership', null, { quantity: 1 });
+    worldDb.deleteRelationship('player', 'item_erhu', 'ownership');
+    worldDb.upsertRelationship('faction_inventory_test', 'item_erhu', 'ownership', null, { quantity: 1 });
     const inventory = inventoryApi.getInventory('faction_inventory_test');
-    const action = inventory.items.find((item) => item.id === 'item_crown_mark').actions
+    const action = inventory.items.find((item) => item.id === 'item_erhu').actions
       .find((candidate) => candidate.kind === 'item.present');
     let error = '';
     try {
       inventoryApi.executeInventoryAction({
         kind: 'item.present',
         actorId: 'faction_inventory_test',
-        itemId: 'item_crown_mark',
+        itemId: 'item_erhu',
         targetId: 'missing_target',
       });
     } catch (caught) {
@@ -464,7 +465,7 @@ test('world agent inventory tools reuse the same validated action service', () =
     const read = worldAgent.executeWorldTool('get_inventory', {});
     const used = worldAgent.executeWorldTool('execute_item_action', {
       actionKind: 'item.use',
-      itemId: 'item_ash_tonic',
+      itemId: 'item_honghua_oil',
       targetId: 'player',
     });
     worldDb.closeWorldDb();
@@ -472,10 +473,10 @@ test('world agent inventory tools reuse the same validated action service', () =
   `);
 
   assert.equal(result.read.ok, true);
-  assert.ok(result.read.inventory.items.some((item) => item.id === 'item_ash_tonic'));
+  assert.ok(result.read.inventory.items.some((item) => item.id === 'item_honghua_oil'));
   assert.equal(result.used.ok, true);
   assert.equal(result.used.result.facts.hpAfter, 11);
-  assert.equal(result.used.inventory.items.find((item) => item.id === 'item_ash_tonic').quantity, 1);
+  assert.equal(result.used.inventory.items.find((item) => item.id === 'item_honghua_oil').quantity, 1);
 });
 
 test('generic world patches cannot bypass inventory ownership actions', () => {
@@ -487,22 +488,22 @@ test('generic world patches cannot bypass inventory ownership actions', () => {
     const patched = worldAgent.executeWorldTool('apply_world_patch', {
       operations: [{
         op: 'set_relationship',
-        sourceEntityId: 'character_elena',
-        targetEntityId: 'item_iron_sword',
+        sourceEntityId: 'character_yufen',
+        targetEntityId: 'item_wooden_pole',
         relationshipType: 'ownership',
         data: { quantity: 1 },
       }],
-      confirmedTargetIds: ['character_elena', 'item_iron_sword'],
+      confirmedTargetIds: ['character_yufen', 'item_wooden_pole'],
     });
-    const playerStillOwnsSword = worldDb.listRelationships({ entityId: 'player', direction: 'out', type: 'ownership' })
-      .some((relationship) => relationship.targetEntityId === 'item_iron_sword');
+    const playerStillOwnsWeapon = worldDb.listRelationships({ entityId: 'player', direction: 'out', type: 'ownership' })
+      .some((relationship) => relationship.targetEntityId === 'item_wooden_pole');
     worldDb.closeWorldDb();
-    console.log(JSON.stringify({ patched, playerStillOwnsSword }));
+    console.log(JSON.stringify({ patched, playerStillOwnsWeapon }));
   `);
 
   assert.equal(result.patched.ok, false);
   assert.match(result.patched.error, /execute_item_action|所有权/);
-  assert.equal(result.playerStillOwnsSword, true);
+  assert.equal(result.playerStillOwnsWeapon, true);
 });
 
 function runIsolatedInventoryScript(script) {
