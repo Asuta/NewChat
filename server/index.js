@@ -32,6 +32,7 @@ import {
 import {
   cleanupPresentationImport,
   createSaveExportBundle,
+  ensureBuiltInStoryBlueprintDefaults,
   ensureTemplateDbFromSaveIfMissing,
   ensureTemplatePlayableDefaults,
   finalizePresentationImport,
@@ -50,6 +51,7 @@ rebuildSearchIndex();
 checkpointWorldDb();
 ensureTemplateDbFromSaveIfMissing();
 ensureTemplatePlayableDefaults();
+ensureBuiltInStoryBlueprintDefaults();
 ensurePresentationDb();
 
 const app = express();

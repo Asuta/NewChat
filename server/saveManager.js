@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { listWorldSchemas } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
+  SEVEN_DAY_CROWN_CAMPAIGN_ID,
   SEVEN_DAY_CROWN_CHARACTER_HIT_POINTS,
   SEVEN_DAY_CROWN_ELENA_PROFILE_ID,
   SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID,
@@ -35,11 +36,13 @@ export const SAVE_RULES_DIR = join(SAVE_DIR, 'rules');
 export const TEMPLATE_DB_FILE = join(TEMPLATE_DIR, 'newchat.sqlite');
 export const SAVE_DB_FILE = join(SAVE_DIR, 'newchat.sqlite');
 export const SAVE_IMPORT_DB_FILE = join(SAVE_DIR, 'newchat.import.sqlite');
+const TEMPLATE_IMPORT_MARKER_FILE = join(TEMPLATE_DIR, '.imported-world');
 export const PRESENTATION_DIR = join(DATA_DIR, 'presentation');
 export const PRESENTATION_ASSETS_DIR = join(PRESENTATION_DIR, 'assets');
 export const PRESENTATION_DB_FILE = join(PRESENTATION_DIR, 'presentation.sqlite');
 export const LEGACY_DB_FILE = join(DATA_DIR, 'newchat.sqlite');
 export const USER_CONTEXT_FILE_NAME = '001-user-fixed-context.md';
+export const STORY_BLUEPRINT_CONTEXT_FILE_NAME = '015-story-blueprint.md';
 export const SAVE_USER_CONTEXT_FILE = join(SAVE_CONTEXT_DIR, USER_CONTEXT_FILE_NAME);
 export const GENERATED_SCHEMA_CONTEXT_FILE_NAME = '025-world-schema.generated.md';
 
@@ -72,7 +75,7 @@ export function ensureDataLayout() {
   if (isMissingOrEmptyDirectory(SAVE_CONTEXT_DIR)) {
     copyDirectoryContents(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR, { clear: true });
   }
-  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR);
+  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR, { syncStoryBlueprint: true });
 
   syncGeneratedWorldSchemaContext(SAVE_CONTEXT_DIR);
 
@@ -91,6 +94,33 @@ export function ensureTemplateDbFromSaveIfMissing() {
   if (!hasWorldDbSchema(TEMPLATE_DB_FILE) && existsSync(SAVE_DB_FILE)) {
     copySqliteFamily(SAVE_DB_FILE, TEMPLATE_DB_FILE);
   }
+}
+
+export function ensureBuiltInStoryBlueprintDefaults({
+  factoryContextDir = FACTORY_CONTEXT_DIR,
+  templateDatabaseFile = TEMPLATE_DB_FILE,
+  templateContextDir = TEMPLATE_CONTEXT_DIR,
+  saveDatabaseFile = SAVE_DB_FILE,
+  saveContextDir = SAVE_CONTEXT_DIR,
+  templateImportMarkerFile = TEMPLATE_IMPORT_MARKER_FILE,
+} = {}) {
+  if (existsSync(templateImportMarkerFile)) return;
+
+  const factoryStoryFile = join(factoryContextDir, STORY_BLUEPRINT_CONTEXT_FILE_NAME);
+  if (!existsSync(factoryStoryFile)) return;
+
+  ensureStoryBlueprintForCampaign({
+    databaseFile: templateDatabaseFile,
+    contextDir: templateContextDir,
+    factoryStoryFile,
+    campaignId: SEVEN_DAY_CROWN_CAMPAIGN_ID,
+  });
+  ensureStoryBlueprintForCampaign({
+    databaseFile: saveDatabaseFile,
+    contextDir: saveContextDir,
+    factoryStoryFile,
+    campaignId: SEVEN_DAY_CROWN_CAMPAIGN_ID,
+  });
 }
 
 export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE) {
@@ -206,6 +236,7 @@ export function resetSaveToTemplate() {
 }
 
 export function restoreTemplateFromFactoryDefaults() {
+  rmSync(TEMPLATE_IMPORT_MARKER_FILE, { force: true });
   removeSqliteFamily(TEMPLATE_DB_FILE);
   mkdirSync(dirname(TEMPLATE_DB_FILE), { recursive: true });
 
@@ -281,6 +312,7 @@ export function importSaveBundle(bundle) {
     : readPackFiles(FACTORY_RULES_DIR);
   const saveRuleFiles = Array.isArray(savePart.ruleFiles) ? savePart.ruleFiles : templateRuleFiles;
   const presentationImportStaged = stagePresentationImport(bundle.presentation);
+  writeFileSync(TEMPLATE_IMPORT_MARKER_FILE, '', 'utf8');
 
   writeDbBase64(TEMPLATE_DB_FILE, bundle.template.worldDbBase64);
   writeContextFiles(TEMPLATE_CONTEXT_DIR, bundle.template.contextFiles);
@@ -290,7 +322,7 @@ export function importSaveBundle(bundle) {
 
   writeDbBase64(SAVE_IMPORT_DB_FILE, savePart.worldDbBase64);
   writeContextFiles(SAVE_CONTEXT_DIR, savePart.contextFiles);
-  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR);
+  syncSystemContextFiles(TEMPLATE_CONTEXT_DIR, SAVE_CONTEXT_DIR, { syncStoryBlueprint: true });
   syncGeneratedWorldSchemaContext(SAVE_CONTEXT_DIR);
   writePackFiles(SAVE_RULES_DIR, saveRuleFiles);
 
@@ -568,7 +600,7 @@ function copyMissingDirectoryFiles(sourceDir, targetDir) {
   }
 }
 
-function syncSystemContextFiles(sourceDir, targetDir) {
+export function syncSystemContextFiles(sourceDir, targetDir, options = {}) {
   if (!existsSync(sourceDir)) {
     return;
   }
@@ -580,11 +612,11 @@ function syncSystemContextFiles(sourceDir, targetDir) {
     const targetPath = join(targetDir, entry.name);
 
     if (entry.isDirectory()) {
-      syncSystemContextFiles(sourcePath, targetPath);
+      syncSystemContextFiles(sourcePath, targetPath, options);
       continue;
     }
 
-    if (!entry.isFile() || isPreservedContextFile(entry.name)) {
+    if (!entry.isFile() || isPreservedContextFile(entry.name, options)) {
       continue;
     }
 
@@ -593,8 +625,35 @@ function syncSystemContextFiles(sourceDir, targetDir) {
   }
 }
 
-function isPreservedContextFile(name) {
-  return name === USER_CONTEXT_FILE_NAME || name === GENERATED_SCHEMA_CONTEXT_FILE_NAME;
+function isPreservedContextFile(name, { syncStoryBlueprint = false } = {}) {
+  return name === USER_CONTEXT_FILE_NAME
+    || (!syncStoryBlueprint && name === STORY_BLUEPRINT_CONTEXT_FILE_NAME)
+    || name === GENERATED_SCHEMA_CONTEXT_FILE_NAME;
+}
+
+export function ensureStoryBlueprintForCampaign({ databaseFile, contextDir, factoryStoryFile, campaignId }) {
+  const targetFile = join(contextDir, STORY_BLUEPRINT_CONTEXT_FILE_NAME);
+  if (existsSync(targetFile) || readCampaignId(databaseFile) !== campaignId) return;
+
+  mkdirSync(contextDir, { recursive: true });
+  copyFileSync(factoryStoryFile, targetFile);
+}
+
+function readCampaignId(databaseFile) {
+  if (!existsSync(databaseFile)) return null;
+
+  let database = null;
+  try {
+    database = new DatabaseSync(databaseFile, { readOnly: true });
+    const hasMeta = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get();
+    if (!hasMeta) return null;
+    const row = database.prepare("SELECT value FROM meta WHERE key = 'campaignId'").get();
+    return typeof row?.value === 'string' ? row.value : null;
+  } catch {
+    return null;
+  } finally {
+    database?.close();
+  }
 }
 
 function copySqliteFamily(sourceFile, targetFile) {

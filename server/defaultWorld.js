@@ -1,4 +1,5 @@
 ﻿export const SEVEN_DAY_CROWN_PLAYER_PROFILE_ID = 'seven-day-crown-player-v1';
+export const SEVEN_DAY_CROWN_CAMPAIGN_ID = 'seven-day-crown';
 export const SEVEN_DAY_CROWN_ELENA_PROFILE_ID = 'seven-day-crown-elena-v1';
 export const SEVEN_DAY_CROWN_HOLLOW_KNIGHT_PROFILE_ID = 'seven-day-crown-hollow-knight-v1';
 
@@ -352,7 +353,7 @@ export function seedSevenDayCrownWorld(api) {
 
   setMeta('playerId', 'player');
   setMeta('currentSceneId', 'scene_ash_chapel');
-  setMeta('campaignId', 'seven-day-crown');
+  setMeta('campaignId', SEVEN_DAY_CROWN_CAMPAIGN_ID);
   setMeta('campaignTitle', '七日王冠');
   setMeta('campaignDay', '1');
   setMeta('inventory.items.v1', 'ready');

@@ -38,9 +38,11 @@ LLM_THINKING=disabled
 
 页面右上角“更多”设置里可以编辑 `data/save/context/001-user-fixed-context.md`。`001-user-fixed-context.md` 适合写当前玩家存档里的长期背景、角色设定、回答偏好和长期目标；其他 Agent 工具说明文档用于告诉模型有哪些工具、什么时候查询、什么时候修改，以及如何通过后端工具调用推进游戏。
 
+`015-story-blueprint.md` 是世界作者维护的剧情蓝图，包含既定世界真相、推荐主线、人物知情边界、关键节点、分支和偏离处理。玩家可以在固定上下文预览中查看它，但不能通过设置页编辑。它属于世界而不是项目系统规则：随基础世界和完整存档导入导出，重置当前存档时从 `data/template/context/` 恢复，项目启动时不会用根目录同名文件覆盖已导入世界的版本。游玩过程只更新数据库中的实际剧情进度，不修改蓝图。
+
 `025-world-schema.generated.md` 由后端根据 `server/worldSchemas.js` 自动生成，用来把实体类型、组件类型和关系类型放进固定上下文包。这样模型仍能看到真实 schema，但每次动态请求里不再重复携带 `schemas` 字段。
 
-根目录 `context/` 会随 Git 提交同步，适合放出厂默认说明；运行时个性化内容会进入 `data/save/context/`。无论写在哪个 Markdown 里，都不要放 API Key 或隐私信息。真正的工具白名单、数据库写入校验和权限边界仍在后端代码里，Markdown 只负责给模型提供说明。
+根目录 `context/` 会随 Git 提交同步，适合放出厂默认说明。普通系统上下文会同步到模板和存档；`001-user-fixed-context.md`、`015-story-blueprint.md` 与自动生成的 `025-world-schema.generated.md` 不参与这种系统覆盖。无论写在哪个 Markdown 里，都不要放 API Key 或隐私信息。真正的工具白名单、数据库写入校验和权限边界仍在后端代码里，Markdown 只负责给模型提供说明。
 
 ## 游戏世界数据库
 
