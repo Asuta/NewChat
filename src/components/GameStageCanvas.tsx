@@ -51,7 +51,7 @@ import {
 const GAME_STAGE_BASE_WIDTH = 1280;
 const GAME_STAGE_BASE_HEIGHT = 720;
 const GAME_STAGE_MIN_SCALE = 0.3;
-const DIALOGUE_LINES_WITH_COMPOSER = 3;
+const DIALOGUE_LINES_WITH_COMPOSER = 5;
 const DIALOGUE_LINES_WITHOUT_COMPOSER = 3;
 const TYPEWRITER_INTERVAL_MS = 22;
 const SCENE_BACKDROP_TRANSITION_MS = 280;
@@ -565,14 +565,10 @@ export function GameStageCanvas({
                       dialogue.advance();
                     }}
                   >
-                    <span className="stage-dialogue-speaker">
-                      {dialogue.activeEntry.kind === 'speech'
-                        ? dialogue.activeEntry.speakerName || '未知人物'
-                        : '旁白'}
-                    </span>
                     <StageMarkdownContent
                       containerRef={dialogue.textRef}
                       segments={dialogue.visibleSegments}
+                      speakerLabel={dialogue.speakerLabel}
                     />
                   </div>
                   <span className="stage-dialogue-progress">
@@ -744,10 +740,12 @@ function useStageDialogue(
   );
   const pages = useMemo(
     () => activeEntries.flatMap((entry) => {
-      const entryPages = paginator?.paginate(entry.id, entry.content) || [createMarkdownPage(parseStageMarkdown(entry.content))];
+      const speakerLabel = getStageDialogueSpeakerLabel(entry);
+      const entryPages = paginator?.paginate(entry.id, entry.content, speakerLabel) || [createMarkdownPage(parseStageMarkdown(entry.content))];
       return entryPages.map((page, entryPageIndex) => ({
         id: `${entry.id}:${entryPageIndex}`,
         entry,
+        speakerLabel,
         ...page,
       }));
     }),
@@ -756,6 +754,7 @@ function useStageDialogue(
   const safePageIndex = Math.min(pageIndex, pages.length - 1);
   const activePage = pages[safePageIndex];
   const activeEntry = activePage?.entry || fallbackEntry;
+  const speakerLabel = activePage?.speakerLabel || getStageDialogueSpeakerLabel(activeEntry);
   const pageSegments = activePage?.segments || [];
   const pageLength = activePage?.characterCount || 0;
   const visibleSegments = useMemo(
@@ -779,10 +778,13 @@ function useStageDialogue(
 
     const measure = () => {
       const fonts = readStageMarkdownFonts(textElement);
+      const speakerMetrics = readStageDialogueSpeakerMetrics(textElement);
       const nextMetrics = {
         lineWidth: Math.max(120, textElement.clientWidth - 2),
         fonts,
-        signature: Object.values(fonts).join('|'),
+        speakerFont: speakerMetrics.font,
+        speakerGap: speakerMetrics.gap,
+        signature: [...Object.values(fonts), speakerMetrics.font, speakerMetrics.gap].join('|'),
       };
       setTextMetrics((current) => (
         current?.lineWidth === nextMetrics.lineWidth && current.signature === nextMetrics.signature
@@ -845,6 +847,7 @@ function useStageDialogue(
 
   return {
     activeEntry,
+    speakerLabel,
     visibleSegments,
     pageIndex: safePageIndex,
     pageCount: pages.length,
@@ -868,6 +871,8 @@ function useStageDialogue(
 interface DialogueTextMetrics {
   lineWidth: number;
   fonts: Record<StageMarkdownFontName, string>;
+  speakerFont: string;
+  speakerGap: number;
   signature: string;
 }
 
@@ -880,6 +885,7 @@ interface DialogueMarkdownPage {
 
 interface DialoguePaginationCacheEntry {
   source: string;
+  speakerLabel: string;
   pages: DialogueMarkdownPage[];
 }
 
@@ -900,11 +906,23 @@ function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: num
     return width;
   }
 
-  function paginateSegments(segments: StageMarkdownSegment[]) {
+  function measureText(text: string, font: string) {
+    const cacheKey = `${font}\u0000${text}`;
+    const cached = widthCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    if (context) context.font = font;
+    const width = context?.measureText(text).width || 0;
+    widthCache.set(cacheKey, width);
+    return width;
+  }
+
+  function paginateSegments(segments: StageMarkdownSegment[], speakerLabel: string) {
     const pages: DialogueMarkdownPage[] = [];
     let pageSegments: StageMarkdownSegment[] = [];
     let lineCount = 1;
-    let currentWidth = 0;
+    const speakerWidth = measureText(speakerLabel, metrics.speakerFont) + metrics.speakerGap;
+    let currentWidth = speakerWidth;
+    let lineHasContent = false;
 
     const finishPage = () => {
       trimPageTrailingWhitespace(pageSegments);
@@ -913,7 +931,8 @@ function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: num
       }
       pageSegments = [];
       lineCount = 1;
-      currentWidth = 0;
+      currentWidth = speakerWidth;
+      lineHasContent = false;
     };
 
     for (const segment of segments) {
@@ -924,6 +943,7 @@ function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: num
             appendPageText(pageSegments, '\n', []);
             lineCount += 1;
             currentWidth = 0;
+            lineHasContent = false;
           }
           continue;
         }
@@ -935,14 +955,16 @@ function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: num
             appendPageText(pageSegments, '\n', []);
             lineCount += 1;
             currentWidth = 0;
+            lineHasContent = false;
           }
         }
 
-        if (currentWidth === 0 && /^\s$/u.test(character) && !segment.marks.includes('code')) {
+        if (!lineHasContent && /^\s$/u.test(character) && !segment.marks.includes('code')) {
           continue;
         }
         appendPageText(pageSegments, character, segment.marks);
         currentWidth += characterWidth;
+        lineHasContent = true;
       }
     }
 
@@ -951,15 +973,19 @@ function createDialoguePaginator(metrics: DialogueTextMetrics, linesPerPage: num
   }
 
   return {
-    paginate(entryId: string, content: string) {
+    paginate(entryId: string, content: string, speakerLabel: string) {
       const normalized = content.replace(/\r\n?/g, '\n');
       const cached = entryCache.get(entryId);
-      if (cached?.source === normalized) return cached.pages;
-      const pages = paginateSegments(parseStageMarkdown(normalized));
-      entryCache.set(entryId, { source: normalized, pages });
+      if (cached?.source === normalized && cached.speakerLabel === speakerLabel) return cached.pages;
+      const pages = paginateSegments(parseStageMarkdown(normalized), speakerLabel);
+      entryCache.set(entryId, { source: normalized, speakerLabel, pages });
       return pages;
     },
   };
+}
+
+function getStageDialogueSpeakerLabel(entry: StageDialogueEntry) {
+  return entry.kind === 'speech' ? entry.speakerName || '未知人物' : '旁白';
 }
 
 function createMarkdownPage(segments: StageMarkdownSegment[]): DialogueMarkdownPage {
@@ -1016,6 +1042,23 @@ function readStageMarkdownFonts(container: HTMLDivElement) {
     strongEmphasis: readStageMarkdownFont(container, ['strong', 'emphasis']),
     code: readStageMarkdownFont(container, ['code']),
   } satisfies Record<StageMarkdownFontName, string>;
+}
+
+function readStageDialogueSpeakerMetrics(container: HTMLDivElement) {
+  const probe = document.createElement('span');
+  probe.className = 'stage-dialogue-speaker';
+  probe.textContent = '旁白';
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  container.appendChild(probe);
+  const styles = getComputedStyle(probe);
+  const metrics = {
+    font: formatCanvasFont(styles),
+    gap: parseCssPx(styles.marginRight),
+  };
+  probe.remove();
+  return metrics;
 }
 
 function readStageMarkdownFont(container: HTMLDivElement, marks: StageMarkdownMark[] = []) {

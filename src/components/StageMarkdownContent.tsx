@@ -21,6 +21,7 @@ export interface StageMarkdownSegment {
 
 interface StageMarkdownContentProps {
   segments: StageMarkdownSegment[];
+  speakerLabel: string;
   containerRef?: Ref<HTMLDivElement>;
 }
 
@@ -41,13 +42,14 @@ const markdownProcessor = unified()
   .use(remarkGfm)
   .use(remarkBreaks);
 
-export function StageMarkdownContent({ segments, containerRef }: StageMarkdownContentProps) {
+export function StageMarkdownContent({ segments, speakerLabel, containerRef }: StageMarkdownContentProps) {
   const renderedSegments = countStageMarkdownCharacters(segments) > 0
     ? segments
     : [{ text: '……', marks: [] as StageMarkdownMark[] }];
 
   return (
     <div className="stage-dialogue-text" ref={containerRef} aria-live="polite">
+      <span className="stage-dialogue-speaker">{speakerLabel}</span>
       {renderedSegments.map((segment, index) => (
         <span
           className={segment.marks.map((mark) => `stage-markdown-${mark}`).join(' ') || undefined}
