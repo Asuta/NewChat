@@ -34,7 +34,7 @@ test('inventory keeps transferred items with their actual owner instead of resto
   assert.ok(!result.playerInventoryComponent.items.includes('item_wooden_pole'));
   assert.equal('equippedWeaponId' in result.playerInventoryComponent, false);
   assert.equal(result.yufenOwnership.data.quantity, 1);
-  assert.match(result.inventory.items.find((item) => item.id === 'item_erhu').actions.find((action) => action.kind === 'item.drop').disabledReason, /不能丢弃/);
+  assert.match(result.inventory.items.find((item) => item.id === 'item_luggage_bundle').actions.find((action) => action.kind === 'item.drop').disabledReason, /不能丢弃/);
 });
 
 test('startup playable-state repair preserves a transferred weapon owner', () => {
@@ -43,6 +43,7 @@ test('startup playable-state repair preserves a transferred weapon owner', () =>
     const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
     worldDb.ensurePlayableCharacterStats();
     inventoryApi.ensureInventoryConsistency();
     inventoryApi.executeInventoryAction({
@@ -261,6 +262,7 @@ test('transferring an item moves the full owned quantity and synchronizes both l
     const inventoryApi = await import(${JSON.stringify(INVENTORY_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
     inventoryApi.ensureInventoryConsistency();
     const transferred = inventoryApi.executeInventoryAction({
       kind: 'item.transfer',
@@ -292,6 +294,7 @@ test('weapon attacks reject a weapon that is no longer owned', () => {
     const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
     inventoryApi.ensureInventoryConsistency();
     const availableBefore = worldActions.listWorldActions({ actorId: 'player', targetId: 'character_yufen' }).actions;
     const transferred = inventoryApi.executeInventoryAction({
@@ -326,6 +329,7 @@ test('weapon attacks accept mechanically classified owned weapons', () => {
     const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
     inventoryApi.ensureInventoryConsistency();
     const identity = worldDb.getComponent('item_wooden_pole', 'identity') || {};
     worldDb.upsertComponent('item_wooden_pole', 'identity', { ...identity, role: 'relic' });
@@ -345,6 +349,7 @@ test('multiple owned weapons produce separate attack choices and require an expl
     const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
     inventoryApi.ensureInventoryConsistency();
     worldDb.upsertEntity('item_test_spear', 'item', '测试长矛');
     worldDb.upsertComponent('item_test_spear', 'identity', { role: 'weapon', damageDice: '1d6', damageType: 'piercing' });
@@ -396,10 +401,10 @@ test('inventory nearby items and pickup use the requested actor actual scene', (
     worldDb.seedWorldIfEmpty();
     inventoryApi.ensureInventoryConsistency();
     worldDb.deleteRelationship('player', 'item_honghua_oil', 'ownership');
-    worldDb.setCurrentLocation('item_honghua_oil', 'scene_construction_site', 'test');
-    worldDb.setCurrentLocation('character_gangzi', 'scene_construction_site', 'test');
+    worldDb.setCurrentLocation('item_honghua_oil', 'scene_wang_boxing_room', 'test');
+    worldDb.setCurrentLocation('character_gangzi', 'scene_wang_boxing_room', 'test');
     const location = worldDb.listRelationships({ entityId: 'item_honghua_oil', direction: 'out', type: 'located_in' })[0];
-    worldDb.upsertRelationship('item_honghua_oil', 'scene_construction_site', 'located_in', location.value, {
+    worldDb.upsertRelationship('item_honghua_oil', 'scene_wang_boxing_room', 'located_in', location.value, {
       ...location.data,
       quantity: 3,
     });
@@ -418,7 +423,7 @@ test('inventory nearby items and pickup use the requested actor actual scene', (
 
   assert.ok(!result.playerInventory.nearbyItems.some((item) => item.id === 'item_honghua_oil'));
   assert.equal(result.actorInventory.nearbyItems.find((item) => item.id === 'item_honghua_oil').quantity, 3);
-  assert.equal(result.pickedUp.result.facts.sceneId, 'scene_construction_site');
+  assert.equal(result.pickedUp.result.facts.sceneId, 'scene_wang_boxing_room');
   assert.equal(result.ownership.data.quantity, 3);
 });
 
@@ -431,7 +436,7 @@ test('provided targets are rejected when an action has no valid targets', () => 
     worldDb.upsertEntity('scene_inventory_test', 'scene', 'Inventory test scene');
     worldDb.upsertEntity('faction_inventory_test', 'faction', 'Inventory test actor');
     worldDb.setCurrentLocation('faction_inventory_test', 'scene_inventory_test', 'test');
-    worldDb.deleteRelationship('player', 'item_erhu', 'ownership');
+    worldDb.deleteRelationship('character_erhu_busker', 'item_erhu', 'ownership');
     worldDb.upsertRelationship('faction_inventory_test', 'item_erhu', 'ownership', null, { quantity: 1 });
     const inventory = inventoryApi.getInventory('faction_inventory_test');
     const action = inventory.items.find((item) => item.id === 'item_erhu').actions

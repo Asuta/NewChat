@@ -64,6 +64,7 @@ test('current presentation stage exposes normalized incapacitated and dead state
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     presentationDb.ensurePresentationDb();
+    worldDb.setCurrentLocation('character_yufen', 'scene_bus_station', 'test');
 
     worldDb.upsertComponent('character_yufen', 'stats', { currentHitPoints: 0, maxHitPoints: 14 });
     worldDb.upsertComponent('character_yufen', 'status', {
@@ -96,7 +97,7 @@ test('current presentation stage exposes normalized incapacitated and dead state
   assert.equal(result.player.level, 1);
   assert.equal(result.player.armorClass, 11);
   assert.deepEqual(result.player.health, { currentHitPoints: 14, maxHitPoints: 14 });
-  assert.equal(result.player.statusLabel, '刚刚进城');
+  assert.equal(result.player.statusLabel, '进城寻女，身无分文');
   assert.equal(result.player.canAct, true);
   assert.equal(result.incapacitated.vitalState, 'incapacitated');
   assert.equal(result.incapacitated.health.currentHitPoints, 0);

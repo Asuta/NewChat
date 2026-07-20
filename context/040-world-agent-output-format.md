@@ -73,7 +73,7 @@
     {
       "op": "set_location",
       "entityId": "character_yufen",
-      "sceneId": "scene_construction_site",
+      "sceneId": "scene_victoria_restaurant",
       "summary": "玉芬跟随玩家抵达建筑工地。"
     }
   ],

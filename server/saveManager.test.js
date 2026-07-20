@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { MA_DASHUAI_CHARACTER_HIT_POINTS } from './defaultWorld.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
   ensureBuiltInStoryBlueprintDefaults,
@@ -152,16 +153,7 @@ test('马大帅旧模板升级后重置游戏可获得全部角色生命值', ()
     insertEntity.run('player', 'player', '马大帅', now, now);
     database.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('campaignId', 'ma-dashuai-city-life');
 
-    const expectedHitPoints = new Map([
-      ['character_yufen', 14],
-      ['character_fan_debiao', 18],
-      ['character_ma_xiaocui', 12],
-      ['character_guiying', 14],
-      ['character_wu', 16],
-      ['character_awei', 12],
-      ['character_yu_fugui', 16],
-      ['character_gangzi', 20],
-    ]);
+    const expectedHitPoints = new Map(Object.entries(MA_DASHUAI_CHARACTER_HIT_POINTS));
     for (const entityId of expectedHitPoints.keys()) {
       insertEntity.run(entityId, 'character', entityId, now, now);
     }

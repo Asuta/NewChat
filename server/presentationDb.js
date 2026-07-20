@@ -20,9 +20,8 @@ const MA_DASHUAI_SCENE_ASSETS = [
   ['scene_city_street', 'asset_scene_city_street_backdrop', 'scenes/scene-scene_city_street-backdrop.png'],
   ['scene_victoria', 'asset_scene_victoria_backdrop', 'scenes/scene-scene_victoria-backdrop.png'],
   ['scene_guiying_restaurant', 'asset_scene_guiying_restaurant_backdrop', 'scenes/scene-scene_guiying_restaurant-backdrop.png'],
-  ['scene_construction_site', 'asset_scene_construction_site_backdrop', 'scenes/scene-scene_construction_site-backdrop.png'],
   ['scene_bathhouse', 'asset_scene_bathhouse_backdrop', 'scenes/scene-scene_bathhouse-backdrop.png'],
-  ['scene_yufen_home', 'asset_scene_yufen_home_backdrop', 'scenes/scene-scene_yufen_home-backdrop.png'],
+  ['scene_debiao_home', 'asset_scene_debiao_home_backdrop', 'scenes/scene-scene_yufen_home-backdrop.png'],
   ['scene_majia_village', 'asset_scene_majia_village_backdrop', 'scenes/scene-scene_majia_village-backdrop.png'],
   ['scene_migrant_school', 'asset_scene_migrant_school_backdrop', 'scenes/scene-scene_migrant_school-backdrop.png'],
 ];

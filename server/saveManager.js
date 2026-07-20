@@ -137,12 +137,14 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
 
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
-    upsertTemplateEntity(database, 'item_erhu', 'item', '旧二胡');
+    upsertTemplateEntity(database, 'item_luggage_bundle', 'item', '随身行李');
+    upsertTemplateEntity(database, 'item_erhu', 'item', '卖艺二胡');
     upsertTemplateEntity(database, 'item_wooden_pole', 'item', '行李木棍');
     upsertTemplateEntity(database, 'item_honghua_oil', 'item', '红花油');
     setTemplateAliases(database, 'player', ['玩家', '老马', '大帅', '马叔', '马校长']);
     setTemplateAliases(database, 'item_wooden_pole', ['木棍', '挑行李的木棍', '棍子']);
     setTemplateAliases(database, 'item_honghua_oil', ['药油', '红花油', '跌打药']);
+    setTemplateAliases(database, 'item_luggage_bundle', ['行李', '包袱', '随身行李']);
     mergeTemplateComponent(database, 'player', 'identity', {
       role: '进城寻找女儿的农民',
       description: '玩家扮演马大帅。小翠逃婚进城后，他来城里找女儿，却在长途车上丢了钱包和地址。',
@@ -152,17 +154,26 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
     mergeTemplateStats(database, 'player', getMaDashuaiPlayerStats(), MA_DASHUAI_PLAYER_PROFILE_ID);
     mergeTemplateComponent(database, 'player', 'status', {
       state: 'healthy',
-      label: '刚刚进城',
-      description: '马大帅刚下长途车，钱包和地址都丢了，只剩随身行李和一把旧二胡。',
+      label: '进城寻女，身无分文',
+      description: '马大帅刚下长途车便发现钱包和范德彪地址都被偷走，只剩随身行李。',
       canAct: true,
     });
     mergeTemplateInventory(database, 'player', {
-      items: ['item_erhu', 'item_wooden_pole', 'item_honghua_oil'],
+      items: ['item_luggage_bundle', 'item_wooden_pole', 'item_honghua_oil'],
+    });
+    mergeTemplateComponent(database, 'item_luggage_bundle', 'identity', {
+      role: 'personal_belongings',
+      description: '马大帅进城时带着的简单行李。钱包和地址被偷后，这是他仅剩的家当。',
+    });
+    mergeTemplateComponent(database, 'item_luggage_bundle', 'item', {
+      category: 'tool',
+      stackable: false,
+      droppable: false,
     });
     mergeTemplateComponent(database, 'item_erhu', 'identity', {
-      role: 'tool',
-      description: '马大帅随身带来的旧二胡，没钱时可以在街边拉琴换些饭钱。',
-      effect: { type: 'quest_guidance', targetQuestId: 'quest_main' },
+      role: 'performance_tool',
+      description: '装瞎卖艺人的二胡。马大帅第2集会跟着他卖艺，但这不是马大帅的初始物品。',
+      introducedEpisode: 2,
     });
     mergeTemplateComponent(database, 'item_wooden_pole', 'identity', {
       role: 'weapon',
@@ -195,9 +206,9 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
       droppable: true,
       use: { type: 'restore_hit_points', target: 'self_or_character', amount: 4, consumeQuantity: 1 },
     });
-    upsertTemplateRelationship(database, 'player', 'item_erhu', 'ownership', null, {
+    upsertTemplateRelationship(database, 'player', 'item_luggage_bundle', 'ownership', null, {
       source: 'baseline',
-      summary: '马大帅随身带着一把旧二胡。',
+      summary: '马大帅的钱包被偷后，只剩这包随身行李。',
     });
     upsertTemplateRelationship(database, 'player', 'item_wooden_pole', 'ownership', null, {
       source: 'baseline',
