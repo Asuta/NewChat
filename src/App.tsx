@@ -1287,10 +1287,22 @@ export default function App({ stageOnly = false }: AppProps) {
       </section>
     </div>
   ) : null;
-  const resetDialogFullscreenHost = typeof document !== 'undefined' ? document.fullscreenElement : null;
-  const resetConfirmationDialog = resetConfirmationContent && resetDialogFullscreenHost
-    ? createPortal(resetConfirmationContent, resetDialogFullscreenHost)
+  const globalOverlayHost = typeof document !== 'undefined'
+    ? document.fullscreenElement || document.body
+    : null;
+  const resetConfirmationDialog = resetConfirmationContent && globalOverlayHost
+    ? createPortal(resetConfirmationContent, globalOverlayHost)
     : resetConfirmationContent;
+  const worldActionMenuContent = (
+    <WorldActionMenu
+      menu={worldActionMenu}
+      onClose={closeWorldActionMenu}
+      onExecuteWorldAction={executeWorldAction}
+    />
+  );
+  const worldActionMenuOverlay = globalOverlayHost
+    ? createPortal(worldActionMenuContent, globalOverlayHost)
+    : worldActionMenuContent;
 
   if (stageOnly) {
     return (
@@ -1326,11 +1338,7 @@ export default function App({ stageOnly = false }: AppProps) {
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         </main>
-        <WorldActionMenu
-          menu={worldActionMenu}
-          onClose={closeWorldActionMenu}
-          onExecuteWorldAction={executeWorldAction}
-        />
+        {worldActionMenuOverlay}
         {resetConfirmationDialog}
       </>
     );
@@ -1435,11 +1443,7 @@ export default function App({ stageOnly = false }: AppProps) {
         onSelectEntity={selectWorldEntity}
         onOpenEntityActions={openWorldActionMenu}
       />
-      <WorldActionMenu
-        menu={worldActionMenu}
-        onClose={closeWorldActionMenu}
-        onExecuteWorldAction={executeWorldAction}
-      />
+      {worldActionMenuOverlay}
       {resetConfirmationDialog}
     </main>
   );
