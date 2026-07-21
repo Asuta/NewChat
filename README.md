@@ -76,6 +76,8 @@ LLM_THINKING=disabled
 
 内置角色也支持按文件名自动发现状态立绘，例如玉芬的默认文件为 `characters/npc-character_yufen-idle.png`，对应愤怒立绘可放在 `characters/npc-character_yufen-angry.png`。服务启动时会自动登记存在的状态文件并保留已经手工配置的绑定。
 
+新建或替换人物素材时，必须遵循 [`docs/presentation-character-asset-spec.md`](docs/presentation-character-asset-spec.md)：默认统一使用 `1024 × 1536`、竖版 `2:3`、透明 PNG、腰部以上半身像，并以验收后的 `idle` 作为所有状态图的构图参考。该规范只约束展示素材生成，不属于游戏固定上下文。
+
 ## 跑团规则知识库
 
 根目录 `rules/` 是项目自带的出厂规则模板。首次启动时，后端会把它复制到 `data/template/rules/`，再复制到 `data/save/rules/`。运行时世界 Agent 只读取 `data/save/rules/`。
