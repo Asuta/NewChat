@@ -88,6 +88,7 @@ interface QueuedMessage {
 }
 
 type AgentTaskRole = 'user' | 'system';
+type SaveResetMode = 'template' | 'factory';
 
 interface AppProps {
   stageOnly?: boolean;
@@ -120,7 +121,7 @@ export default function App({ stageOnly = false }: AppProps) {
   const [isFixedContextSaving, setIsFixedContextSaving] = useState(false);
   const [isSaveDataBusy, setIsSaveDataBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [saveResetMode, setSaveResetMode] = useState<SaveResetMode | null>(null);
   const [worldActionMenu, setWorldActionMenu] = useState<WorldActionMenuState | null>(null);
   const [characterAttackFeedback, setCharacterAttackFeedback] = useState<CharacterAttackFeedbackEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -171,9 +172,9 @@ export default function App({ stageOnly = false }: AppProps) {
   }, [modelId]);
 
   useEffect(() => {
-    if (!isResetConfirmOpen) return;
+    if (!saveResetMode) return;
     resetCancelButtonRef.current?.focus();
-  }, [isResetConfirmOpen]);
+  }, [saveResetMode]);
 
   useEffect(() => {
     window.localStorage.setItem(AGENT_MAX_STEPS_STORAGE_KEY, String(agentMaxSteps));
@@ -841,20 +842,22 @@ export default function App({ stageOnly = false }: AppProps) {
     setError(null);
   }
 
-  function requestResetSaveData() {
+  function requestResetSaveData(mode: SaveResetMode = 'template') {
     if (isStreaming || isCompressing || isSaveDataBusy) return;
     setIsSettingsOpen(false);
-    setIsResetConfirmOpen(true);
+    setSaveResetMode(mode);
   }
 
   async function resetSaveData() {
-    if (isStreaming || isCompressing || isSaveDataBusy) return;
+    if (isStreaming || isCompressing || isSaveDataBusy || !saveResetMode) return;
 
-    setIsResetConfirmOpen(false);
+    const mode = saveResetMode;
+    setSaveResetMode(null);
     setIsSaveDataBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/save/reset', { method: 'POST' });
+      const endpoint = mode === 'factory' ? '/api/save/restore-factory' : '/api/save/reset';
+      const response = await fetch(endpoint, { method: 'POST' });
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const state = (await response.json()) as SaveDataResponse;
       const { conversation, assistantMessage } = createOpeningConversation();
@@ -866,44 +869,21 @@ export default function App({ stageOnly = false }: AppProps) {
         contextEvents: [],
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '重置存档失败。');
+      const fallbackMessage = mode === 'factory' ? '恢复内置世界失败。' : '重置存档失败。';
+      setError(caught instanceof Error ? caught.message : fallbackMessage);
     } finally {
       setIsSaveDataBusy(false);
     }
   }
 
-  async function restoreFactoryWorld() {
-    if (isStreaming || isCompressing || isSaveDataBusy) return;
-    const confirmed = window.confirm(
-      '恢复内置最新世界会用当前项目代码里的预制世界覆盖 data/template 和 data/save，并清空当前聊天。确定继续吗？',
-    );
-    if (!confirmed) return;
-
-    setIsSaveDataBusy(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/save/restore-factory', { method: 'POST' });
-      if (!response.ok) throw new Error(await readErrorMessage(response));
-      const state = (await response.json()) as SaveDataResponse;
-      const { conversation, assistantMessage } = createOpeningConversation();
-      applySaveDataResponse(state, { resetConversations: true, openingConversation: conversation });
-      void streamAgentResponse({
-        conversationId: conversation.id,
-        assistantMessageId: assistantMessage.id,
-        prompt: OPENING_STORY_PROMPT,
-        contextEvents: [],
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '恢复内置世界失败。');
-    } finally {
-      setIsSaveDataBusy(false);
-    }
+  function restoreFactoryWorld() {
+    requestResetSaveData('factory');
   }
 
   function handleResetConfirmKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!isSaveDataBusy) setIsResetConfirmOpen(false);
+      if (!isSaveDataBusy) setSaveResetMode(null);
       return;
     }
 
@@ -1256,7 +1236,7 @@ export default function App({ stageOnly = false }: AppProps) {
     return null;
   }
 
-  const resetConfirmationContent = isResetConfirmOpen ? (
+  const resetConfirmationContent = saveResetMode ? (
     <div className="confirmation-backdrop" role="presentation">
       <section
         ref={resetDialogRef}
@@ -1267,8 +1247,14 @@ export default function App({ stageOnly = false }: AppProps) {
         onKeyDown={handleResetConfirmKeyDown}
       >
         <div className="confirmation-copy">
-          <strong id="reset-save-title">重新开始？</strong>
-          <p>这会用当前世界模板覆盖玩家存档，并清空当前聊天记录。这个操作无法撤销。</p>
+          <strong id="reset-save-title">
+            {saveResetMode === 'factory' ? '恢复内置最新世界？' : '重新开始？'}
+          </strong>
+          <p>
+            {saveResetMode === 'factory'
+              ? '这会用当前项目代码里的预制世界覆盖世界模板和玩家存档，并清空当前聊天记录。这个操作无法撤销。'
+              : '这会用当前世界模板覆盖玩家存档，并清空当前聊天记录。这个操作无法撤销。'}
+          </p>
         </div>
         <div className="confirmation-actions">
           <button
@@ -1276,12 +1262,12 @@ export default function App({ stageOnly = false }: AppProps) {
             className="settings-secondary"
             type="button"
             disabled={isSaveDataBusy}
-            onClick={() => setIsResetConfirmOpen(false)}
+            onClick={() => setSaveResetMode(null)}
           >
             取消
           </button>
           <button className="settings-danger" type="button" disabled={isSaveDataBusy} onClick={() => void resetSaveData()}>
-            重新开始
+            {saveResetMode === 'factory' ? '恢复并重新开始' : '重新开始'}
           </button>
         </div>
       </section>
@@ -1332,7 +1318,7 @@ export default function App({ stageOnly = false }: AppProps) {
             onEnterScene={enterWorldScene}
             onInventoryOpenChange={setIsInventoryOpen}
             onExecuteInventoryAction={(action: WorldAction) => executeWorldAction(action)}
-            onResetSaveData={requestResetSaveData}
+            onResetSaveData={restoreFactoryWorld}
             onCloseEntityActions={closeWorldActionMenu}
             onOpenEntityActions={openWorldActionMenu}
             onOpenSettings={() => setIsSettingsOpen(true)}
