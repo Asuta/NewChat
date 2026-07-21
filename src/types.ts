@@ -185,6 +185,9 @@ export interface PresentationStageCharacter {
   position: string;
   slot: 'left' | 'center' | 'right' | string;
   scale: number;
+  stageCrowdScale?: number;
+  stageLeftPercent?: number;
+  stageWidthPercent?: number;
   hasBinding: boolean;
   isFallbackPortrait: boolean;
 }
@@ -212,7 +215,6 @@ export interface PresentationStage {
   backgroundUrl: string | null;
   player: PresentationPlayerStatus | null;
   characters: PresentationStageCharacter[];
-  hiddenCharacterCount: number;
 }
 
 export interface StageSpeech {

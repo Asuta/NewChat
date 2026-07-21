@@ -232,6 +232,7 @@ export function GameStageCharacter({
         displayedPortrait.isFallback ? 'fallback-character' : '',
         `portrait-state-${displayedPortrait.state}`,
         isSpeaking ? 'speaking-character' : '',
+        attackFeedbackEvent ? 'attack-feedback-character' : '',
         hasPointerInteraction ? 'has-actions' : '',
         isPixelHovered ? 'pixel-hovered' : '',
         isActionMenuOpen ? 'action-menu-open' : '',
@@ -246,7 +247,13 @@ export function GameStageCharacter({
       ref={figureRef}
       style={{
         '--character-motion-delay': `${motionDelayMs}ms`,
-        '--character-scale': String(character.scale || 1),
+        '--character-scale': String((character.scale || 1) * (character.stageCrowdScale || 1)),
+        '--character-left': character.stageLeftPercent === undefined
+          ? undefined
+          : `${character.stageLeftPercent}%`,
+        '--character-width': character.stageWidthPercent === undefined
+          ? undefined
+          : `${character.stageWidthPercent}%`,
       } as CSSProperties}
       onAnimationEnd={motionPhase !== 'stable' ? handleAnimationEnd : undefined}
       onClick={isItemTargeting ? handleClick : undefined}

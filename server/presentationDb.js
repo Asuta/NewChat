@@ -149,7 +149,6 @@ export function getCurrentPresentationStage(sceneState) {
       backgroundUrl: toAssetUrl(backgroundAsset),
       player: getPresentationPlayer(sceneState?.playerId),
       characters: assignStageSlots(stageCharacters),
-      hiddenCharacterCount: Math.max(0, stageCharacters.length - 3),
     };
   } finally {
     database.close();

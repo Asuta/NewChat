@@ -1576,7 +1576,6 @@ button {
 
 .game-stage-header,
 .game-stage-empty,
-.game-stage-overflow,
 .game-stage-interaction-stack {
   position: absolute;
   z-index: 3;
@@ -2067,6 +2066,7 @@ button {
   --character-vital-opacity: 1;
   --character-vital-offset: 0px;
   position: absolute;
+  left: var(--character-left, 50%);
   bottom: -8px;
   container-type: size;
   display: grid;
@@ -2074,7 +2074,7 @@ button {
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: end;
   justify-items: center;
-  width: min(34%, 340px);
+  width: min(var(--character-width, 34%), 340px);
   margin: 0;
   transform: translateX(-50%) scale(var(--character-scale));
   transform-origin: bottom center;
@@ -2545,6 +2545,10 @@ button {
 
 .game-character.speaking-character {
   z-index: 3;
+}
+
+.game-character.attack-feedback-character {
+  z-index: 4;
 }
 
 .game-character.speaking-character img,
@@ -3027,23 +3031,6 @@ button {
   background: rgba(8, 14, 22, 0.54);
   color: rgba(248, 250, 252, 0.82);
   font-size: 14px;
-  backdrop-filter: blur(10px);
-}
-
-.game-stage-overflow {
-  right: 24px;
-  bottom: 210px;
-  display: grid;
-  min-width: 42px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  padding: 0 10px;
-  background: rgba(8, 14, 22, 0.62);
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 800;
   backdrop-filter: blur(10px);
 }
 

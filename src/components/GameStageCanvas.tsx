@@ -147,8 +147,8 @@ export function GameStageCanvas({
   );
   const activeSpeakerId = dialogue.activeEntry.speakerId;
   const visibleCharacters = useMemo(
-    () => getVisibleStageCharacters(stageCharacters, activeSpeakerId, attackFeedback?.targetEntityId),
-    [activeSpeakerId, attackFeedback?.targetEntityId, stageCharacters],
+    () => getVisibleStageCharacters(stageCharacters),
+    [stageCharacters],
   );
   const stageCharacterTransitions = useStageCharacterTransitions(
     stage?.scene?.id ?? '',
@@ -159,7 +159,6 @@ export function GameStageCanvas({
     `${dialogueKey}:${stage?.scene?.id ?? 'scene'}`,
     visibleCharacters,
   );
-  const hiddenCharacterCount = Math.max(0, stageCharacters.length - visibleCharacters.length);
   const [alphaHoveredEntityId, setAlphaHoveredEntityId] = useState<string | null>(null);
   const [itemTargeting, setItemTargeting] = useState<ItemTargetingState | null>(null);
   const [itemTargetingPointer, setItemTargetingPointer] = useState<ItemTargetingPointer | null>(null);
@@ -505,12 +504,6 @@ export function GameStageCanvas({
             <div className="game-stage-empty">
               <ImageOff size={20} />
               <span>当前场景暂无可显示立绘</span>
-            </div>
-          ) : null}
-
-          {hiddenCharacterCount > 0 ? (
-            <div className="game-stage-overflow" aria-label={`还有 ${hiddenCharacterCount} 名人物未显示`}>
-              +{hiddenCharacterCount}
             </div>
           ) : null}
 
