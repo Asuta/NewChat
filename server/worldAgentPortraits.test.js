@@ -9,23 +9,28 @@ import test from 'node:test';
 const WORLD_DB_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'worldDb.js')).href;
 const WORLD_AGENT_MODULE_URL = pathToFileURL(join(process.cwd(), 'server', 'worldAgent.js')).href;
 
-test('npc_speak returns a normalized portrait state with its visible speech', () => {
+test('npc_speak normalizes current-scene speech and rejects off-scene NPCs', () => {
   const result = runIsolatedWorldScript(`
     const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
     const worldAgent = await import(${JSON.stringify(WORLD_AGENT_MODULE_URL)});
     worldDb.migrateWorldDb();
     worldDb.seedWorldIfEmpty();
     const angry = worldAgent.executeWorldTool('npc_speak', {
-      npcEntityId: 'character_yufen',
+      npcEntityId: 'character_wandering_child',
       portraitState: 'angry',
       content: '立刻离开。',
     });
     const legacy = worldAgent.executeWorldTool('npc_speak', {
-      npcEntityId: 'character_yufen',
+      npcEntityId: 'character_wandering_child',
       content: '旧调用仍然可用。',
     });
+    const offScene = worldAgent.executeWorldTool('npc_speak', {
+      npcEntityId: 'character_yufen',
+      portraitState: 'neutral',
+      content: '这句话不应该出现。',
+    });
     worldDb.closeWorldDb();
-    console.log(JSON.stringify({ angry, legacy }));
+    console.log(JSON.stringify({ angry, legacy, offScene }));
   `);
 
   assert.equal(result.angry.ok, true);
@@ -33,6 +38,8 @@ test('npc_speak returns a normalized portrait state with its visible speech', ()
   assert.match(result.angry.sceneVisitId, /^visit_/);
   assert.equal(result.legacy.portraitState, 'neutral');
   assert.equal(result.legacy.sceneVisitId, result.angry.sceneVisitId);
+  assert.equal(result.offScene.ok, false);
+  assert.match(result.offScene.error, /不在当前场景/);
 });
 
 function runIsolatedWorldScript(script) {

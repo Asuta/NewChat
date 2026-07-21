@@ -38,6 +38,7 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   'NPC 实际说出口的直接对白必须调用 npc_speak，并且 content 只写 NPC 说出口的话。',
   'dm_speak 和 npc_speak 只是最终展示工具，不是行动工具；它们不能替代读取、搜索、掷骰、规则裁定、写库或切换场景工具。',
   '不确定 NPC 实体 id 时，先调用搜索或读取工具确认，不要编造 entityId。',
+  '只有位于玩家当前场景的 NPC 才能调用 npc_speak；场外 NPC 不能发言。',
   '读取背包必须调用 get_inventory；使用、转交、展示、拾取或丢弃道具必须调用 execute_item_action，不要用 apply_world_patch 绕过背包校验。',
 ].join('\n');
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
@@ -144,8 +145,8 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
   createToolSchema('dm_speak', '输出玩家可见的 DM 叙事、动作描写、规则结果、环境变化或说明。', {
     content: { type: 'string', description: '要显示给玩家的 DM 正文；不要写 NPC 逐字对白。' },
   }, ['content']),
-  createToolSchema('npc_speak', '让一个已存在实体以独立 NPC 对话气泡发言。', {
-    npcEntityId: { type: 'string', description: 'NPC 实体 id。' },
+  createToolSchema('npc_speak', '让一个位于玩家当前场景的 NPC 以独立对话气泡发言。', {
+    npcEntityId: { type: 'string', description: '当前场景中的 NPC 实体 id。' },
     portraitState: {
       type: 'string',
       enum: NPC_SPEECH_PORTRAIT_STATES,
@@ -967,6 +968,14 @@ export function executeWorldTool(tool, args, prompt = '') {
       return {
         ok: false,
         error: `NPC 实体 ${npcEntityId} 不存在。`,
+      };
+    }
+    const currentScene = getCurrentScene();
+    const isCurrentSceneNpc = currentScene.residents.some((resident) => resident.id === npc.id);
+    if (!isCurrentSceneNpc) {
+      return {
+        ok: false,
+        error: `NPC ${npc.name}（${npc.id}）不在当前场景，不能发言。`,
       };
     }
     const sceneVisitId = getWorldTimeState().currentSceneVisit?.id;
