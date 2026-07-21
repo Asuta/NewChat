@@ -35,6 +35,18 @@ const MA_DASHUAI_CHARACTER_ASSETS = [
   ['character_awei', 'asset_character_awei_idle', 'characters/npc-character_awei-idle.png'],
   ['character_yu_fugui', 'asset_character_yu_fugui_idle', 'characters/npc-character_yu_fugui-idle.png'],
   ['character_gangzi', 'asset_character_gangzi_idle', 'characters/npc-character_gangzi-idle.png'],
+  ['character_yu_decai', 'asset_character_yu_decai_idle', 'characters/npc-character_yu_decai-idle.png'],
+  ['character_niu_er', 'asset_character_niu_er_idle', 'characters/npc-character_niu_er-idle.png'],
+  ['character_xiaoyun', 'asset_character_xiaoyun_idle', 'characters/npc-character_xiaoyun-idle.png'],
+  ['character_erhu_busker', 'asset_character_erhu_busker_idle', 'characters/npc-character_erhu_busker-idle.png'],
+  ['character_wandering_child', 'asset_character_wandering_child_idle', 'characters/npc-character_wandering_child-idle.png'],
+  ['character_gangzi_brother', 'asset_character_gangzi_brother_idle', 'characters/npc-character_gangzi_brother-idle.png'],
+  ['character_lao_ba', 'asset_character_lao_ba_idle', 'characters/npc-character_lao_ba-idle.png'],
+  ['character_lao_qian', 'asset_character_lao_qian_idle', 'characters/npc-character_lao_qian-idle.png'],
+  ['character_gao_juzhang', 'asset_character_gao_juzhang_idle', 'characters/npc-character_gao_juzhang-idle.png'],
+  ['character_wang_boss', 'asset_character_wang_boss_idle', 'characters/npc-character_wang_boss-idle.png'],
+  ['character_boxer_son', 'asset_character_boxer_son_idle', 'characters/npc-character_boxer_son-idle.png'],
+  ['character_su_old_lady', 'asset_character_su_old_lady_idle', 'characters/npc-character_su_old_lady-idle.png'],
 ];
 
 export function ensurePresentationDb() {
