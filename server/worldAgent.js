@@ -426,7 +426,7 @@ async function runNativeToolPlanningLoop({
         ? executeWorldTool(decision.tool, decision.args, prompt)
         : { ok: false, error: parsed.error };
 
-      const toolResultForModel = compactToolResultForAgentStep(decision.tool, result);
+      const toolResultForModel = prepareToolResultForAgentStep(decision.tool, result);
       const toolResultMessage = createNativeToolResultMessage(toolCall, toolResultForModel);
       messages.push(toolResultMessage);
       state.modelTranscript.push(toolResultMessage);
@@ -576,7 +576,7 @@ async function applyExecutedAgentTool({
 }
 
 function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers }) {
-  const stepResult = compactToolResultForAgentStep(tool, result);
+  const stepResult = prepareToolResultForAgentStep(tool, result);
   const step = { index: stepIndex, tool, args, result: stepResult };
   steps.push(step);
   addAgentStep(runId, stepIndex, tool, args, stepResult);
@@ -590,7 +590,7 @@ function recordAgentStep({ runId, stepIndex, tool, args, result, steps, handlers
   return step;
 }
 
-function compactToolResultForAgentStep(tool, result) {
+export function prepareToolResultForAgentStep(tool, result) {
   if (!isRecord(result) || result.ok === false) return result;
 
   if (tool === 'dm_speak') {
@@ -610,28 +610,6 @@ function compactToolResultForAgentStep(tool, result) {
         name: typeof npc.name === 'string' ? npc.name : '',
       },
       summary: 'NPC 发言成功。',
-    };
-  }
-
-  if (tool === 'transition_scene') {
-    const scene = result.scene?.scene;
-    const sceneId = typeof scene?.id === 'string' ? scene.id : '';
-    const sceneName = typeof scene?.name === 'string' ? scene.name : sceneId;
-    const clockAfter = isRecord(result.clockAfter) ? result.clockAfter : null;
-    return {
-      ok: true,
-      scene: {
-        id: sceneId,
-        name: sceneName,
-      },
-      ...(Number.isFinite(result.elapsedMinutes) ? { elapsedMinutes: result.elapsedMinutes } : {}),
-      ...(clockAfter ? { clockAfter } : {}),
-      summary: [
-        Number.isFinite(result.elapsedMinutes)
-          ? `场景切换成功，世界时间推进 ${result.elapsedMinutes} 分钟，当前时间 ${String(clockAfter?.fullLabel || clockAfter?.label || '')}。`
-          : '场景切换成功。',
-        '请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
-      ].filter(Boolean).join(''),
     };
   }
 
@@ -1007,7 +985,10 @@ export function executeWorldTool(tool, args, prompt = '') {
         ok: true,
         ...result,
         answer: `你进入了${result.scene.scene?.name ?? '新的场景'}。当前时间：${result.clockAfter.fullLabel}。${result.scene.sceneComponent?.description ?? ''}`,
-        summary: `玩家进入 ${result.scene.scene?.name ?? targetSceneId}，时间推进 ${result.elapsedMinutes} 分钟至 ${result.clockAfter.fullLabel}。`,
+        summary: [
+          `玩家进入 ${result.scene.scene?.name ?? targetSceneId}，时间推进 ${result.elapsedMinutes} 分钟至 ${result.clockAfter.fullLabel}。`,
+          '请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
+        ].join(''),
       };
     } catch (error) {
       return {

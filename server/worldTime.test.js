@@ -206,6 +206,39 @@ test('world agent transition tool advances the clock exposed by get_time_state',
   assert.equal(result.time.time.currentSceneVisit.sceneId, 'scene_city_street');
 });
 
+test('world agent keeps the complete current scene in transition tool results', () => {
+  const result = runIsolatedWorldScript(`
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const worldAgent = await import(${JSON.stringify(pathToFileURL(join(process.cwd(), 'server', 'worldAgent.js')).href)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    const before = worldAgent.executeWorldTool('get_time_state', {});
+    const transition = worldAgent.executeWorldTool('transition_scene', {
+      sceneId: 'scene_city_street',
+      sceneTimeSegments: [],
+      travelMinutes: 30,
+      travelReason: '从客运站出口前往城里街面。',
+      throughConversationId: before.timeContext.latestConversationId,
+      previousSceneSummary: '玩家查明客运站现状后出发。',
+    });
+    const prepared = worldAgent.prepareToolResultForAgentStep('transition_scene', transition);
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ transition, prepared }));
+  `);
+
+  assert.deepEqual(result.prepared, result.transition);
+  assert.equal(result.prepared.scene.scene.id, 'scene_city_street');
+  assert.equal(typeof result.prepared.scene.sceneComponent.description, 'string');
+  assert.ok(result.prepared.scene.sceneComponent.description.length > 0);
+  assert.ok(result.prepared.scene.residents.some((resident) => resident.id === 'character_gangzi'));
+  assert.ok(result.prepared.scene.residents.some((resident) => resident.id === 'character_erhu_busker'));
+  assert.ok(Array.isArray(result.prepared.scene.items));
+  assert.ok(Array.isArray(result.prepared.scene.events));
+  assert.ok(result.prepared.scene.exits.length > 0);
+  assert.ok(Array.isArray(result.prepared.scene.relatedLore));
+  assert.match(result.prepared.summary, /随玩家移动/);
+});
+
 test('world agent rejects hidden enter_scene calls', () => {
   const result = runIsolatedWorldScript(`
     const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
