@@ -18,7 +18,10 @@ const FALLBACK_CHARACTER_ASSET_ID = 'asset_character_placeholder';
 const MA_DASHUAI_SCENE_ASSETS = [
   ['scene_bus_station', 'asset_scene_bus_station_backdrop', 'scenes/scene-scene_bus_station-backdrop.png'],
   ['scene_city_street', 'asset_scene_city_street_backdrop', 'scenes/scene-scene_city_street-backdrop.png'],
-  ['scene_victoria', 'asset_scene_victoria_backdrop', 'scenes/scene-scene_victoria-backdrop.png'],
+  ['scene_victoria', 'asset_scene_victoria_foyer_backdrop', 'scenes/scene-scene_victoria_foyer-backdrop.png'],
+  ['scene_victoria_dance_hall', 'asset_scene_victoria_backdrop', 'scenes/scene-scene_victoria-backdrop.png'],
+  ['scene_victoria_office', 'asset_scene_victoria_office_backdrop', 'scenes/scene-scene_victoria_office-backdrop.png'],
+  ['scene_victoria_backstage', 'asset_scene_victoria_backstage_backdrop', 'scenes/scene-scene_victoria_backstage-backdrop.png'],
   ['scene_guiying_restaurant', 'asset_scene_guiying_restaurant_backdrop', 'scenes/scene-scene_guiying_restaurant-backdrop.png'],
   ['scene_bathhouse', 'asset_scene_bathhouse_backdrop', 'scenes/scene-scene_bathhouse-backdrop.png'],
   ['scene_debiao_home', 'asset_scene_debiao_home_backdrop', 'scenes/scene-scene_yufen_home-backdrop.png'],

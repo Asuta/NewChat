@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   MA_DASHUAI_CHARACTER_HIT_POINTS,
+  MA_DASHUAI_PRESET_REVISION,
   seedMaDashuaiWorld,
 } from './defaultWorld.js';
 
@@ -32,7 +33,7 @@ test('预制世界按第一集检查点提供完整且自洽的马大帅人物�
   assert.equal(meta.get('campaignTitle'), '马大帅：进城以后');
   assert.equal(meta.get('currentSceneId'), 'scene_bus_station');
   assert.equal(meta.get('campaignEpisode'), '1');
-  assert.equal(meta.get('presetRevision'), 'ma-dashuai-episode-guide-v2');
+  assert.equal(meta.get('presetRevision'), MA_DASHUAI_PRESET_REVISION);
   assert.match(meta.get('storyCheckpoint'), /钱包和范德彪地址被偷/);
 
   const expectedCharacters = Object.keys(MA_DASHUAI_CHARACTER_HIT_POINTS).sort();
@@ -47,6 +48,9 @@ test('预制世界按第一集检查点提供完整且自洽的马大帅人物�
     'scene_bus_station',
     'scene_city_street',
     'scene_victoria',
+    'scene_victoria_dance_hall',
+    'scene_victoria_office',
+    'scene_victoria_backstage',
     'scene_debiao_home',
     'scene_xiaoyun_home',
     'scene_detention_center',
@@ -92,10 +96,27 @@ test('预制世界按第一集检查点提供完整且自洽的马大帅人物�
 
   assert.ok(findRelationship('player', 'scene_bus_station', 'located_in'));
   assert.ok(findRelationship('character_yufen', 'scene_majia_village', 'located_in'));
-  assert.ok(findRelationship('character_ma_xiaocui', 'scene_victoria', 'located_in'));
+  assert.ok(findRelationship('character_fan_debiao', 'scene_victoria', 'located_in'));
+  assert.ok(findRelationship('character_ma_xiaocui', 'scene_victoria_dance_hall', 'located_in'));
+  assert.ok(findRelationship('character_wu', 'scene_victoria_office', 'located_in'));
+  assert.ok(findRelationship('character_awei', 'scene_victoria_backstage', 'located_in'));
+  assert.ok(findRelationship('character_xiaoyun', 'scene_xiaoyun_home', 'located_in'));
+  assert.equal(findRelationship('character_ma_xiaocui', 'scene_victoria', 'located_in'), undefined);
+  assert.equal(findRelationship('character_wu', 'scene_victoria', 'located_in'), undefined);
+  assert.equal(findRelationship('character_awei', 'scene_victoria', 'located_in'), undefined);
   assert.ok(findRelationship('character_gangzi', 'scene_city_street', 'located_in'));
   assert.equal(findRelationship('character_yufen', 'scene_bus_station', 'located_in'), undefined);
   assert.equal(findRelationship('character_ma_xiaocui', 'character_gangzi', 'affinity'), undefined);
+
+  for (const [fromSceneId, toSceneId] of [
+    ['scene_victoria', 'scene_victoria_dance_hall'],
+    ['scene_victoria', 'scene_victoria_office'],
+    ['scene_victoria_dance_hall', 'scene_victoria_office'],
+    ['scene_victoria_dance_hall', 'scene_victoria_backstage'],
+  ]) {
+    assert.ok(findRelationship(fromSceneId, toSceneId, 'exit_to'), `${fromSceneId} 缺少前往 ${toSceneId} 的出口`);
+    assert.ok(findRelationship(toSceneId, fromSceneId, 'exit_to'), `${toSceneId} 缺少返回 ${fromSceneId} 的出口`);
+  }
 
   assert.ok(findRelationship('character_erhu_busker', 'item_erhu', 'ownership'));
   assert.equal(findRelationship('player', 'item_erhu', 'ownership'), undefined);

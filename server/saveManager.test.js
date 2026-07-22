@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { MA_DASHUAI_CHARACTER_HIT_POINTS } from './defaultWorld.js';
+import {
+  MA_DASHUAI_CHARACTER_HIT_POINTS,
+  MA_DASHUAI_PRESET_REVISION,
+} from './defaultWorld.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
   ensureBuiltInStoryBlueprintDefaults,
@@ -173,6 +176,85 @@ test('马大帅旧模板升级后重置游戏可获得全部角色生命值', ()
         assert.equal(stats.maxHitPoints, maxHitPoints);
         assert.equal(stats.currentHitPoints, maxHitPoints);
       }
+    } finally {
+      upgradedDatabase.close();
+    }
+  } finally {
+    try {
+      database.close();
+    } catch {
+      // The database is deliberately closed before the template upgrade.
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('马大帅 v2 旧模板升级后会拆分维多利亚内部场景和人物位置', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'newchat-victoria-template-'));
+  const databaseFile = join(directory, 'template.sqlite');
+  const database = new DatabaseSync(databaseFile);
+
+  try {
+    createWorldDbSchema(database);
+    const now = new Date().toISOString();
+    const insertEntity = database.prepare(`
+      INSERT INTO entities (id, kind, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insertEntity.run('player', 'player', '马大帅', now, now);
+    insertEntity.run('scene_victoria', 'scene', '维多利亚娱乐广场', now, now);
+    for (const [entityId, name] of [
+      ['character_fan_debiao', '范德彪'],
+      ['character_ma_xiaocui', '马小翠'],
+      ['character_wu', '吴总'],
+      ['character_awei', '阿薇'],
+    ]) {
+      insertEntity.run(entityId, 'character', name, now, now);
+    }
+    database.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('campaignId', 'ma-dashuai-city-life');
+    database.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('presetRevision', 'ma-dashuai-episode-guide-v2');
+    database.prepare(`
+      INSERT INTO components (entity_id, type, data_json, updated_at)
+      VALUES ('scene_victoria', 'scene', ?, ?)
+    `).run(JSON.stringify({ description: '旧版复合场景', exits: [] }), now);
+    const insertLocation = database.prepare(`
+      INSERT INTO relationships (source_entity_id, target_entity_id, type, value, data_json, created_at, updated_at)
+      VALUES (?, 'scene_victoria', 'located_in', NULL, '{}', ?, ?)
+    `);
+    for (const entityId of ['character_fan_debiao', 'character_ma_xiaocui', 'character_wu', 'character_awei']) {
+      insertLocation.run(entityId, now, now);
+    }
+    database.close();
+
+    ensureTemplatePlayableDefaults(databaseFile);
+
+    const upgradedDatabase = new DatabaseSync(databaseFile, { readOnly: true });
+    try {
+      assert.equal(
+        upgradedDatabase.prepare("SELECT value FROM meta WHERE key = 'presetRevision'").get()?.value,
+        MA_DASHUAI_PRESET_REVISION,
+      );
+      for (const sceneId of ['scene_victoria_dance_hall', 'scene_victoria_office', 'scene_victoria_backstage']) {
+        assert.equal(upgradedDatabase.prepare('SELECT kind FROM entities WHERE id = ?').get(sceneId)?.kind, 'scene');
+        assert.ok(upgradedDatabase.prepare("SELECT 1 FROM components WHERE entity_id = ? AND type = 'scene'").get(sceneId));
+      }
+
+      const readLocation = upgradedDatabase.prepare(
+        "SELECT target_entity_id AS targetEntityId FROM relationships WHERE source_entity_id = ? AND type = 'located_in'",
+      );
+      assert.equal(readLocation.get('character_fan_debiao')?.targetEntityId, 'scene_victoria');
+      assert.equal(readLocation.get('character_ma_xiaocui')?.targetEntityId, 'scene_victoria_dance_hall');
+      assert.equal(readLocation.get('character_wu')?.targetEntityId, 'scene_victoria_office');
+      assert.equal(readLocation.get('character_awei')?.targetEntityId, 'scene_victoria_backstage');
+
+      const hasExit = upgradedDatabase.prepare(`
+        SELECT 1 FROM relationships
+        WHERE source_entity_id = ? AND target_entity_id = ? AND type = 'exit_to'
+      `);
+      assert.ok(hasExit.get('scene_victoria', 'scene_victoria_office'));
+      assert.ok(hasExit.get('scene_victoria_office', 'scene_victoria'));
+      assert.ok(hasExit.get('scene_victoria_dance_hall', 'scene_victoria_backstage'));
+      assert.ok(hasExit.get('scene_victoria_backstage', 'scene_victoria_dance_hall'));
     } finally {
       upgradedDatabase.close();
     }

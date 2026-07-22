@@ -2,6 +2,51 @@ export const MA_DASHUAI_PLAYER_PROFILE_ID = 'ma-dashuai-player-v1';
 export const MA_DASHUAI_CAMPAIGN_ID = 'ma-dashuai-city-life';
 export const MA_DASHUAI_YUFEN_PROFILE_ID = 'ma-dashuai-yufen-v1';
 export const MA_DASHUAI_GANGZI_PROFILE_ID = 'ma-dashuai-gangzi-v1';
+export const MA_DASHUAI_PRESET_REVISION = 'ma-dashuai-episode-guide-v3';
+
+export const MA_DASHUAI_VICTORIA_SCENE_ENTITIES = Object.freeze([
+  ['scene_victoria', 'scene', '维多利亚娱乐广场'],
+  ['scene_victoria_dance_hall', 'scene', '维多利亚歌舞厅'],
+  ['scene_victoria_office', 'scene', '吴总办公室'],
+  ['scene_victoria_backstage', 'scene', '维多利亚后台'],
+]);
+
+export const MA_DASHUAI_VICTORIA_SCENE_COMPONENTS = Object.freeze([
+  ['scene_victoria', 'scene', {
+    description: '维多利亚娱乐广场的正门、迎宾前厅和内部中央走廊。范德彪在正门维持秩序；歌舞厅、吴总办公室、后台、餐厅和桑拿都是从这里进入的独立区域，不再与前厅混作一个场景。',
+    exits: ['scene_city_street', 'scene_debiao_home', 'scene_victoria_dance_hall', 'scene_victoria_office', 'scene_victoria_restaurant', 'scene_bathhouse', 'scene_bar'], tags: ['第1—16集', '维多利亚', '正门', '前厅', '范德彪'], visibility: 'restricted',
+  }],
+  ['scene_victoria_dance_hall', 'scene', {
+    description: '维多利亚的歌舞厅营业区，舞台、散台和服务通道彼此相连。开场时小翠刚被范德彪领进来暂候安排，还没有换上制服，也没有正式成为服务员。',
+    exits: ['scene_victoria', 'scene_victoria_office', 'scene_victoria_backstage'], tags: ['第1—16集', '维多利亚', '歌舞厅', '小翠'], visibility: 'restricted',
+  }],
+  ['scene_victoria_office', 'scene', {
+    description: '吴总处理维多利亚账目、生意和私人谈话的办公室，与前厅和歌舞厅相通。没有得到吴总、范德彪或工作人员允许时，不适合随便闯入。',
+    exits: ['scene_victoria', 'scene_victoria_dance_hall'], tags: ['第1—16集', '维多利亚', '吴总', '办公室'], visibility: 'restricted',
+  }],
+  ['scene_victoria_backstage', 'scene', {
+    description: '歌舞厅后的更衣、候场和员工准备区域。阿薇正在这里准备上班，工作人员可以从后台直接进入歌舞厅。',
+    exits: ['scene_victoria_dance_hall'], tags: ['第1—16集', '维多利亚', '后台', '阿薇'], visibility: 'restricted',
+  }],
+]);
+
+export const MA_DASHUAI_VICTORIA_CHARACTER_LOCATIONS = Object.freeze([
+  ['character_fan_debiao', 'scene_victoria', 'located_in', null, '范德彪在维多利亚正门和前厅维持秩序。'],
+  ['character_ma_xiaocui', 'scene_victoria_dance_hall', 'located_in', null, '小翠刚逃婚进城投奔范德彪，正在尚未营业的歌舞厅等候工作安排。'],
+  ['character_wu', 'scene_victoria_office', 'located_in', null, '吴总在自己的办公室处理维多利亚的生意。'],
+  ['character_awei', 'scene_victoria_backstage', 'located_in', null, '阿薇在歌舞厅后台准备上班。'],
+]);
+
+export const MA_DASHUAI_VICTORIA_INTERNAL_EXITS = Object.freeze([
+  ['scene_victoria', 'scene_victoria_dance_hall', 'exit_to', null, '从维多利亚前厅进入歌舞厅营业区。'],
+  ['scene_victoria_dance_hall', 'scene_victoria', 'exit_to', null, '歌舞厅出口回到维多利亚前厅。'],
+  ['scene_victoria', 'scene_victoria_office', 'exit_to', null, '从维多利亚前厅沿内部走廊前往吴总办公室。'],
+  ['scene_victoria_office', 'scene_victoria', 'exit_to', null, '吴总办公室外的走廊回到维多利亚前厅。'],
+  ['scene_victoria_dance_hall', 'scene_victoria_office', 'exit_to', null, '歌舞厅内侧通道通往吴总办公室。'],
+  ['scene_victoria_office', 'scene_victoria_dance_hall', 'exit_to', null, '吴总可以从办公室直接进入歌舞厅。'],
+  ['scene_victoria_dance_hall', 'scene_victoria_backstage', 'exit_to', null, '歌舞厅的员工通道通往后台。'],
+  ['scene_victoria_backstage', 'scene_victoria_dance_hall', 'exit_to', null, '后台出口回到歌舞厅。'],
+]);
 
 export const MA_DASHUAI_CHARACTER_HIT_POINTS = Object.freeze({
   character_yufen: 14,
@@ -126,7 +171,7 @@ export function seedMaDashuaiWorld(api) {
     ['player', 'player', '马大帅'],
     ['scene_bus_station', 'scene', '城市客运站'],
     ['scene_city_street', 'scene', '城里街面'],
-    ['scene_victoria', 'scene', '维多利亚娱乐广场'],
+    ...MA_DASHUAI_VICTORIA_SCENE_ENTITIES,
     ['scene_debiao_home', 'scene', '范德彪住处'],
     ['scene_xiaoyun_home', 'scene', '小芸住处'],
     ['scene_detention_center', 'scene', '看守所'],
@@ -284,10 +329,7 @@ export function seedMaDashuaiWorld(api) {
       description: '客运站外的城里街面，商铺、公交站和小摊混在一起。马大帅会在这里遇到装瞎拉二胡的卖艺人，也会因为陌生城市的规矩和生计问题屡屡碰壁。',
       exits: ['scene_bus_station', 'scene_victoria', 'scene_debiao_home', 'scene_detention_center', 'scene_guiying_restaurant', 'scene_hospital', 'scene_gao_home', 'scene_wang_boxing_room', 'scene_fishing_park', 'scene_su_home', 'scene_oldscar_hideout', 'scene_jail_visiting_room', 'scene_majia_village', 'scene_migrant_school'], tags: ['第1—3集', '城市', '流浪', '卖艺', '找路'], visibility: 'public',
     }],
-    ['scene_victoria', 'scene', {
-      description: '吴总经营的维多利亚娱乐广场包括歌舞厅、办公室、桑拿和餐厅。范德彪在这里当保镖，小翠刚来投奔他，尚未正式成为服务员。',
-      exits: ['scene_city_street', 'scene_debiao_home', 'scene_victoria_restaurant', 'scene_bathhouse', 'scene_bar'], tags: ['第1—16集', '维多利亚', '范德彪', '小翠', '吴总'], visibility: 'restricted',
-    }],
+    ...MA_DASHUAI_VICTORIA_SCENE_COMPONENTS,
     ['scene_debiao_home', 'scene', {
       description: '范德彪在城里的住处，是马大帅、玉芬、小翠和范德彪处理家事与误会的主要落脚点。第4集以前马大帅还不知道这里。',
       exits: ['scene_city_street', 'scene_victoria', 'scene_xiaoyun_home'], tags: ['第4—18集', '住处', '家庭', '感情误会'], visibility: 'locked',
@@ -516,11 +558,8 @@ export function seedMaDashuaiWorld(api) {
   const relationships = [
     ['player', 'scene_bus_station', 'located_in', null, '马大帅刚在客运站发现钱包和范德彪地址被偷。'],
     ['character_yufen', 'scene_majia_village', 'located_in', null, '玉芬开场仍在马家堡子，尚未进城。'],
-    ['character_fan_debiao', 'scene_victoria', 'located_in', null, '范德彪在维多利亚当保镖。'],
-    ['character_ma_xiaocui', 'scene_victoria', 'located_in', null, '小翠刚逃婚进城投奔范德彪，尚未正式上班。'],
+    ...MA_DASHUAI_VICTORIA_CHARACTER_LOCATIONS,
     ['character_guiying', 'scene_guiying_restaurant', 'located_in', null, '桂英在自己的饭店经营生意，尚未进入范德彪的感情线。'],
-    ['character_wu', 'scene_victoria', 'located_in', null, '吴总在维多利亚处理生意。'],
-    ['character_awei', 'scene_victoria', 'located_in', null, '阿薇在维多利亚工作。'],
     ['character_yu_fugui', 'scene_majia_village', 'located_in', null, '余富贵和儿子留在村里等马家给逃婚一个说法。'],
     ['character_yu_decai', 'scene_majia_village', 'located_in', null, '余德财的婚礼被小翠逃掉，仍留在村里。'],
     ['character_niu_er', 'scene_majia_village', 'located_in', null, '牛二仍在村里纠缠玉芬。'],
@@ -555,6 +594,7 @@ export function seedMaDashuaiWorld(api) {
     ['scene_xiaoyun_home', 'scene_city_street', 'exit_to', null, '小芸住处外通往城里街面。'],
     ['scene_city_street', 'scene_detention_center', 'exit_to', null, '假钞误会发生后，马大帅会被带往看守所。'],
     ['scene_detention_center', 'scene_city_street', 'exit_to', null, '办妥释放手续后可离开看守所。'],
+    ...MA_DASHUAI_VICTORIA_INTERNAL_EXITS,
     ['scene_victoria', 'scene_victoria_restaurant', 'exit_to', null, '维多利亚内部通往餐厅。'],
     ['scene_victoria_restaurant', 'scene_victoria', 'exit_to', null, '餐厅属于维多利亚内部区域。'],
     ['scene_victoria_restaurant', 'scene_city_street', 'exit_to', null, '送盒饭时可从餐厅直接进入城里街面。'],
@@ -643,7 +683,7 @@ export function seedMaDashuaiWorld(api) {
   setMeta('campaignEpisode', '1');
   setMeta('campaignArc', '第1—9集：马大帅进城寻女');
   setMeta('storyCheckpoint', '第1集：马大帅在城市客运站发现钱包和范德彪地址被偷，尚未找到任何亲友。');
-  setMeta('presetRevision', 'ma-dashuai-episode-guide-v2');
+  setMeta('presetRevision', MA_DASHUAI_PRESET_REVISION);
   setMeta('inventory.items.v1', 'ready');
   addEvent('world.seeded', null, null, { summary: '按《马大帅》第一部第1集开场初始化预制世界：马大帅进城寻女，钱包和地址刚被偷。' });
 }
@@ -763,6 +803,6 @@ export function ensureMaDashuaiPlayableState(api) {
   }
 
   if (!getMeta('presetRevision', '')) {
-    setMeta('presetRevision', 'ma-dashuai-episode-guide-v2');
+    setMeta('presetRevision', MA_DASHUAI_PRESET_REVISION);
   }
 }

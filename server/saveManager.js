@@ -17,6 +17,11 @@ import {
   MA_DASHUAI_CHARACTER_HIT_POINTS,
   MA_DASHUAI_GANGZI_PROFILE_ID,
   MA_DASHUAI_PLAYER_PROFILE_ID,
+  MA_DASHUAI_PRESET_REVISION,
+  MA_DASHUAI_VICTORIA_CHARACTER_LOCATIONS,
+  MA_DASHUAI_VICTORIA_INTERNAL_EXITS,
+  MA_DASHUAI_VICTORIA_SCENE_COMPONENTS,
+  MA_DASHUAI_VICTORIA_SCENE_ENTITIES,
   MA_DASHUAI_YUFEN_PROFILE_ID,
   getMaDashuaiGangziStats,
   getMaDashuaiPlayerStats,
@@ -123,7 +128,13 @@ export function ensureBuiltInStoryBlueprintDefaults({
   });
 }
 
-export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE) {
+export function ensureTemplatePlayableDefaults(
+  templateDbFile = TEMPLATE_DB_FILE,
+  {
+    migrateBuiltInPreset = resolve(templateDbFile) !== resolve(TEMPLATE_DB_FILE)
+      || !existsSync(TEMPLATE_IMPORT_MARKER_FILE),
+  } = {},
+) {
   if (!hasWorldDbSchema(templateDbFile)) {
     return;
   }
@@ -137,6 +148,9 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
 
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('BEGIN;');
+    if (migrateBuiltInPreset) {
+      migrateMaDashuaiVictoriaTemplateLayout(database);
+    }
     upsertTemplateEntity(database, 'item_luggage_bundle', 'item', '随身行李');
     upsertTemplateEntity(database, 'item_erhu', 'item', '卖艺二胡');
     upsertTemplateEntity(database, 'item_wooden_pole', 'item', '行李木棍');
@@ -239,6 +253,26 @@ export function ensureTemplatePlayableDefaults(templateDbFile = TEMPLATE_DB_FILE
   } finally {
     database.close();
   }
+}
+
+function migrateMaDashuaiVictoriaTemplateLayout(database) {
+  const revision = database.prepare("SELECT value FROM meta WHERE key = 'presetRevision'").get()?.value;
+  if (revision !== 'ma-dashuai-episode-guide-v2') return;
+
+  for (const [entityId, kind, name] of MA_DASHUAI_VICTORIA_SCENE_ENTITIES) {
+    upsertTemplateEntity(database, entityId, kind, name);
+  }
+  for (const [entityId, type, data] of MA_DASHUAI_VICTORIA_SCENE_COMPONENTS) {
+    writeTemplateComponent(database, entityId, type, data);
+  }
+  for (const [sourceEntityId, targetEntityId, type, value, summary] of MA_DASHUAI_VICTORIA_CHARACTER_LOCATIONS) {
+    database.prepare("DELETE FROM relationships WHERE source_entity_id = ? AND type = 'located_in'").run(sourceEntityId);
+    upsertTemplateRelationship(database, sourceEntityId, targetEntityId, type, value, { source: 'seed', summary });
+  }
+  for (const [sourceEntityId, targetEntityId, type, value, summary] of MA_DASHUAI_VICTORIA_INTERNAL_EXITS) {
+    upsertTemplateRelationship(database, sourceEntityId, targetEntityId, type, value, { source: 'seed', summary });
+  }
+  setTemplateMeta(database, 'presetRevision', MA_DASHUAI_PRESET_REVISION);
 }
 
 export function resetSaveToTemplate() {
