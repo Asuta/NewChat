@@ -596,7 +596,7 @@ export function GameStageCanvas({
                     ) : null}
                     {dialogue.pageCount > 1 ? (
                       <button
-                        className={`stage-dialogue-page-button${dialogue.hasUnreadContinuation ? ' has-unread' : ''}`}
+                        className="stage-dialogue-page-button"
                         type="button"
                         aria-label="上一页"
                         title="上一页"
@@ -608,7 +608,7 @@ export function GameStageCanvas({
                     ) : null}
                     {dialogue.pageCount > 1 ? (
                       <button
-                        className="stage-dialogue-page-button"
+                        className={`stage-dialogue-page-button${dialogue.hasUnreadContinuation ? ' has-unread' : ''}`}
                         type="button"
                         aria-label={dialogue.actionLabel}
                         title={dialogue.actionLabel}
