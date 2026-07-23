@@ -74,7 +74,10 @@ export function createSceneTransitionMessage({
   };
 }
 
-export function createActionResultMessage(actionResult: NonNullable<ChatMessage['actionResult']>): ChatMessage {
+export function createActionResultMessage(
+  actionResult: NonNullable<ChatMessage['actionResult']>,
+  eventId?: number,
+): ChatMessage {
   return {
     id: createId('action'),
     role: 'system',
@@ -83,6 +86,7 @@ export function createActionResultMessage(actionResult: NonNullable<ChatMessage[
     createdAt: Date.now(),
     status: 'done',
     actionResult,
+    ...(typeof eventId === 'number' && Number.isFinite(eventId) ? { actionResultEventId: eventId } : {}),
   };
 }
 
@@ -223,6 +227,30 @@ export function buildContextEvents(
       (message.content.trim() || message.agentSteps?.length || message.modelTranscript?.length),
   );
   return buildDynamicContextEvents(cleanMessages, conversation.contextSummary, getConversationContextMode(conversation));
+}
+
+export function buildCurrentActionContextEvents(
+  conversation: Conversation,
+  messages: ChatMessage[],
+  currentActionMessageId: string,
+): AgentContextEvent[] {
+  const currentActionMessage = messages.find(
+    (message) => message.id === currentActionMessageId && message.kind === 'action-result',
+  );
+  if (!currentActionMessage) {
+    return buildContextEvents(conversation, messages);
+  }
+
+  const historyEvents = buildVisibleActionHistoryContextEvents(
+    messages,
+    conversation.contextSummary,
+    getConversationContextMode(conversation),
+    currentActionMessageId,
+  );
+  return [
+    ...historyEvents,
+    createActionResultContextEvent(currentActionMessage, { current: true }),
+  ];
 }
 
 function buildDynamicModelMessages(
@@ -491,7 +519,10 @@ function createModelMessageContextEvents(messages: AgentModelTranscriptMessage[]
   }));
 }
 
-function createActionResultContextEvent(message: ChatMessage): AgentContextEvent {
+function createActionResultContextEvent(
+  message: ChatMessage,
+  { current = false }: { current?: boolean } = {},
+): AgentContextEvent {
   const result = message.actionResult;
   return {
     type: 'action_result',
@@ -503,7 +534,116 @@ function createActionResultContextEvent(message: ChatMessage): AgentContextEvent
       narrationHints: {},
       summary: message.content,
     },
+    ...(typeof message.actionResultEventId === 'number' && Number.isFinite(message.actionResultEventId)
+      ? { eventId: message.actionResultEventId }
+      : {}),
+    ...(current ? { current: true } : {}),
   };
+}
+
+function buildVisibleActionHistoryContextEvents(
+  messages: ChatMessage[],
+  summary: Conversation['contextSummary'],
+  contextMode: ContextMode,
+  currentActionMessageId: string,
+): AgentContextEvent[] {
+  const dmNarrationLedger = buildDmNarrationLedger(messages);
+  const toHistoryEvents = (source: ChatMessage[]) => source.flatMap((message) => {
+    if (!isVisibleActionHistoryMessage(message, currentActionMessageId, dmNarrationLedger)) return [];
+    if (message.kind === 'scene-transition') return [createSceneTransitionContextEvent(message)];
+    return [{
+      type: 'message' as const,
+      role: message.role,
+      content: formatVisibleActionHistoryMessage(message),
+    }];
+  });
+
+  if (!summary || contextMode === 'full-history') {
+    return toHistoryEvents(messages);
+  }
+
+  const summaryEvent: AgentContextEvent = {
+    type: 'summary',
+    content: summary.content,
+  };
+  const summaryEndIndex = messages.findIndex((message) => message.id === summary.lastMessageId);
+  if (summaryEndIndex < 0) {
+    return [summaryEvent, ...toHistoryEvents(messages)];
+  }
+
+  const messagesAfterSummary = messages.slice(summaryEndIndex + 1);
+  if (contextMode === 'summary-only') {
+    return [summaryEvent, ...toHistoryEvents(messagesAfterSummary)];
+  }
+
+  const recentCoveredMessages = messages
+    .slice(0, summaryEndIndex + 1)
+    .filter((message) => isVisibleActionHistoryMessage(message, currentActionMessageId, dmNarrationLedger))
+    .slice(-RECENT_CONTEXT_MESSAGE_LIMIT);
+  return [summaryEvent, ...toHistoryEvents([...recentCoveredMessages, ...messagesAfterSummary])];
+}
+
+type DmNarrationLedger = Map<number, Set<string>>;
+
+function isVisibleActionHistoryMessage(
+  message: ChatMessage,
+  currentActionMessageId: string,
+  dmNarrationLedger: DmNarrationLedger,
+) {
+  if (message.id === currentActionMessageId || message.status === 'streaming' || !message.content.trim()) return false;
+  if (message.role === 'system') return message.kind === 'scene-transition';
+  if (message.role === 'user') return true;
+  if (message.role !== 'assistant') return false;
+  if (message.kind === 'npc-speech' || message.kind === 'dm-narration') return true;
+  if (message.kind === 'assistant-reasoning' || message.kind === 'agent-step') return false;
+
+  const runId = getAgentRunId(message);
+  if (runId === null) return true;
+  return dmNarrationLedger.get(runId)?.has(message.content.trim()) === true;
+}
+
+function buildDmNarrationLedger(messages: ChatMessage[]): DmNarrationLedger {
+  const ledger: DmNarrationLedger = new Map();
+
+  for (const message of messages) {
+    const runId = getAgentRunId(message);
+    if (runId === null || !message.modelTranscript?.length) continue;
+
+    for (const transcriptMessage of message.modelTranscript) {
+      if (transcriptMessage.role !== 'assistant' || !Array.isArray(transcriptMessage.tool_calls)) continue;
+      for (const toolCall of transcriptMessage.tool_calls) {
+        if (toolCall.function?.name !== 'dm_speak') continue;
+        const content = readDmSpeakContent(toolCall.function.arguments);
+        if (!content) continue;
+        const contents = ledger.get(runId) || new Set<string>();
+        contents.add(content);
+        ledger.set(runId, contents);
+      }
+    }
+  }
+
+  return ledger;
+}
+
+function readDmSpeakContent(rawArguments: unknown) {
+  let args: unknown = rawArguments;
+  if (typeof rawArguments === 'string') {
+    try {
+      args = JSON.parse(rawArguments);
+    } catch {
+      return '';
+    }
+  }
+  if (!isRecord(args)) return '';
+  const content = args.content ?? args.text ?? args.message;
+  return typeof content === 'string' ? content.trim() : '';
+}
+
+function formatVisibleActionHistoryMessage(message: ChatMessage) {
+  if (message.kind === 'npc-speech' && message.npcSpeech?.name) {
+    return `${message.npcSpeech.name}：${message.content}`;
+  }
+  return formatMessageContentForContext(message);
 }
 
 function formatActionResultForContext(message: ChatMessage): string {

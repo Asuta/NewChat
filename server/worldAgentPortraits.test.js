@@ -42,6 +42,26 @@ test('npc_speak normalizes current-scene speech and rejects off-scene NPCs', () 
   assert.match(result.offScene.error, /不在当前场景/);
 });
 
+test('native assistant transcripts omit an empty tool_calls array', () => {
+  const result = runIsolatedWorldScript(`
+    const worldAgent = await import(${JSON.stringify(WORLD_AGENT_MODULE_URL)});
+    const withoutTools = worldAgent.createNativeAssistantTranscriptMessage({
+      role: 'assistant',
+      content: '请改用发言工具。',
+      tool_calls: [],
+    });
+    const withTools = worldAgent.createNativeAssistantTranscriptMessage({
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'dm_speak', arguments: '{}' } }],
+    });
+    console.log(JSON.stringify({ withoutTools, withTools }));
+  `);
+
+  assert.equal('tool_calls' in result.withoutTools, false);
+  assert.equal(result.withTools.tool_calls.length, 1);
+});
+
 function runIsolatedWorldScript(script) {
   const cwd = mkdtempSync(join(tmpdir(), 'newchat-world-agent-portraits-'));
   try {

@@ -284,6 +284,7 @@ app.post('/api/world/agent', async (req, res) => {
     const result = await runWorldAgentTask({
       prompt: req.body?.prompt,
       taskRole: req.body?.taskRole,
+      taskKind: req.body?.taskKind,
       model: req.body?.model,
       thinking: req.body?.thinking,
       maxSteps: req.body?.maxSteps,
@@ -313,6 +314,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
       {
         prompt: req.body?.prompt,
         taskRole: req.body?.taskRole,
+        taskKind: req.body?.taskKind,
         model: req.body?.model,
         thinking: req.body?.thinking,
         maxSteps: req.body?.maxSteps,
@@ -683,10 +685,13 @@ function sanitizeContextEvent(event) {
   }
 
   if (type === 'action_result') {
+    const eventId = Number(event.eventId);
     return {
       type: 'action_result',
       summary: String(event.summary || '').slice(0, 4000),
       result: isRecord(event.result) ? event.result : {},
+      ...(Number.isSafeInteger(eventId) && eventId > 0 ? { eventId } : {}),
+      ...(event.current === true ? { current: true } : {}),
     };
   }
 

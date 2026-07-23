@@ -60,6 +60,19 @@ const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '只有当最近上下文里已经有明确、未过期的工具结果时，才可以直接用这些结果回答；否则不要编造，也不要只凭叙事直觉回答。',
   '玩家查看背包或询问持有物时调用 get_inventory。玩家使用、转交、展示、拾取或丢弃道具时，先读取背包确认 action.kind，再调用 execute_item_action；不要只叙述成功，也不要用 apply_world_patch 直接改 ownership 或数量。',
 ].join('\n');
+const WORLD_AGENT_ACTION_NARRATION_INSTRUCTION = [
+  '当前任务是对一条已经由本地硬逻辑完成的动作做即时叙事。',
+  '上下文中 current=true 的 action_result 是本轮唯一待叙事结果；其他对话、实体 events 和工具结果都只作背景。',
+  '禁止盘点、编号、补叙或总结此前动作，也不要输出“我已经完成”“历史记录显示”“此前共发生”等内部检查或工作汇报。',
+  '玩家可见内容必须通过 dm_speak 或 npc_speak 输出；优先用 dm_speak 自然、具体地描写当前动作如何发生，以及受影响角色的身体动作、神态和即时反应，有必要时再用 npc_speak 表现角色回应。',
+  '对于 attack.resolved：如果受击目标是仍能行动的 NPC，必须读取该 NPC 的实体详情；在 DM 描写之后，再调用 npc_speak 让其依据性格、当前状态和刚刚受到的攻击作出即时回应。只有目标已经失能、死亡或明确无法说话时才省略 NPC 发言。',
+  '这里只限制叙事范围，不限制固定句数或篇幅；根据当前动作的重要程度自然展开，不要为了增加篇幅复述历史。',
+].join('\n');
+const WORLD_AGENT_ACTION_NARRATION_RETRY = [
+  '你刚才没有使用玩家可见发言工具。不要直接输出分析、检查或总结。',
+  '现在只处理 current=true 的 action_result，并调用 dm_speak 或 npc_speak 给出自然、具体的即时叙事；不要只复述命中、伤害或状态数值，可结合动作过程、身体反应和神态来表现这一结果。',
+].join('\n');
+const WORLD_AGENT_ACTION_NARRATION_FORCE_ATTEMPTS = 2;
 const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
   'get_entity_bundle',
@@ -241,6 +254,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
       assistantText: '',
       stepIndex: 1,
       modelTranscript: [],
+      actionNarrationRecoveryAttempts: {},
+      actionNarrationForcedTool: '',
     };
 
     if (shouldUseNativeToolPlanner(input)) {
@@ -264,6 +279,7 @@ async function runWorldAgentTaskInternal(input, handlers) {
       runId,
       steps,
       requestLog,
+      baseContextEvents,
       maxSteps,
       state,
     });
@@ -282,9 +298,24 @@ async function runLocalFallbackToolPlanningLoop({
   runId,
   steps,
   requestLog,
+  baseContextEvents,
   maxSteps,
   state,
 }) {
+  if (input.taskKind === 'action-narration') {
+    return await finishSuccessfulRun({
+      runId,
+      steps,
+      visibleAnswer: state.visibleAnswer,
+      assistantText: state.assistantText,
+      fallbackText: createActionNarrationFallback(baseContextEvents),
+      fallbackMessageKind: 'dm-narration',
+      requestLog,
+      handlers,
+      signal: input.signal,
+    });
+  }
+
   for (let plannerTurn = 1; plannerTurn <= maxSteps; plannerTurn += 1) {
     const decision = planFallbackToolCall({
       prompt,
@@ -335,23 +366,38 @@ async function runNativeToolPlanningLoop({
   const selectedModel = normalizeModel(input.model) || String(process.env.LLM_MODEL || '').trim();
   const thinkingMode = normalizeThinkingMode(input.thinking) || normalizeThinkingMode(process.env.LLM_THINKING);
   const endpoint = `${normalizeBaseURL(process.env.LLM_BASE_URL || 'https://api.openai.com/v1')}/chat/completions`;
+  const isActionNarration = input.taskKind === 'action-narration';
+  // DeepSeek's thinking mode rejects named tool_choice requests. Action narration
+  // needs deterministic tool recovery more than chain-of-thought, so keep the
+  // entire short-lived narration run in non-thinking mode instead of switching
+  // modes midway through one assistant transcript.
+  const planningThinkingMode = isActionNarration && isDeepSeekLikeModel(selectedModel)
+    ? 'disabled'
+    : thinkingMode;
+  const actionNarrationRequirements = isActionNarration
+    ? getActionNarrationRequirements(baseContextEvents)
+    : null;
   const messages = createInitialPlanningMessages({
     prompt,
     contextEvents: baseContextEvents,
     modeInstruction: WORLD_AGENT_NATIVE_TOOL_INSTRUCTION,
+    currentTaskInstruction: isActionNarration ? WORLD_AGENT_ACTION_NARRATION_INSTRUCTION : '',
     useNativeModelMessages: true,
   });
 
   while (state.stepIndex <= maxSteps) {
+    const forcedToolName = state.actionNarrationForcedTool;
+    state.actionNarrationForcedTool = '';
     const logEntry = {
       kind: 'tool-plan',
       mode: 'native-tools',
       stepIndex: state.stepIndex,
       model: selectedModel,
-      thinking: thinkingMode || 'unset',
+      thinking: planningThinkingMode || 'unset',
       createdAt: Date.now(),
       maxSteps,
       nativeTools: WORLD_AGENT_TOOL_SCHEMAS.map((tool) => tool.function.name),
+      forcedTool: forcedToolName || null,
       messages: messages.map(logModelMessage),
     };
     requestLog?.entries?.push(logEntry);
@@ -367,8 +413,10 @@ async function runNativeToolPlanningLoop({
         messages,
         stream: false,
         tools: WORLD_AGENT_TOOL_SCHEMAS,
-        tool_choice: 'auto',
-        ...deepSeekThinkingConfig(input.thinking, selectedModel),
+        tool_choice: forcedToolName
+          ? { type: 'function', function: { name: forcedToolName } }
+          : 'auto',
+        ...deepSeekThinkingConfig(planningThinkingMode, selectedModel),
       }),
       signal: input.signal,
     });
@@ -386,11 +434,49 @@ async function runNativeToolPlanningLoop({
       ? assistantMessage.reasoning_content.length
       : 0;
     logEntry.toolCalls = summarizeNativeToolCalls(assistantMessage.tool_calls);
-    const assistantReasoningText = getAssistantReasoningText(assistantMessage, thinkingMode);
+    const assistantReasoningText = getAssistantReasoningText(assistantMessage, planningThinkingMode);
     const assistantVisibleParts = getAssistantVisibleParts(assistantMessage);
     const assistantVisibleText = assistantVisibleParts.map((part) => part.text).filter(Boolean).join('\n\n');
 
     if (!assistantMessage.tool_calls.length) {
+      if (isActionNarration) {
+        const missingTool = getMissingActionNarrationTool(steps, actionNarrationRequirements);
+        const recoveryAttempts = Number(state.actionNarrationRecoveryAttempts[missingTool] || 0);
+        if (missingTool && recoveryAttempts < WORLD_AGENT_ACTION_NARRATION_FORCE_ATTEMPTS) {
+          messages.push(createNativeAssistantTranscriptMessage(assistantMessage));
+          messages.push({
+            role: 'system',
+            content: createActionNarrationRecoveryInstruction(missingTool, actionNarrationRequirements),
+          });
+          state.actionNarrationRecoveryAttempts[missingTool] = recoveryAttempts + 1;
+          state.actionNarrationForcedTool = missingTool;
+          continue;
+        }
+
+        const hasDmNarration = hasSuccessfulActionToolStep(steps, 'dm_speak');
+        if (hasDmNarration && (assistantVisibleText || assistantMessage.reasoning_content)) {
+          const finalTranscript = createNativeAssistantTranscriptMessage({
+            ...assistantMessage,
+            content: '',
+          });
+          messages.push(finalTranscript);
+          state.modelTranscript.push(finalTranscript);
+        }
+
+        return await finishSuccessfulRun({
+          runId,
+          steps,
+          visibleAnswer: state.visibleAnswer,
+          assistantText: state.assistantText,
+          fallbackText: hasDmNarration ? '' : createActionNarrationFallback(baseContextEvents),
+          fallbackMessageKind: 'dm-narration',
+          requestLog,
+          modelTranscript: state.modelTranscript,
+          handlers,
+          signal: input.signal,
+        });
+      }
+
       if (assistantVisibleText || assistantMessage.reasoning_content) {
         const finalTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
         messages.push(finalTranscript);
@@ -422,7 +508,9 @@ async function runNativeToolPlanningLoop({
       });
     }
 
-    const assistantTranscript = createNativeAssistantTranscriptMessage(assistantMessage);
+    const assistantTranscript = createNativeAssistantTranscriptMessage(isActionNarration
+      ? { ...assistantMessage, content: '' }
+      : assistantMessage);
     messages.push(assistantTranscript);
     state.modelTranscript.push(assistantTranscript);
     await appendAssistantReasoningText({
@@ -431,13 +519,15 @@ async function runNativeToolPlanningLoop({
       handlers,
       signal: input.signal,
     });
-    await appendAssistantVisibleText({
-      parts: assistantVisibleParts,
-      runId,
-      state,
-      handlers,
-      signal: input.signal,
-    });
+    if (!isActionNarration) {
+      await appendAssistantVisibleText({
+        parts: assistantVisibleParts,
+        runId,
+        state,
+        handlers,
+        signal: input.signal,
+      });
+    }
 
     for (const toolCall of assistantMessage.tool_calls) {
       const parsed = parseNativeToolCall(toolCall);
@@ -479,12 +569,121 @@ async function runNativeToolPlanningLoop({
     steps,
     visibleAnswer: state.visibleAnswer,
     assistantText: state.assistantText,
-    fallbackText: state.visibleAnswer ? '' : summarizeAgentResult(prompt, steps),
+    fallbackText: state.visibleAnswer
+      ? ''
+      : isActionNarration
+        ? createActionNarrationFallback(baseContextEvents)
+        : summarizeAgentResult(prompt, steps),
+    fallbackMessageKind: isActionNarration ? 'dm-narration' : '',
     requestLog,
     modelTranscript: state.modelTranscript,
     handlers,
     signal: input.signal,
   });
+}
+
+function hasSuccessfulActionToolStep(steps, tool, predicate = () => true) {
+  return steps.some((step) => (
+    step.tool === tool
+    && step.result?.ok !== false
+    && predicate(step)
+  ));
+}
+
+function getActionNarrationRequirements(contextEvents) {
+  const currentAction = findCurrentActionResult(contextEvents);
+  const result = isRecord(currentAction?.result) ? currentAction.result : {};
+  const facts = isRecord(result.facts) ? result.facts : {};
+  const target = isRecord(facts.target) ? facts.target : {};
+  const narrationHints = isRecord(result.narrationHints) ? result.narrationHints : {};
+  const targetId = typeof target.id === 'string' ? target.id.trim() : '';
+  const targetName = typeof target.name === 'string' && target.name.trim() ? target.name.trim() : targetId;
+  const targetCanAct = narrationHints.targetCanAct === true
+    || (typeof narrationHints.targetCanAct !== 'boolean' && Number(facts.hpAfter) > 0);
+  const targetEntity = targetId ? getEntity(targetId) : null;
+  const currentScene = getCurrentScene();
+  const targetIsCurrentSceneNpc = targetEntity?.kind === 'character'
+    && targetId !== currentScene.playerId
+    && currentScene.residents.some((resident) => resident.id === targetId);
+
+  return {
+    targetId,
+    targetName,
+    requireNpcResponse: result.type === 'attack.resolved'
+      && targetCanAct
+      && targetIsCurrentSceneNpc,
+  };
+}
+
+function getMissingActionNarrationTool(steps, requirements) {
+  const targetId = requirements?.targetId || '';
+  if (
+    requirements?.requireNpcResponse
+    && !hasSuccessfulActionToolStep(
+      steps,
+      'get_entity_bundle',
+      (step) => String(step.args?.entityId || '') === targetId,
+    )
+  ) {
+    return 'get_entity_bundle';
+  }
+  if (!hasSuccessfulActionToolStep(steps, 'dm_speak')) {
+    return 'dm_speak';
+  }
+  if (
+    requirements?.requireNpcResponse
+    && !hasSuccessfulActionToolStep(
+      steps,
+      'npc_speak',
+      (step) => String(step.args?.npcEntityId || '') === targetId,
+    )
+  ) {
+    return 'npc_speak';
+  }
+  return '';
+}
+
+function createActionNarrationRecoveryInstruction(tool, requirements) {
+  if (tool === 'get_entity_bundle') {
+    return [
+      `受击者${requirements?.targetName ? `「${requirements.targetName}」` : ''}仍能行动，不能直接结束本轮。`,
+      `现在必须调用 get_entity_bundle 读取受击 NPC（entityId: ${requirements?.targetId || '未知'}）的身份、性格和当前状态，随后继续完成 DM 描写与 NPC 回应。`,
+    ].join('\n');
+  }
+  if (tool === 'npc_speak') {
+    return [
+      `受击 NPC${requirements?.targetName ? `「${requirements.targetName}」` : ''}仍能行动，当前动作不能在 DM 描写后直接结束。`,
+      `现在必须调用 npc_speak（npcEntityId: ${requirements?.targetId || '未知'}），让其依据刚读取的性格、当前状态和这次攻击作出自然的即时回应；不要复述历史攻击。`,
+    ].join('\n');
+  }
+  return WORLD_AGENT_ACTION_NARRATION_RETRY;
+}
+
+function findCurrentActionResult(contextEvents) {
+  const events = Array.isArray(contextEvents) ? contextEvents : [];
+  return [...events].reverse().find((event) => (
+    isRecord(event)
+    && event.type === 'action_result'
+    && event.current === true
+  )) || [...events].reverse().find((event) => isRecord(event) && event.type === 'action_result');
+}
+
+function createActionNarrationFallback(contextEvents) {
+  const currentAction = findCurrentActionResult(contextEvents);
+  if (!isRecord(currentAction)) return '动作已经结算。';
+
+  const result = isRecord(currentAction.result) ? currentAction.result : {};
+  const narrationHints = isRecord(result.narrationHints) ? result.narrationHints : {};
+  const visibleEffects = Array.isArray(narrationHints.visibleEffects)
+    ? narrationHints.visibleEffects
+        .filter((effect) => typeof effect === 'string' && effect.trim())
+        .map((effect) => effect.trim())
+    : [];
+  if (visibleEffects.length) return visibleEffects.join(' ');
+
+  const summary = typeof currentAction.summary === 'string' ? currentAction.summary.trim() : '';
+  if (summary) return summary;
+  return typeof result.summary === 'string' && result.summary.trim() ? result.summary.trim() : '动作已经结算。';
 }
 
 async function applyAgentDecision({
@@ -689,7 +888,7 @@ async function appendDmSpeakToolResult({ args, result, runId, state, handlers, s
   if (!content) return;
   state.visibleAnswer = appendVisibleAnswer(state.visibleAnswer, content);
   state.assistantText = appendVisibleAnswer(state.assistantText, content);
-  handlers.onAssistantTextStart?.({ runId });
+  handlers.onAssistantTextStart?.({ runId, messageKind: 'dm-narration' });
   await streamTextDeltas(content, handlers.onAssistantTextDelta, signal);
 }
 
@@ -762,6 +961,7 @@ async function finishSuccessfulRun({
   visibleAnswer,
   assistantText = '',
   fallbackText = '',
+  fallbackMessageKind = '',
   requestLog,
   modelTranscript = [],
   handlers,
@@ -774,7 +974,10 @@ async function finishSuccessfulRun({
   if (finalText) {
     answer = appendVisibleAnswer(answer, finalText);
     assistantConversationText = appendVisibleAnswer(assistantConversationText, finalText);
-    handlers.onAssistantTextStart?.({ runId });
+    handlers.onAssistantTextStart?.({
+      runId,
+      ...(fallbackMessageKind ? { messageKind: fallbackMessageKind } : {}),
+    });
     await streamTextDeltas(finalText, handlers.onAssistantTextDelta, signal);
   }
 
@@ -1144,7 +1347,13 @@ export function getAgentHistory() {
   }));
 }
 
-function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction, useNativeModelMessages = false }) {
+function createInitialPlanningMessages({
+  prompt,
+  contextEvents,
+  modeInstruction,
+  currentTaskInstruction = '',
+  useNativeModelMessages = false,
+}) {
   const fixedContext = readFixedContextBundle().content;
   const events = Array.isArray(contextEvents) ? contextEvents : [];
   const timeContext = getWorldTimeContext();
@@ -1157,6 +1366,12 @@ function createInitialPlanningMessages({ prompt, contextEvents, modeInstruction,
       role: 'system',
       content: modeInstruction,
     },
+    ...(currentTaskInstruction
+      ? [{
+          role: 'system',
+          content: currentTaskInstruction,
+        }]
+      : []),
     {
       role: 'system',
       content: formatWorldTimeContextForAgent(timeContext),
@@ -1204,13 +1419,19 @@ function contextEventsToModelMessages(contextEvents, { useNativeModelMessages = 
     }
 
     if (event.type === 'action_result') {
+      const isCurrentAction = event.current === true;
+      const eventId = Number(event.eventId);
       return [{
         role: 'system',
         content: [
-          '以下是本地硬逻辑已经执行并写入世界数据的动作结果。它不是玩家发言。',
+          isCurrentAction
+            ? '【本轮唯一待叙事动作结果】以下结果已经由本地硬逻辑执行并写入世界数据。'
+            : '以下是已经结算的历史动作结果。它只作背景，除非玩家明确追问，否则不要主动复述。',
+          isCurrentAction && Number.isSafeInteger(eventId) && eventId > 0 ? `事件 ID：${eventId}` : '',
           `摘要：${String(event.summary || '')}`,
           `结果：${JSON.stringify(isRecord(event.result) ? event.result : {})}`,
-        ].join('\n'),
+          isCurrentAction ? '只叙事这一条结果，不得盘点或补叙其他动作。' : '',
+        ].filter(Boolean).join('\n'),
       }];
     }
 
@@ -1372,12 +1593,14 @@ function normalizeNativeAssistantMessage(message) {
   };
 }
 
-function createNativeAssistantTranscriptMessage(message) {
+export function createNativeAssistantTranscriptMessage(message) {
   const transcript = {
     role: 'assistant',
     content: typeof message.content === 'string' ? message.content : '',
-    tool_calls: message.tool_calls,
   };
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
+    transcript.tool_calls = message.tool_calls;
+  }
   if (typeof message.reasoning_content === 'string') {
     transcript.reasoning_content = message.reasoning_content;
   }

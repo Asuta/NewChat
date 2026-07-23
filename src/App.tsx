@@ -16,6 +16,7 @@ import { WorldPanel } from './components/WorldPanel';
 import {
   buildCompactMessages,
   buildContextEvents,
+  buildCurrentActionContextEvents,
   createAgentStepMessage,
   createActionResultMessage,
   createConversation,
@@ -88,6 +89,7 @@ interface QueuedMessage {
 }
 
 type AgentTaskRole = 'user' | 'system';
+type AgentTaskKind = 'default' | 'action-narration';
 type SaveResetMode = 'template' | 'factory';
 
 interface AppProps {
@@ -307,6 +309,7 @@ export default function App({ stageOnly = false }: AppProps) {
     contextEvents,
     pendingSceneTransition,
     taskRole = 'user',
+    taskKind = 'default',
   }: {
     conversationId: string;
     assistantMessageId: string;
@@ -314,6 +317,7 @@ export default function App({ stageOnly = false }: AppProps) {
     contextEvents: ReturnType<typeof buildContextEvents>;
     pendingSceneTransition?: PendingSceneTransition;
     taskRole?: AgentTaskRole;
+    taskKind?: AgentTaskKind;
   }) {
     setError(null);
     setLastRequestLog(null);
@@ -340,6 +344,7 @@ export default function App({ stageOnly = false }: AppProps) {
           thinking: thinkingMode,
           prompt,
           taskRole,
+          taskKind,
           contextEvents,
           maxSteps: agentMaxSteps,
         }),
@@ -419,10 +424,12 @@ export default function App({ stageOnly = false }: AppProps) {
         }
 
         if (event.type === 'assistant_text_start') {
+          const messageKind = event.messageKind === 'dm-narration' ? 'dm-narration' as const : undefined;
           if (hasVisibleAssistantContent || activeAssistantContent) {
             const nextMessage = {
               ...createMessage('assistant', '', 'streaming'),
               agentRunId: runId,
+              ...(messageKind ? { kind: messageKind } : {}),
             };
             activeAssistantMessageId = nextMessage.id;
             activeAssistantContent = '';
@@ -431,6 +438,12 @@ export default function App({ stageOnly = false }: AppProps) {
           } else {
             activeAssistantMessageId = assistantMessageId;
             activeAssistantContent = '';
+            if (messageKind) {
+              patchAssistantMessage(conversationId, assistantMessageId, (message) => ({
+                ...message,
+                kind: messageKind,
+              }));
+            }
           }
           return;
         }
@@ -1197,14 +1210,21 @@ export default function App({ stageOnly = false }: AppProps) {
       const data = (await response.json()) as ExecuteWorldActionResponse;
       const nextAttackFeedback = createCharacterAttackFeedbackEvent(data.eventId, data.result);
       if (nextAttackFeedback) setCharacterAttackFeedback(nextAttackFeedback);
-      const actionMessage = createActionResultMessage(data.result);
+      const latestActiveConversation =
+        conversationsRef.current.find((conversation) => conversation.id === activeConversation.id)
+        || activeConversation;
+      const actionMessage = createActionResultMessage(data.result, data.eventId);
       const assistantMessage = createMessage('assistant', '', 'streaming');
-      const nextMessages = [...activeConversation.messages, actionMessage, assistantMessage];
-      const contextEvents = buildContextEvents(activeConversation, [...activeConversation.messages, actionMessage]);
+      const nextMessages = [...latestActiveConversation.messages, actionMessage, assistantMessage];
+      const contextEvents = buildCurrentActionContextEvents(
+        latestActiveConversation,
+        [...latestActiveConversation.messages, actionMessage],
+        actionMessage.id,
+      );
       applyWorldSnapshot(data.world);
       if (data.inventory) setInventory(data.inventory);
       if (action.kind.startsWith('item.') || action.kind === 'attack.weapon') setIsInventoryOpen(false);
-      updateActiveConversation((conversation) => ({
+      updateConversation(latestActiveConversation.id, (conversation) => ({
         ...conversation,
         updatedAt: Date.now(),
         messages: nextMessages,
@@ -1214,15 +1234,20 @@ export default function App({ stageOnly = false }: AppProps) {
         void selectWorldEntity(actionTargetId);
       }
       await streamAgentResponse({
-        conversationId: activeConversation.id,
+        conversationId: latestActiveConversation.id,
         assistantMessageId: assistantMessage.id,
         prompt: [
-          '请根据刚刚的本地硬逻辑动作结果进行 AI DM 叙事。',
+          `本轮唯一待叙事的是刚刚完成的本地硬逻辑动作事件 ${data.eventId}。`,
           'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害、治疗、持有关系或道具数量。',
-          '请叙事化这个结果，然后判断受影响 NPC 或周围环境是否应立即反应；如需要规则裁定或世界状态变化，请继续调用合适工具。',
+          '只叙事化 current=true 的这一条 action_result；此前动作均已完成叙事，不得盘点、编号、补叙或总结历史动作。',
+          '先用 dm_speak 自然、具体地描写这一次动作的过程和可见结果，可结合受影响角色的身体动作、神态与即时反应；如 NPC 或周围环境需要进一步回应，再调用合适工具。',
+          '如果这是一次攻击，并且受击目标是仍能行动的 NPC，必须读取该 NPC 的实体详情，并在 DM 描写之后使用 npc_speak 让其依据性格和当前状态作出即时回应；目标已经失能、死亡或明确无法说话时除外。',
+          '篇幅根据这一次动作自然展开，不限制固定句数，但不要为了增加篇幅复述此前动作。',
+          '不要输出“我已经完成”“历史记录显示”“此前共发生”等内部检查或工作汇报。',
         ].join('\n'),
         contextEvents,
         taskRole: 'system',
+        taskKind: 'action-narration',
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '动作执行失败。');
@@ -1560,6 +1585,7 @@ function parseWorldAgentStreamEvent(block: string): WorldAgentStreamEvent | null
       type: 'assistant_text_start',
       runId: typeof payload.runId === 'number' ? payload.runId : undefined,
       stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : undefined,
+      messageKind: payload.messageKind === 'dm-narration' ? 'dm-narration' : undefined,
     };
   }
   if (eventType === 'assistant_reasoning_start') {

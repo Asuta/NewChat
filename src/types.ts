@@ -10,7 +10,7 @@ export interface ChatMessage {
   role: Role;
   content: string;
   createdAt: number;
-  kind?: 'scene-transition' | 'action-result' | 'npc-speech' | 'agent-step' | 'assistant-reasoning';
+  kind?: 'scene-transition' | 'action-result' | 'dm-narration' | 'npc-speech' | 'agent-step' | 'assistant-reasoning';
   status?: 'streaming' | 'done' | 'error';
   agentRunId?: number;
   agentSteps?: AgentStep[];
@@ -30,6 +30,7 @@ export interface ChatMessage {
     timeLabel?: string;
   };
   actionResult?: ActionResult;
+  actionResultEventId?: number;
   agentStep?: AgentStep;
   itemReferences?: InventoryItemReference[];
 }
@@ -451,6 +452,8 @@ export type AgentContextEvent =
       type: 'action_result';
       summary: string;
       result: ActionResult;
+      eventId?: number;
+      current?: boolean;
     }
   | {
       type: 'agent_step';
@@ -568,6 +571,7 @@ export type WorldAgentStreamEvent =
       type: 'assistant_text_start';
       runId?: number;
       stepIndex?: number;
+      messageKind?: 'dm-narration';
     }
   | {
       type: 'assistant_reasoning_start';

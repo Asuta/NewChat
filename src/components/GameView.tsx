@@ -429,7 +429,7 @@ function GameActionComposer({
 function buildStageDialogueEntries(messages: ChatMessage[]): StageDialogueEntry[] {
   const candidates = messages.filter((message) => (
     message.role === 'assistant'
-    && (message.kind === undefined || message.kind === 'npc-speech')
+    && (message.kind === undefined || message.kind === 'dm-narration' || message.kind === 'npc-speech')
     && (message.content.trim() || message.status === 'streaming')
   ));
   const latestRunId = candidates[candidates.length - 1]?.agentRunId;
