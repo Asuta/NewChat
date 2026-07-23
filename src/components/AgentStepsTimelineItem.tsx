@@ -24,6 +24,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_time_state: '读取世界时间',
   update_time: '结算剧情时间',
   transition_scene: '推进时间并切换场景',
+  leave_scene: '人物离开当前场景',
   enter_scene: '切换场景',
   apply_world_patch: '修改世界数据',
 };

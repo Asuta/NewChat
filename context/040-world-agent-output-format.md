@@ -17,6 +17,7 @@
 - 查询规则：调用 `search_rules`，再按需调用 `get_rule_section`。
 - 掷骰：调用 `roll_dice`，参数 `expression` 和 `reason`。
 - 写入世界：调用 `apply_world_patch`，必须使用 `operations` 数组。
+- 当前场景人物完成离场：调用 `leave_scene`，使用 `departures` 数组；每项必须有 `entityId` 和 `reason`，明确去向时再加 `destinationSceneId`。
 - 推进时间并切换场景：调用 `transition_scene`，优先传 `sceneId`，只有只知道当前出口关系 id 时才传 `exitId`；同时提供 `sceneTimeSegments`、`travelMinutes`、`travelReason`、`throughConversationId` 和 `previousSceneSummary`。
 
 `dm_speak` 会作为普通 DM 叙事显示在聊天流里，并在游戏视图中投影为舞台旁白。适合写当前画面、行动结果、环境变化或 DM 说明；保持自然叙事即可，不要输出工具名或内部流程。不要在这里写 NPC 的逐字直接对白、引号内台词或拟声式台词。
@@ -65,7 +66,22 @@
 }
 ```
 
-移动 NPC、物品或其他非玩家实体位置时，`apply_world_patch` 使用；玩家进入新场景只能调用 `transition_scene`：
+当前场景人物已经完成离开时使用 `leave_scene`，不要只在旁白里写离场。去向未知时省略 `destinationSceneId`：
+
+```json
+{
+  "departures": [
+    {
+      "entityId": "character_wandering_child",
+      "reason": "被玩家赶离客运站。"
+    }
+  ]
+}
+```
+
+如果多人同时离场，将所有人物放进同一次 `departures` 调用；如果明确知道某人去了哪个现有场景，再为该项填写 `destinationSceneId`。工具成功后才能调用 `dm_speak` 描述本轮新发生的离场。准备离开、口头说要走、条件句、假设情形和复述已有离场记录时不要调用此工具。
+
+普通 NPC、物品或其他非玩家实体位置变化时，`apply_world_patch` 使用；玩家进入新场景只能调用 `transition_scene`：
 
 ```json
 {
@@ -83,7 +99,7 @@
 
 修改实体组件字段时使用 `set_component`；创建实体时使用 `create_entity`；创建道具并设置持有者时使用 `create_owned_item`；设置普通关系时使用 `set_relationship`。不要用 `set_relationship` 写 `located_in`，位置移动必须使用 `set_location`。
 
-如果 NPC 已经昏迷、死亡、逃跑、被束缚或没有合理动机立即行动，可以用 `dm_speak` 叙述这个原因；否则不要在玩家敌意行动刚结算后立刻结束本轮。
+如果 NPC 已经昏迷、死亡、被束缚或没有合理动机立即行动，可以用 `dm_speak` 叙述这个原因；如果 NPC 已成功逃离当前场景，必须先调用 `leave_scene`。否则不要在玩家敌意行动刚结算后立刻结束本轮。
 
 除非规则或实体数据明确有多重攻击、额外攻击、借机攻击等能力，同一个 NPC 的一次即时反应中只应出现一次攻击检定；后续可以用台词、移动、防御、呼救或交还行动权继续推进。
 

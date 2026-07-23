@@ -18,8 +18,15 @@ const successfulWorldPatch = {
   result: { ok: true },
 };
 
-test('successful scene transitions and world patches request an immediate UI sync', () => {
+const successfulLeaveScene = {
+  tool: 'leave_scene',
+  args: { departures: [{ entityId: 'character_wandering_child', reason: '离开。' }] },
+  result: { ok: true },
+};
+
+test('successful scene transitions, departures and world patches request an immediate UI sync', () => {
   assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulTransition), true);
+  assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulLeaveScene), true);
   assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulWorldPatch), true);
   assert.equal(isSuccessfulRealtimeWorldMutationStep({
     ...successfulTransition,
@@ -46,6 +53,11 @@ test('only a successful realtime world mutation exposes its snapshot', () => {
   assert.equal(getWorldRealtimeSnapshot({
     type: 'step',
     step: successfulTransition,
+    realtimeSnapshot,
+  }), realtimeSnapshot);
+  assert.equal(getWorldRealtimeSnapshot({
+    type: 'step',
+    step: successfulLeaveScene,
     realtimeSnapshot,
   }), realtimeSnapshot);
   assert.equal(getWorldRealtimeSnapshot({

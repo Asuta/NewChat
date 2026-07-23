@@ -112,6 +112,7 @@ Agent 可用规则工具：
 - `get_time_state`：读取权威时间检查点和检查点之后尚未结算的剧情。
 - `update_time`：玩家查询时间时，按剧情分项结算耗时并推进检查点游标。
 - `transition_scene`：分别结算上一场景尚未结算的剧情耗时与赶路耗时，再原子推进时间和切换场景。
+- `leave_scene`：让当前场景中的一个或多个人物原子离场；可转移到明确目的地，也可保留人物实体并清除未知去向者的位置。
 - `apply_world_patch`：唯一通用写入入口，支持 dry run、diff、undoOperations 和 schema 校验。移动实体位置时使用 `set_location` 子操作；普通关系才使用 `set_relationship`。
 - `dm_speak`：输出普通 DM 叙事、动作描写、环境变化、规则结果或说明。
 - `npc_speak`：让某个 NPC 以独立气泡说出纯对白。

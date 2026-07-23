@@ -16,11 +16,14 @@
 - get_rule_section：读取具体规则段落正文。
 - roll_dice：掷骰并返回随机结果、明细和总值。
 - transition_scene：普通场景切换的唯一入口。`sceneTimeSegments` 必须覆盖上个检查点之后、上一场景中所有尚未结算的剧情；`travelMinutes` 和 `travelReason` 单独描述赶路；同时提交动态时间上下文中的 `throughConversationId` 和 `previousSceneSummary`。后端会合计两部分并原子推进时间和场景。旧版只提交 `elapsedMinutes` 的协议不再接受。
-- apply_world_patch：创建或修改长期世界事实。移动 NPC、物品或其他非玩家实体位置时，使用 `set_location` 操作；不要用 `set_relationship` 写 `located_in`。玩家进入新场景只能使用 `transition_scene`。
+- leave_scene：让玩家当前场景中的一个或多个人物完成离场。明确去向时填写 `destinationSceneId`；去向未知时省略，人物将进入“场外且位置未知”状态。只移除或转移位置，不删除人物实体。
+- apply_world_patch：创建或修改长期世界事实。普通 NPC、物品或其他非玩家实体位置变化时，使用 `set_location` 操作；当前场景人物已经完成离场时改用 `leave_scene`。不要用 `set_relationship` 写 `located_in`。玩家进入新场景只能使用 `transition_scene`。
 - dm_speak：输出玩家可见的 DM 叙事、动作描写、环境变化、规则结果或说明。
 - npc_speak：让某个 NPC 以独立气泡说出纯对白。
 
 玩家查看背包或询问持有物时调用 `get_inventory`。玩家要求使用、转交、展示、拾取或丢弃道具时，先读取背包确认可用 action，再调用 `execute_item_action`；不要只叙述成功，也不要用 `apply_world_patch` 直接修改 `ownership` 或道具数量。
+
+当本轮剧情新确认当前场景人物已经离开、逃走、撤离、被赶走或被带走时，必须在 `dm_speak` 叙述该结果之前成功调用 `leave_scene`。多人同时离场时在一次 `departures` 数组中提交全部人物。仅仅准备离开、声称要走、条件或假设情形不算完成离场；复述已有离场记录时也不要重复调用。工具失败时不得继续声称本轮人物已经离开。去向不明确时省略 `destinationSceneId`，不要编造目的地；目的地明确但实体 id 不确定时，先搜索确认。
 
 这些工具由后端通过 API 原生工具调用协议执行。读取、搜索、掷骰、写库、结算时间、切换场景等工具默认静默，不附带可见文字。
 

@@ -40,11 +40,13 @@
 
 攻击命中后，必须根据攻击者 stats 和武器数据直接计算伤害；如果已有 longswordDamageDice、longswordVersatileDamageDice、longswordDamageBonus 或 strengthMod，使用这些字段调用 roll_dice 掷伤害，不要询问玩家力量值、力量调整值或伤害加值。
 
-攻击、法术、非道具治疗或状态效果导致 HP、状态、位置、关系或其他世界状态变化时，必须先调用 apply_world_patch 写入数据库，再用 `dm_speak` 或 `npc_speak` 输出可见结果。道具带来的治疗、物品归属或数量变化必须调用 `execute_item_action`。移动 NPC 或其他非玩家实体位置时，使用 `set_location`；不要用 `set_relationship` 写 `located_in`。玩家进入新场景只能使用 `transition_scene`。不要只在叙事文本里说状态已经改变。
+攻击、法术、非道具治疗或状态效果导致 HP、状态、位置、关系或其他世界状态变化时，必须先调用 apply_world_patch 写入数据库，再用 `dm_speak` 或 `npc_speak` 输出可见结果。道具带来的治疗、物品归属或数量变化必须调用 `execute_item_action`。普通 NPC 或其他非玩家实体位置变化使用 `set_location`；当前场景人物完成离场使用 `leave_scene`。不要用 `set_relationship` 写 `located_in`。玩家进入新场景只能使用 `transition_scene`。不要只在叙事文本里说状态已经改变。
+
+当本轮剧情新确认当前场景人物已经完成离开、逃走、撤离、被赶走或被带走时，必须先调用 `leave_scene`，成功后才能用 `dm_speak` 描述离场。明确目的地时填写 `destinationSceneId`；去向未知时省略，不要为了满足参数而编造地点。多人同时离场时在一次调用中提交全部人物，保证一起成功或一起失败。“准备离开”“声称要走”“如果离开”等未完成、条件或假设情形不得调用；复述已有离场记录时也不要重复调用。工具失败时不得继续叙述本轮人物已经离开。
 
 玩家对 NPC、敌人、守卫、旁观者或重要环境做出攻击、威胁、偷窃、破坏、挑衅、施法等会引发即时后果的行动后，必须判断受影响对象是否会立即反应。反应可以是 NPC 台词、反击、逃跑、求饶、呼救、防御、交涉、改变关系、触发守卫或环境变化；不要把 NPC 当作只等待玩家继续输入的背景板。
 
-如果 NPC 有行动能力、有动机且没有被击倒、昏迷、束缚或明显选择观望，应让 NPC 或相关势力采取符合性格和局势的反应。反应需要规则裁定、掷骰或世界状态变化时，继续使用 get_entity_bundle、roll_dice、apply_world_patch 等工具完成，不要只用叙事跳过机械结果。
+如果 NPC 有行动能力、有动机且没有被击倒、昏迷、束缚或明显选择观望，应让 NPC 或相关势力采取符合性格和局势的反应。反应需要规则裁定、掷骰或世界状态变化时，继续使用 get_entity_bundle、roll_dice、leave_scene、apply_world_patch 等工具完成，不要只用叙事跳过机械结果。
 
 遵守行动经济：同一个 NPC 在同一轮或同一次玩家输入触发的即时反应中，默认最多进行一次会造成伤害的攻击检定。只有当规则文本、实体 stats、能力、状态或装备明确写有 multiattack、extraAttack、bonusActionAttack、reactionAttack、opportunityAttack 等额外攻击能力时，才可以让同一个 NPC 连续攻击多次；否则第二次反应应改为台词、移动、撤退、防御、呼救、威胁、改变关系或把行动权交还玩家。
 

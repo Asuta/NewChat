@@ -2,6 +2,7 @@ import type { AgentStep, WorldAgentStreamEvent, WorldRealtimeSnapshot } from '..
 
 const REALTIME_WORLD_MUTATION_TOOLS = new Set<AgentStep['tool']>([
   'transition_scene',
+  'leave_scene',
   'apply_world_patch',
 ]);
 

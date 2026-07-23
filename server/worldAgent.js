@@ -11,6 +11,7 @@ import {
   getWorldTimeContext,
   getWorldTimeState,
   getWorldOverview,
+  leaveSceneEntities,
   listAgentRuns,
   listAgentSteps,
   listRelationships,
@@ -39,6 +40,7 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   'dm_speak 和 npc_speak 只是最终展示工具，不是行动工具；它们不能替代读取、搜索、掷骰、规则裁定、写库或切换场景工具。',
   '不确定 NPC 实体 id 时，先调用搜索或读取工具确认，不要编造 entityId。',
   '只有位于玩家当前场景的 NPC 才能调用 npc_speak；场外 NPC 不能发言。',
+  '本轮剧情中新发生并完成当前场景人物离开、逃走、撤离、被赶走或被带走时，必须在 dm_speak 叙述前成功调用 leave_scene；准备离开、声称要走、条件或假设情形不算已经离场，复述已有离场记录也不要重复调用。',
   '读取背包必须调用 get_inventory；使用、转交、展示、拾取或丢弃道具必须调用 execute_item_action，不要用 apply_world_patch 绕过背包校验。',
 ].join('\n');
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
@@ -49,7 +51,8 @@ const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '时间证据优先级：明确绝对时间（例如睡到 22:00）高于明确持续时间，高于行为类型估算。每个分项必须提供 evidence；明确时刻必须规范为 HH:MM，minutes 必须等于检查点到目标时刻的分钟差。纯粹复述、确认或时间回答本身可以计为 0 分钟。',
   '玩家请求进入或切换场景时，必须调用 transition_scene：sceneTimeSegments 要覆盖检查点之后上一场景中所有尚未结算的剧情，travelMinutes 单独表示赶路时间，并使用动态时间上下文给出的 throughConversationId。',
   '没有明确时间证据时才参考：简短问答 5-10 分钟；仔细调查 10-30 分钟；战斗 5-30 分钟；治疗或准备 30-120 分钟。睡眠、等待到指定时刻等长事件必须按明确时间锚点计算，不受该参考区间限制。',
-  '玩家进入新场景只能调用 transition_scene。移动 NPC、队友、物品或其他非玩家实体时，调用 apply_world_patch，并在 operations 中使用 set_location；不要用 set_relationship 写 located_in。',
+  '玩家进入新场景只能调用 transition_scene。当前场景人物已经离场时调用 leave_scene；明确去往另一场景时填写 destinationSceneId，去向未知时省略。其他非玩家实体位置变化调用 apply_world_patch 的 set_location；不要用 set_relationship 写 located_in。',
+  'leave_scene 必须在本轮新发生的离场叙事之前成功执行；多人同时离场时在一次 departures 数组中提交全部人物。已有离场记录不要重复提交；工具失败时不得继续声称本轮人物已经离开。',
   'NPC 问答特别规则：当玩家向某个 NPC 提问时，不要因为需要用 NPC 口吻回答就跳过工具。npc_speak 只是最终展示方式，不代表已经知道答案。',
   '如果玩家的问题涉及已有世界事实、当前场景、其他角色、地点、物品、阵营、关系、历史事件、状态、位置、任务线索、规则结果或 NPC 是否知道某事，必须先通过工具查询相关世界数据，再决定 NPC 是否知道、如何回答、是否隐瞒或误导。',
   '常见工具选择：问这里还有谁、场景里有哪些重要角色、附近有什么，先用 get_current_scene 或 get_scene_entities；问某个人、组织、地点、物品、旧事，先用 search_entities，再按需 get_entity_bundle；问两者关系、血缘、敌友、从属或认识程度，用 get_relationships，必要时读取双方实体详情。',
@@ -74,6 +77,7 @@ const WORLD_AGENT_TOOL_NAMES = new Set([
   'dm_speak',
   'npc_speak',
   'transition_scene',
+  'leave_scene',
   'apply_world_patch',
 ]);
 const WORLD_AGENT_TOOL_SCHEMAS = [
@@ -175,7 +179,23 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     throughConversationId: { type: 'number', description: '动态时间上下文中的 latestConversationId，表示已分析到此剧情事件。' },
     previousSceneSummary: { type: 'string', description: '玩家离开上一场景前完成了什么。' },
   }, ['sceneTimeSegments', 'travelMinutes', 'travelReason', 'throughConversationId', 'previousSceneSummary']),
-  createToolSchema('apply_world_patch', '创建或修改长期世界事实。移动实体位置必须使用 set_location，不要用 set_relationship 写 located_in。', {
+  createToolSchema('leave_scene', '让玩家当前场景中的一个或多个人物完成离场。本轮剧情新确认人物已经离开、逃走、撤离、被赶走或被带走时，必须在 dm_speak 叙述前调用；仅仅准备离开、声称要走、条件、假设或复述已有离场记录不得调用。有明确去向时填写 destinationSceneId，去向未知时省略。', {
+    departures: {
+      type: 'array',
+      minItems: 1,
+      description: '本次已经完成离场的人物列表；多人同时离场必须在一次调用中全部提交。',
+      items: {
+        type: 'object',
+        properties: {
+          entityId: { type: 'string', description: '当前场景中已经完成离场的人物实体 id。' },
+          destinationSceneId: { type: 'string', description: '可选的明确目标场景实体 id；去向未知时省略。' },
+          reason: { type: 'string', description: '人物离场的剧情原因，例如被玩家赶走、主动撤离或被同伴带走。' },
+        },
+        required: ['entityId', 'reason'],
+      },
+    },
+  }, ['departures']),
+  createToolSchema('apply_world_patch', '创建或修改长期世界事实。普通实体移动使用 set_location；当前场景人物已经完成离场时改用 leave_scene。不要用 set_relationship 写 located_in。', {
     operations: {
       type: 'array',
       items: { type: 'object' },
@@ -623,6 +643,26 @@ export function prepareToolResultForAgentStep(tool, result) {
     };
   }
 
+  if (tool === 'leave_scene') {
+    const departures = Array.isArray(result.departures) ? result.departures : [];
+    return {
+      ok: true,
+      departures: departures.map((departure) => {
+        if (!isRecord(departure)) return departure;
+        return {
+          entityId: departure.entityId,
+          entityName: departure.entityName,
+          fromSceneId: departure.fromSceneId,
+          fromSceneName: departure.fromSceneName,
+          destinationSceneId: departure.destinationSceneId,
+          destinationSceneName: departure.destinationSceneName,
+          reason: departure.reason,
+        };
+      }),
+      summary: typeof result.summary === 'string' ? result.summary : '人物离场成功。',
+    };
+  }
+
   if (tool === 'apply_world_patch') {
     const patch = isRecord(result.patch) ? result.patch : {};
     const applied = Array.isArray(patch.applied) ? patch.applied : [];
@@ -989,6 +1029,22 @@ export function executeWorldTool(tool, args, prompt = '') {
           `玩家进入 ${result.scene.scene?.name ?? targetSceneId}，时间推进 ${result.elapsedMinutes} 分钟至 ${result.clockAfter.fullLabel}。`,
           '请检查当前是否有队友、伙伴、随行 NPC 或其他应随玩家移动的角色；如有，请继续调用 apply_world_patch 的 set_location 操作同步他们的位置。',
         ].join(''),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  if (tool === 'leave_scene') {
+    try {
+      const result = leaveSceneEntities(args.departures);
+      return {
+        ok: true,
+        ...result,
+        answer: result.summary,
       };
     } catch (error) {
       return {

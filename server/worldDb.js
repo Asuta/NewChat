@@ -1050,6 +1050,112 @@ export function setCurrentLocation(entityId, sceneId, source = 'world', summary 
   });
 }
 
+export function clearCurrentLocation(entityId, expectedSceneId = '') {
+  const entity = getEntity(entityId);
+  if (!entity) throw new Error(`实体 ${entityId || '(empty)'} 不存在。`);
+  const locations = listRelationships({ entityId, direction: 'out', type: 'located_in' });
+  if (expectedSceneId && !locations.some((relationship) => relationship.targetEntityId === expectedSceneId)) {
+    throw new Error(`${entity.name} 当前不在场景 ${expectedSceneId}。`);
+  }
+  for (const relationship of locations) {
+    deleteRelationship(relationship.sourceEntityId, relationship.targetEntityId, relationship.type);
+  }
+  return locations.map((relationship) => relationship.targetEntityId);
+}
+
+export function leaveSceneEntities(departures = []) {
+  if (!Array.isArray(departures) || !departures.length) {
+    throw new Error('leave_scene 需要 departures 数组。');
+  }
+
+  const currentScene = getCurrentScene();
+  const fromScene = currentScene.scene;
+  if (!fromScene) throw new Error('玩家当前场景无效，不能处理人物离场。');
+  const seenEntityIds = new Set();
+  const normalized = departures.map((departure, index) => {
+    if (!departure || typeof departure !== 'object' || Array.isArray(departure)) {
+      throw new Error(`departure #${index + 1} 必须是对象。`);
+    }
+    const entityId = firstString(departure.entityId, departure.characterId, departure.npcEntityId);
+    const destinationSceneId = firstString(departure.destinationSceneId, departure.targetSceneId);
+    const reason = firstString(departure.reason, departure.summary);
+    if (!entityId) throw new Error(`departure #${index + 1} 需要 entityId。`);
+    if (!reason) throw new Error(`departure #${index + 1} 需要 reason。`);
+    if (seenEntityIds.has(entityId)) throw new Error(`人物 ${entityId} 在同一次离场请求中重复出现。`);
+    seenEntityIds.add(entityId);
+
+    const entity = getEntity(entityId);
+    if (!entity) throw new Error(`人物实体 ${entityId} 不存在。`);
+    if (entityId === currentScene.playerId) throw new Error('玩家进入或离开场景必须使用 transition_scene。');
+    if (entity.kind !== 'character') throw new Error(`${entity.name}（${entityId}）不是人物实体。`);
+    const currentLocationId = getCurrentLocationId(entityId);
+    if (currentLocationId !== fromScene.id) {
+      throw new Error(`${entity.name}（${entityId}）不在玩家当前场景 ${fromScene.name}。`);
+    }
+
+    let destinationScene = null;
+    if (destinationSceneId) {
+      destinationScene = getEntity(destinationSceneId);
+      if (!destinationScene || destinationScene.kind !== 'scene') {
+        throw new Error(`目标场景 ${destinationSceneId} 不存在。`);
+      }
+      if (destinationScene.id === fromScene.id) {
+        throw new Error(`${entity.name} 的目标场景仍是当前场景 ${fromScene.name}。`);
+      }
+    }
+
+    return { entity, destinationScene, reason };
+  });
+
+  return withTransaction(() => {
+    const applied = normalized.map(({ entity, destinationScene, reason }) => {
+      if (destinationScene) {
+        setCurrentLocation(
+          entity.id,
+          destinationScene.id,
+          'entity.leave_scene',
+          `${entity.name}离开${fromScene.name}，前往${destinationScene.name}。${reason}`,
+        );
+      } else {
+        clearCurrentLocation(entity.id, fromScene.id);
+      }
+      const summary = destinationScene
+        ? `${entity.name}离开${fromScene.name}，前往${destinationScene.name}。`
+        : `${entity.name}离开${fromScene.name}，去向未知。`;
+      const event = addEvent('entity.left_scene', entity.id, destinationScene?.id || fromScene.id, {
+        summary,
+        reason,
+        fromSceneId: fromScene.id,
+        fromSceneName: fromScene.name,
+        destinationSceneId: destinationScene?.id || null,
+        destinationSceneName: destinationScene?.name || null,
+      });
+      return {
+        entityId: entity.id,
+        entityName: entity.name,
+        fromSceneId: fromScene.id,
+        fromSceneName: fromScene.name,
+        destinationSceneId: destinationScene?.id || null,
+        destinationSceneName: destinationScene?.name || null,
+        reason,
+        eventId: event.id,
+        summary,
+      };
+    });
+
+    return {
+      departures: applied,
+      scene: getCurrentScene(),
+      undoOperations: applied.map((departure) => ({
+        op: 'set_location',
+        entityId: departure.entityId,
+        sceneId: departure.fromSceneId,
+      })),
+      summary: `已让 ${applied.map((departure) => departure.entityName).join('、')} 离开当前场景。`,
+    };
+  });
+}
+
 export function getCurrentScene() {
   const playerId = getMeta('playerId', 'player');
   const sceneId = getCurrentLocationId(playerId) || getMeta('currentSceneId', 'scene_bus_station');
