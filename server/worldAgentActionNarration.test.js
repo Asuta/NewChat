@@ -20,6 +20,7 @@ test('local fallback narrates only the current action result', () => {
     const response = await worldAgent.runWorldAgentTaskStream({
       prompt: '只叙事本轮攻击，不要重算命中或伤害。',
       taskKind: 'action-narration',
+      judgeQuests: false,
       maxSteps: 3,
       contextEvents: [{
         type: 'action_result',
@@ -82,6 +83,7 @@ test('dm_speak streams an explicit DM narration message kind', () => {
     const response = await worldAgent.runWorldAgentTaskStream({
       prompt: '只叙事本轮攻击。',
       taskKind: 'action-narration',
+      judgeQuests: false,
       model: 'test-model',
       maxSteps: 3,
       contextEvents: [{
@@ -201,6 +203,7 @@ test('an active attacked NPC is read, narrated, and given an immediate response'
     const response = await worldAgent.runWorldAgentTaskStream({
       prompt: '只叙事本轮攻击，并让仍能行动的受击 NPC 回应。',
       taskKind: 'action-narration',
+      judgeQuests: false,
       model: 'deepseek-v4-flash',
       thinking: 'enabled',
       maxSteps: 8,
@@ -278,6 +281,7 @@ test('an attacked player receives DM narration without being forced through npc_
     const response = await worldAgent.runWorldAgentTaskStream({
       prompt: 'Narrate only the current attack.',
       taskKind: 'action-narration',
+      judgeQuests: false,
       model: 'test-model',
       maxSteps: 5,
       contextEvents: [{

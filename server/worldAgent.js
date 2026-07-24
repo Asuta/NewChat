@@ -26,6 +26,7 @@ import {
   normalizePortraitState,
   NPC_SPEECH_PORTRAIT_STATES,
 } from './presentationPortraits.js';
+import { judgeQuestsAfterTurn } from './questJudge.js';
 
 export const WORLD_AGENT_DEFAULT_MAX_STEPS = 30;
 export const WORLD_AGENT_MIN_STEPS = 1;
@@ -224,11 +225,44 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
 ];
 
 export async function runWorldAgentTask(input) {
-  return runWorldAgentTaskInternal(input, {});
+  const result = await runWorldAgentTaskInternal(input, {});
+  return finalizeTaskWithQuestJudgment(input, result);
 }
 
 export async function runWorldAgentTaskStream(input, handlers = {}) {
-  return runWorldAgentTaskInternal(input, handlers);
+  const result = await runWorldAgentTaskInternal(input, {
+    ...handlers,
+    onDone: undefined,
+  });
+  const finalized = await finalizeTaskWithQuestJudgment(input, result);
+  handlers.onDone?.(finalized);
+  return finalized;
+}
+
+async function finalizeTaskWithQuestJudgment(input, result) {
+  if (!shouldJudgeQuestsAfterTask(input)) return result;
+  let questJudgment;
+  try {
+    questJudgment = await judgeQuestsAfterTurn({
+      model: input.model,
+      signal: input.signal,
+      requestLog: result.requestLog,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[quest-judge] ${message}`);
+    questJudgment = { status: 'failed', changes: [], error: message };
+  }
+  return {
+    ...result,
+    questJudgment,
+    world: getWorldOverview(),
+  };
+}
+
+function shouldJudgeQuestsAfterTask(input) {
+  if (input.judgeQuests === false) return false;
+  return input.taskRole !== 'system' || input.taskKind === 'action-narration';
 }
 
 async function runWorldAgentTaskInternal(input, handlers) {

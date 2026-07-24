@@ -1,8 +1,26 @@
+import {
+  MA_DASHUAI_QUEST_JUDGE_DEFAULTS,
+  QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY,
+  QUEST_JUDGE_EVENT_CURSOR_META_KEY,
+  QUEST_JUDGE_INITIALIZED_META_KEY,
+} from './questConfig.js';
+
 export const MA_DASHUAI_PLAYER_PROFILE_ID = 'ma-dashuai-player-v1';
 export const MA_DASHUAI_CAMPAIGN_ID = 'ma-dashuai-city-life';
 export const MA_DASHUAI_YUFEN_PROFILE_ID = 'ma-dashuai-yufen-v1';
 export const MA_DASHUAI_GANGZI_PROFILE_ID = 'ma-dashuai-gangzi-v1';
 export const MA_DASHUAI_PRESET_REVISION = 'ma-dashuai-episode-guide-v3';
+
+export const MA_DASHUAI_MAIN_QUEST_OBJECTIVES = Object.freeze([
+  Object.freeze({ questId: 'quest_survive_city', text: '在钱包和地址被偷后设法活下来', status: 'active' }),
+  Object.freeze({ questId: 'quest_find_debiao', text: '找到范德彪并恢复与家人的联系', status: 'active' }),
+  Object.freeze({ questId: 'quest_find_xiaocui', text: '找到小翠并听她说明逃婚原因', status: 'pending' }),
+  Object.freeze({ questId: 'quest_cancel_marriage', text: '处理三万元彩礼与婚约', status: 'locked' }),
+  Object.freeze({ questId: 'quest_city_jobs', text: '在城里谋生并照顾玉芬', status: 'locked' }),
+  Object.freeze({ questId: 'quest_debiao_business', text: '帮助范德彪和乡亲面对垂钓园骗局', status: 'locked' }),
+  Object.freeze({ questId: 'quest_gangzi_revenge', text: '营救小翠并劝钢子投案', status: 'locked' }),
+  Object.freeze({ questId: 'quest_build_school', text: '将遗产用于创办打工子弟小学', status: 'locked' }),
+]);
 
 export const MA_DASHUAI_VICTORIA_SCENE_ENTITIES = Object.freeze([
   ['scene_victoria', 'scene', '维多利亚娱乐广场'],
@@ -539,10 +557,10 @@ export function seedMaDashuaiWorld(api) {
     ['lore_wandering_children', 'identity', { role: 'campaign_lore', description: '马大帅在车站认识流浪孩子，又带他们讨债。他与孩子们的感情最终促成创办打工子弟小学。' }],
     ['lore_su_inheritance', 'identity', { role: 'campaign_lore', description: '马大帅照顾孤独的苏老太太并认她为干妈。老太太去世后留下五十余万元，成为办学资金。' }],
     ['lore_realism_tone', 'identity', { role: 'campaign_lore', description: '本世界遵循东北小人物现实喜剧基调：没有魔法、超能力或玄幻设定。人物不应被写成单纯好人或恶人，冲突来自贫穷、面子、误会、家庭责任和城市生活压力；叙事可以幽默，但不能嘲弄弱者。' }],
-    ['quest_main', 'quest', { status: 'active', phaseStatus: 'episode_1', title: '马大帅进城寻女', description: '从第1集进城寻女开始，经历找人、退婚、谋生、照顾亲友、垂钓园骗局和创办学校。', objectives: [{ text: '在钱包和地址被偷后设法活下来', status: 'active' }, { text: '找到范德彪并恢复与家人的联系', status: 'pending' }, { text: '找到小翠并听她说明逃婚原因', status: 'pending' }, { text: '处理三万元彩礼与婚约', status: 'locked' }, { text: '在城里谋生并照顾玉芬', status: 'locked' }, { text: '帮助范德彪和乡亲面对垂钓园骗局', status: 'locked' }, { text: '营救小翠并劝钢子投案', status: 'locked' }, { text: '将遗产用于创办打工子弟小学', status: 'locked' }], currentGuidance: '马大帅身在客运站附近，钱包和范德彪地址已经被偷。先解决今晚的吃住，再从街头消息中寻找范德彪。' }],
-    ['quest_survive_city', 'quest', { status: 'active', phaseStatus: 'available', episodeRange: '1—4', title: '身无分文在城里活下来', description: '在客运站附近找食物和过夜处，经历街头卖艺、排队买票与假钞误会，并设法从看守所脱身。', nextSceneId: 'scene_city_street' }],
-    ['quest_find_debiao', 'quest', { status: 'active', phaseStatus: 'available', episodeRange: '1—4', title: '寻找范德彪', description: '钱包和范德彪地址都已丢失。开场不能直接知道维多利亚位置，需要通过街头消息、卖艺人或后续寻人启事恢复联系。', nextSceneId: 'scene_city_street' }],
-    ['quest_find_xiaocui', 'quest', { status: 'inactive', phaseStatus: 'hidden', episodeRange: '4—5', title: '父女见面', description: '马大帅获释后追问小翠下落；小翠躲到小芸家，最终明确拒绝原有婚事。', nextSceneId: 'scene_xiaoyun_home' }],
+    ['quest_main', 'quest', { status: 'active', phaseStatus: 'episode_1', title: '马大帅进城寻女', description: '从第1集进城寻女开始，经历找人、退婚、谋生、照顾亲友、垂钓园骗局和创办学校。', objectives: MA_DASHUAI_MAIN_QUEST_OBJECTIVES.map((objective) => ({ ...objective })), currentGuidance: '马大帅身在客运站附近，钱包和范德彪地址已经被偷。先解决今晚的吃住，再从街头消息中寻找范德彪。' }],
+    ['quest_survive_city', 'quest', { status: 'active', phaseStatus: 'available', episodeRange: '1—4', title: '身无分文在城里活下来', description: '在客运站附近找食物和过夜处，经历街头卖艺、排队买票与假钞误会，并设法从看守所脱身。', nextSceneId: 'scene_city_street', ...MA_DASHUAI_QUEST_JUDGE_DEFAULTS.quest_survive_city }],
+    ['quest_find_debiao', 'quest', { status: 'active', phaseStatus: 'available', episodeRange: '1—4', title: '寻找范德彪', description: '钱包和范德彪地址都已丢失。开场不能直接知道维多利亚位置，需要通过街头消息、卖艺人或后续寻人启事恢复联系。', nextSceneId: 'scene_city_street', ...MA_DASHUAI_QUEST_JUDGE_DEFAULTS.quest_find_debiao }],
+    ['quest_find_xiaocui', 'quest', { status: 'inactive', phaseStatus: 'hidden', episodeRange: '4—5', title: '父女见面', description: '马大帅获释后追问小翠下落；小翠躲到小芸家，最终明确拒绝原有婚事。', nextSceneId: 'scene_xiaoyun_home', ...MA_DASHUAI_QUEST_JUDGE_DEFAULTS.quest_find_xiaocui }],
     ['quest_cancel_marriage', 'quest', { status: 'inactive', phaseStatus: 'locked', episodeRange: '6—8', title: '退婚与三万元彩礼', description: '马大帅决定退回彩礼，余富贵进城讨说法，吴总最终拿出三万元由范德彪回村处理退婚。', nextSceneId: 'scene_majia_village' }],
     ['quest_city_jobs', 'quest', { status: 'inactive', phaseStatus: 'locked', episodeRange: '6—24', title: '马大帅的谋生经历', description: '依次经历搓澡工、餐厅杂工、送盒饭、讨债、陪高局长聊天、拳击陪练和照顾苏老太太等工作。', nextSceneId: 'scene_bathhouse' }],
     ['quest_yufen_niu_er', 'quest', { status: 'inactive', phaseStatus: 'available', episodeRange: '1—23', title: '保护玉芬摆脱牛二', description: '玉芬仍在村里受牛二纠缠。她会进城寻找马大帅，后来再次遭牛二重伤并产生高额医药费。', nextSceneId: 'scene_majia_village' }],
@@ -685,7 +703,10 @@ export function seedMaDashuaiWorld(api) {
   setMeta('storyCheckpoint', '第1集：马大帅在城市客运站发现钱包和范德彪地址被偷，尚未找到任何亲友。');
   setMeta('presetRevision', MA_DASHUAI_PRESET_REVISION);
   setMeta('inventory.items.v1', 'ready');
-  addEvent('world.seeded', null, null, { summary: '按《马大帅》第一部第1集开场初始化预制世界：马大帅进城寻女，钱包和地址刚被偷。' });
+  const seedEvent = addEvent('world.seeded', null, null, { summary: '按《马大帅》第一部第1集开场初始化预制世界：马大帅进城寻女，钱包和地址刚被偷。' });
+  setMeta(QUEST_JUDGE_INITIALIZED_META_KEY, 'ready');
+  setMeta(QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY, '0');
+  setMeta(QUEST_JUDGE_EVENT_CURSOR_META_KEY, String(seedEvent?.id ?? 0));
 }
 
 export function ensureMaDashuaiPlayableState(api) {
@@ -696,6 +717,8 @@ export function ensureMaDashuaiPlayableState(api) {
     mergeComponentDefaults,
     applyStatsProfile,
     mergeInventoryDefaults,
+    getComponent,
+    upsertComponent,
     listRelationships,
     upsertRelationship,
     getMeta,
@@ -797,6 +820,13 @@ export function ensureMaDashuaiPlayableState(api) {
     applyStatsProfile('character_gangzi', getMaDashuaiGangziStats(), MA_DASHUAI_GANGZI_PROFILE_ID, ['maxHitPoints', 'currentHitPoints']);
   }
 
+  for (const [questId, defaults] of Object.entries(MA_DASHUAI_QUEST_JUDGE_DEFAULTS)) {
+    if (getEntity(questId)) {
+      mergeComponentDefaults(questId, 'quest', defaults);
+    }
+  }
+  ensureMaDashuaiMainQuestObjectiveLinks({ getComponent, upsertComponent });
+
   for (const [entityId, maxHitPoints] of Object.entries(MA_DASHUAI_CHARACTER_HIT_POINTS)) {
     if (entityId === 'character_yufen' || entityId === 'character_gangzi' || !getEntity(entityId)) continue;
     applyStatsProfile(entityId, { maxHitPoints, currentHitPoints: maxHitPoints }, `ma-dashuai-${entityId}-v1`, ['maxHitPoints', 'currentHitPoints']);
@@ -804,5 +834,34 @@ export function ensureMaDashuaiPlayableState(api) {
 
   if (!getMeta('presetRevision', '')) {
     setMeta('presetRevision', MA_DASHUAI_PRESET_REVISION);
+  }
+}
+
+export function ensureMaDashuaiMainQuestObjectiveLinks({ getComponent, upsertComponent }) {
+  const mainQuest = getComponent('quest_main', 'quest');
+  if (!mainQuest || !Array.isArray(mainQuest.objectives)) return;
+
+  let changed = false;
+  const objectives = mainQuest.objectives.map((objective, index) => {
+    const expected = MA_DASHUAI_MAIN_QUEST_OBJECTIVES[index];
+    if (!expected || !objective || typeof objective !== 'object') {
+      return objective;
+    }
+    const questId = typeof objective.questId === 'string' && objective.questId
+      ? objective.questId
+      : expected.questId;
+    const linkedQuest = getComponent(questId, 'quest');
+    const linkedStatus = ['active', 'completed', 'failed'].includes(linkedQuest?.status)
+      ? linkedQuest.status
+      : objective.status;
+    if (objective.questId === questId && objective.status === linkedStatus) {
+      return objective;
+    }
+    changed = true;
+    return { ...objective, questId, status: linkedStatus };
+  });
+
+  if (changed) {
+    upsertComponent('quest_main', 'quest', { ...mainQuest, objectives });
   }
 }

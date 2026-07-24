@@ -6,8 +6,14 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import {
   MA_DASHUAI_CHARACTER_HIT_POINTS,
+  MA_DASHUAI_MAIN_QUEST_OBJECTIVES,
   MA_DASHUAI_PRESET_REVISION,
 } from './defaultWorld.js';
+import {
+  QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY,
+  QUEST_JUDGE_EVENT_CURSOR_META_KEY,
+  QUEST_JUDGE_INITIALIZED_META_KEY,
+} from './questConfig.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
 import {
   ensureBuiltInStoryBlueprintDefaults,
@@ -176,6 +182,88 @@ test('马大帅旧模板升级后重置游戏可获得全部角色生命值', ()
         assert.equal(stats.maxHitPoints, maxHitPoints);
         assert.equal(stats.currentHitPoints, maxHitPoints);
       }
+    } finally {
+      upgradedDatabase.close();
+    }
+  } finally {
+    try {
+      database.close();
+    } catch {
+      // The database is deliberately closed before the template upgrade.
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('马大帅旧模板会补齐任务判定配置，并从现有历史之后开始记录', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'newchat-quest-template-'));
+  const databaseFile = join(directory, 'template.sqlite');
+  const database = new DatabaseSync(databaseFile);
+
+  try {
+    createWorldDbSchema(database);
+    const now = new Date().toISOString();
+    const insertEntity = database.prepare(`
+      INSERT INTO entities (id, kind, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insertEntity.run('player', 'player', '马大帅', now, now);
+    insertEntity.run('quest_main', 'quest', '马大帅进城寻女', now, now);
+    database.prepare(`
+      INSERT INTO components (entity_id, type, data_json, updated_at)
+      VALUES ('quest_main', 'quest', ?, ?)
+    `).run(JSON.stringify({
+      title: '马大帅进城寻女',
+      status: 'active',
+      objectives: MA_DASHUAI_MAIN_QUEST_OBJECTIVES.map(({ questId: _questId, ...objective }) => objective),
+    }), now);
+    for (const [questId, title, status, phaseStatus] of [
+      ['quest_survive_city', '身无分文在城里活下来', 'active', 'available'],
+      ['quest_find_debiao', '寻找范德彪', 'active', 'available'],
+      ['quest_find_xiaocui', '父女见面', 'inactive', 'hidden'],
+    ]) {
+      insertEntity.run(questId, 'quest', title, now, now);
+      database.prepare(`
+        INSERT INTO components (entity_id, type, data_json, updated_at)
+        VALUES (?, 'quest', ?, ?)
+      `).run(questId, JSON.stringify({ title, status, phaseStatus }), now);
+    }
+    database.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('campaignId', 'ma-dashuai-city-life');
+    database.prepare(`
+      INSERT INTO conversations (speaker_id, speaker_name, role, content, created_at)
+      VALUES ('player', '马大帅', 'user', '旧存档中的历史对话', ?)
+    `).run(now);
+    database.prepare(`
+      INSERT INTO events (type, actor_id, target_id, payload_json, created_at)
+      VALUES ('old.event', 'player', NULL, '{}', ?)
+    `).run(now);
+    database.close();
+
+    ensureTemplatePlayableDefaults(databaseFile);
+
+    const upgradedDatabase = new DatabaseSync(databaseFile, { readOnly: true });
+    try {
+      const readQuest = upgradedDatabase.prepare(
+        "SELECT data_json FROM components WHERE entity_id = ? AND type = 'quest'",
+      );
+      const surviveQuest = JSON.parse(readQuest.get('quest_survive_city').data_json);
+      const findDebiaoQuest = JSON.parse(readQuest.get('quest_find_debiao').data_json);
+      const mainQuest = JSON.parse(readQuest.get('quest_main').data_json);
+      assert.equal(surviveQuest.judgeEnabled, true);
+      assert.match(surviveQuest.completionCriteria, /吃饭和过夜/);
+      assert.deepEqual(findDebiaoQuest.onComplete.activateQuestIds, ['quest_find_xiaocui']);
+      assert.deepEqual(
+        mainQuest.objectives.map((objective) => objective.questId),
+        MA_DASHUAI_MAIN_QUEST_OBJECTIVES.map((objective) => objective.questId),
+      );
+      assert.deepEqual(
+        mainQuest.objectives.slice(0, 3).map((objective) => objective.status),
+        ['active', 'active', 'pending'],
+      );
+      const readMeta = upgradedDatabase.prepare('SELECT value FROM meta WHERE key = ?');
+      assert.equal(readMeta.get(QUEST_JUDGE_INITIALIZED_META_KEY)?.value, 'ready');
+      assert.equal(readMeta.get(QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY)?.value, '1');
+      assert.equal(readMeta.get(QUEST_JUDGE_EVENT_CURSOR_META_KEY)?.value, '1');
     } finally {
       upgradedDatabase.close();
     }

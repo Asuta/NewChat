@@ -8,6 +8,7 @@ import {
   Crosshair,
   FlaskConical,
   ImageOff,
+  ListChecks,
   Loader2,
   MapPinned,
   Maximize2,
@@ -28,11 +29,13 @@ import type {
   WorldActionMenuTarget,
   WorldMapState,
   WorldOverview,
+  QuestUpdateEvent,
 } from '../types';
 import type { CharacterAttackFeedbackEvent } from './characterAttackFeedback';
 import { GameStageCharacter, useCharacterHealthFeedback } from './GameStageCharacter';
 import { InventoryPanel } from './InventoryPanel';
 import { PlayerStatusHud } from './PlayerStatusHud';
+import { QuestPanel } from './QuestPanel';
 import { createWorldActionForTarget, refreshItemTargetingAction } from './inventoryTargeting';
 import { SceneMiniMap } from './SceneMiniMap';
 import {
@@ -131,6 +134,9 @@ export function GameStageCanvas({
   const sceneName = stage?.scene?.name || '未知场景';
   const sceneDescription = stage?.scene?.description || '当前场景还没有可用描述。';
   const stageCharacters = useMemo(() => stage?.characters || [], [stage?.characters]);
+  const [isQuestOpen, setIsQuestOpen] = useState(false);
+  const [questUpdateNotice, setQuestUpdateNotice] = useState<QuestUpdateEvent | null>(null);
+  const latestQuestUpdateIdRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
     const urls = new Set(stageCharacters.flatMap((character) => Object.values(character.portraitUrls)));
     for (const url of urls) {
@@ -143,7 +149,7 @@ export function GameStageCanvas({
     dialogueEntries,
     sceneDescription,
     actionComposer ? DIALOGUE_LINES_WITH_COMPOSER : DIALOGUE_LINES_WITHOUT_COMPOSER,
-    !isInventoryOpen,
+    !isInventoryOpen && !isQuestOpen,
   );
   const activeSpeakerId = dialogue.activeEntry.speakerId;
   const visibleCharacters = useMemo(
@@ -227,6 +233,29 @@ export function GameStageCanvas({
   }, [itemTargetingNotice]);
 
   useEffect(() => {
+    if (!world) return;
+    const update = world.quests?.latestUpdate || null;
+    if (!update) {
+      latestQuestUpdateIdRef.current = null;
+      setQuestUpdateNotice(null);
+      return;
+    }
+    if (latestQuestUpdateIdRef.current === undefined) {
+      latestQuestUpdateIdRef.current = update.id;
+      return;
+    }
+    if (latestQuestUpdateIdRef.current === update.id) return;
+    latestQuestUpdateIdRef.current = update.id;
+    setQuestUpdateNotice(update);
+  }, [world, world?.quests?.latestUpdate]);
+
+  useEffect(() => {
+    if (!questUpdateNotice) return;
+    const timer = window.setTimeout(() => setQuestUpdateNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [questUpdateNotice]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const isTyping = target instanceof HTMLInputElement
@@ -243,15 +272,20 @@ export function GameStageCanvas({
         onInventoryOpenChange(false);
         return;
       }
+      if (event.key === 'Escape' && isQuestOpen) {
+        setIsQuestOpen(false);
+        return;
+      }
       if (!isTyping && !event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'b') {
         setItemTargeting(null);
         setItemTargetingPointer(null);
+        setIsQuestOpen(false);
         onInventoryOpenChange(!isInventoryOpen);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isInventoryOpen, itemTargeting, onInventoryOpenChange]);
+  }, [isInventoryOpen, isQuestOpen, itemTargeting, onInventoryOpenChange]);
 
   function updateAlphaHoveredEntity(entityId: string | null) {
     if (alphaHoveredEntityIdRef.current === entityId) return;
@@ -388,6 +422,19 @@ export function GameStageCanvas({
             </div>
           ) : null}
 
+          {!itemTargeting && !itemTargetingNotice && questUpdateNotice ? (
+            <div className="item-targeting-banner quest-update-banner" role="status" aria-live="polite">
+              <span className="item-targeting-banner-icon"><ListChecks size={18} /></span>
+              <span>
+                <strong>
+                  {questUpdateNotice.payload.summary
+                    || `任务已更新：${questUpdateNotice.payload.title || '未命名任务'}`}
+                </strong>
+                <small>新的任务进度已经写入存档</small>
+              </span>
+            </div>
+          ) : null}
+
           {itemTargeting && itemTargetingPointer ? (
             <span
               className={`item-targeting-cursor ${isWeaponAttackTargeting ? 'is-attack' : ''}`}
@@ -508,22 +555,29 @@ export function GameStageCanvas({
           ) : null}
 
           <div className={`game-stage-interaction-stack ${actionComposer ? 'has-action-composer' : ''}`}>
-            <div className={`stage-dialogue-box ${isInventoryOpen ? 'narration inventory-tab' : dialogue.activeEntry.kind}`}>
+            <div className={`stage-dialogue-box ${
+              isInventoryOpen
+                ? 'narration inventory-tab'
+                : isQuestOpen
+                  ? 'narration quest-tab'
+                  : dialogue.activeEntry.kind
+            }`}>
               <div className="stage-output-tabs" role="tablist" aria-label="输出框页签">
                 <button
                   id="stage-story-tab"
                   type="button"
                   role="tab"
                   aria-controls="stage-story-panel"
-                  aria-selected={!isInventoryOpen}
-                  className={!isInventoryOpen ? 'active' : ''}
+                  aria-selected={!isInventoryOpen && !isQuestOpen}
+                  className={!isInventoryOpen && !isQuestOpen ? 'active' : ''}
                   onClick={() => {
                     cancelItemTargeting();
+                    setIsQuestOpen(false);
                     onInventoryOpenChange(false);
                   }}
                 >
                   <BookOpenText size={15} />剧情
-                  {isInventoryOpen && dialogue.unreadPageCount > 0 ? (
+                  {(isInventoryOpen || isQuestOpen) && dialogue.unreadPageCount > 0 ? (
                     <span className="stage-output-tab-unread" aria-label={`${dialogue.unreadPageCount} 条未读剧情`} />
                   ) : null}
                 </button>
@@ -534,10 +588,29 @@ export function GameStageCanvas({
                   aria-controls="stage-inventory-panel"
                   aria-selected={isInventoryOpen}
                   className={isInventoryOpen ? 'active' : ''}
-                  onClick={() => onInventoryOpenChange(true)}
+                  onClick={() => {
+                    setIsQuestOpen(false);
+                    onInventoryOpenChange(true);
+                  }}
                 >
                   <Backpack size={15} />背包
                   <strong>{inventory?.totalQuantity || 0}</strong>
+                </button>
+                <button
+                  id="stage-quest-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="stage-quest-panel"
+                  aria-selected={isQuestOpen}
+                  className={isQuestOpen ? 'active' : ''}
+                  onClick={() => {
+                    cancelItemTargeting();
+                    onInventoryOpenChange(false);
+                    setIsQuestOpen(true);
+                  }}
+                >
+                  <ListChecks size={15} />任务
+                  <strong>{world?.quests?.activeCount || 0}</strong>
                 </button>
               </div>
 
@@ -552,6 +625,10 @@ export function GameStageCanvas({
                     onExecuteAction={onExecuteInventoryAction}
                     onReferenceItem={onReferenceInventoryItem}
                   />
+                </div>
+              ) : isQuestOpen ? (
+                <div id="stage-quest-panel" role="tabpanel" aria-labelledby="stage-quest-tab">
+                  <QuestPanel quests={world?.quests} />
                 </div>
               ) : (
                 <div

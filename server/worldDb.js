@@ -13,6 +13,11 @@ import {
   validateRelationshipInput,
 } from './worldSchemas.js';
 import { createWorldDbSchema } from './worldDbSchema.js';
+import {
+  QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY,
+  QUEST_JUDGE_EVENT_CURSOR_META_KEY,
+  QUEST_JUDGE_INITIALIZED_META_KEY,
+} from './questConfig.js';
 
 function openWorldDatabase() {
   mkdirSync(dirname(SAVE_DB_FILE), { recursive: true });
@@ -151,11 +156,14 @@ export function ensurePlayableCharacterStats() {
       mergeComponentDefaults,
       applyStatsProfile,
       mergeInventoryDefaults,
+      getComponent,
+      upsertComponent,
       listRelationships,
       upsertRelationship,
       getMeta,
       setMeta,
     });
+    ensureQuestJudgeCheckpoint();
   });
 }
 
@@ -237,6 +245,24 @@ export function setMeta(key, value) {
 export function getMeta(key, fallback = '') {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);
   return row?.value ?? fallback;
+}
+
+export function ensureQuestJudgeCheckpoint() {
+  if (getMeta(QUEST_JUDGE_INITIALIZED_META_KEY, '') === 'ready') {
+    return {
+      conversationCursor: parseStoredInteger(getMeta(QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY, ''), 0),
+      eventCursor: parseStoredInteger(getMeta(QUEST_JUDGE_EVENT_CURSOR_META_KEY, ''), 0),
+    };
+  }
+
+  const checkpoint = {
+    conversationCursor: getLatestConversationId(),
+    eventCursor: getLatestEventId(),
+  };
+  setMeta(QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY, String(checkpoint.conversationCursor));
+  setMeta(QUEST_JUDGE_EVENT_CURSOR_META_KEY, String(checkpoint.eventCursor));
+  setMeta(QUEST_JUDGE_INITIALIZED_META_KEY, 'ready');
+  return checkpoint;
 }
 
 const WORLD_CLOCK_META_KEY = 'worldClock.absoluteMinutes';
@@ -398,7 +424,7 @@ function setWorldTimeCheckpoint(checkpoint) {
   setMeta(WORLD_TIME_CHECKPOINT_META_KEY, JSON.stringify(stored));
 }
 
-function getLatestConversationId() {
+export function getLatestConversationId() {
   const row = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM conversations').get();
   return Number(row?.id || 0);
 }
@@ -870,17 +896,53 @@ export function listEvents(limit = 40, entityId = null) {
 }
 
 export function addConversation(role, speakerId, speakerName, content) {
-  db.prepare('INSERT INTO conversations (speaker_id, speaker_name, role, content, created_at) VALUES (?, ?, ?, ?, ?)').run(
+  const result = db.prepare('INSERT INTO conversations (speaker_id, speaker_name, role, content, created_at) VALUES (?, ?, ?, ?, ?)').run(
     speakerId ?? null,
     speakerName,
     role,
     content,
     nowIso(),
   );
+  return { id: Number(result.lastInsertRowid) };
 }
 
 export function listWorldConversations(limit = 40) {
   return db.prepare('SELECT id, speaker_id as speakerId, speaker_name as speakerName, role, content, created_at as createdAt FROM conversations ORDER BY id DESC LIMIT ?').all(limit).reverse();
+}
+
+export function getLatestEventId() {
+  return Number(db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM events').get()?.id || 0);
+}
+
+export function listWorldConversationsAfter(conversationId, limit = 80) {
+  const cursor = Math.max(0, Math.floor(Number(conversationId) || 0));
+  const cappedLimit = Math.min(200, Math.max(1, Math.floor(Number(limit) || 80)));
+  return db.prepare(`
+    SELECT id, speaker_id as speakerId, speaker_name as speakerName, role, content, created_at as createdAt
+    FROM conversations
+    WHERE id > ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(cursor, cappedLimit);
+}
+
+export function listEventsAfter(eventId, limit = 100) {
+  const cursor = Math.max(0, Math.floor(Number(eventId) || 0));
+  const cappedLimit = Math.min(240, Math.max(1, Math.floor(Number(limit) || 100)));
+  return db.prepare(`
+    SELECT id, type, actor_id as actorId, target_id as targetId, payload_json as payloadJson, created_at as createdAt
+    FROM events
+    WHERE id > ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(cursor, cappedLimit).map((row) => ({
+    id: row.id,
+    type: row.type,
+    actorId: row.actorId,
+    targetId: row.targetId,
+    payload: JSON.parse(row.payloadJson),
+    createdAt: row.createdAt,
+  }));
 }
 
 export function createAgentRun(prompt) {
@@ -1368,6 +1430,7 @@ export function getWorldOverview() {
   return {
     currentScene: getCurrentScene(),
     time: getWorldTimeState(),
+    quests: getQuestLog(),
     counts: {
       entities: entities.length,
       scenes: entities.filter((entity) => entity.kind === 'scene').length,
@@ -1376,6 +1439,63 @@ export function getWorldOverview() {
       relationships: listRelationships().length,
     },
     recentAgentRuns: listAgentRuns(5),
+  };
+}
+
+export function getQuestLog() {
+  const items = db.prepare(`
+    SELECT
+      e.id,
+      e.name,
+      c.data_json AS dataJson,
+      c.updated_at AS updatedAt
+    FROM entities e
+    JOIN components c ON c.entity_id = e.id AND c.type = 'quest'
+    WHERE e.kind = 'quest'
+  `).all().map((row) => {
+    const data = JSON.parse(row.dataJson);
+    return {
+      id: row.id,
+      title: data.title || row.name,
+      description: data.description || '',
+      status: data.status,
+      phaseStatus: data.phaseStatus || '',
+      progressSummary: data.progressSummary || '',
+      completionCriteria: data.completionCriteria || '',
+      nextSceneId: data.nextSceneId || null,
+      displayOrder: Number.isFinite(data.displayOrder) ? data.displayOrder : Number.MAX_SAFE_INTEGER,
+      updatedAt: row.updatedAt,
+      questLogVisible: data.questLogVisible === true,
+    };
+  }).filter((quest) => (
+    quest.questLogVisible
+    && (quest.phaseStatus !== 'hidden' || quest.status === 'completed' || quest.status === 'failed')
+  )).sort((left, right) => (
+    left.displayOrder - right.displayOrder
+    || left.title.localeCompare(right.title, 'zh-CN')
+  ));
+
+  const latestRow = db.prepare(`
+    SELECT id, type, actor_id AS actorId, target_id AS targetId, payload_json AS payloadJson, created_at AS createdAt
+    FROM events
+    WHERE type IN ('quest.progressed', 'quest.completed', 'quest.failed', 'quest.activated')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get();
+  const latestUpdate = latestRow ? {
+    id: latestRow.id,
+    type: latestRow.type,
+    actorId: latestRow.actorId,
+    targetId: latestRow.targetId,
+    payload: JSON.parse(latestRow.payloadJson),
+    createdAt: latestRow.createdAt,
+  } : null;
+
+  return {
+    items: items.map(({ questLogVisible: _questLogVisible, ...quest }) => quest),
+    activeCount: items.filter((quest) => quest.status === 'active').length,
+    completedCount: items.filter((quest) => quest.status === 'completed').length,
+    latestUpdate,
   };
 }
 

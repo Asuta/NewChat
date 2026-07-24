@@ -26,8 +26,15 @@ import {
   getMaDashuaiGangziStats,
   getMaDashuaiPlayerStats,
   getMaDashuaiYufenStats,
+  ensureMaDashuaiMainQuestObjectiveLinks,
   seedMaDashuaiWorld,
 } from './defaultWorld.js';
+import {
+  MA_DASHUAI_QUEST_JUDGE_DEFAULTS,
+  QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY,
+  QUEST_JUDGE_EVENT_CURSOR_META_KEY,
+  QUEST_JUDGE_INITIALIZED_META_KEY,
+} from './questConfig.js';
 
 export const DATA_DIR = resolve(process.cwd(), 'data');
 export const FACTORY_CONTEXT_DIR = resolve(process.cwd(), 'context');
@@ -240,6 +247,14 @@ export function ensureTemplatePlayableDefaults(
         currentHitPoints: maxHitPoints,
       });
     }
+    for (const [questId, defaults] of Object.entries(MA_DASHUAI_QUEST_JUDGE_DEFAULTS)) {
+      mergeTemplateComponent(database, questId, 'quest', defaults);
+    }
+    ensureMaDashuaiMainQuestObjectiveLinks({
+      getComponent: (entityId, type) => readTemplateComponent(database, entityId, type),
+      upsertComponent: (entityId, type, data) => writeTemplateComponent(database, entityId, type, data),
+    });
+    ensureTemplateQuestJudgeCheckpoint(database);
     mergeTemplateStats(database, 'character_yufen', getMaDashuaiYufenStats(), MA_DASHUAI_YUFEN_PROFILE_ID);
     mergeTemplateStats(database, 'character_gangzi', getMaDashuaiGangziStats(), MA_DASHUAI_GANGZI_PROFILE_ID);
     database.exec('COMMIT;');
@@ -253,6 +268,21 @@ export function ensureTemplatePlayableDefaults(
   } finally {
     database.close();
   }
+}
+
+function ensureTemplateQuestJudgeCheckpoint(database) {
+  const initialized = database.prepare('SELECT value FROM meta WHERE key = ?')
+    .get(QUEST_JUDGE_INITIALIZED_META_KEY)?.value;
+  if (initialized === 'ready') return;
+  const conversationCursor = Number(
+    database.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM conversations').get()?.id || 0,
+  );
+  const eventCursor = Number(
+    database.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM events').get()?.id || 0,
+  );
+  setTemplateMeta(database, QUEST_JUDGE_CONVERSATION_CURSOR_META_KEY, String(conversationCursor));
+  setTemplateMeta(database, QUEST_JUDGE_EVENT_CURSOR_META_KEY, String(eventCursor));
+  setTemplateMeta(database, QUEST_JUDGE_INITIALIZED_META_KEY, 'ready');
 }
 
 function migrateMaDashuaiVictoriaTemplateLayout(database) {

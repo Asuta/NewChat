@@ -7,6 +7,7 @@ import {
   checkpointWorldDb,
   getCurrentScene,
   getEntityBundle,
+  getQuestLog,
   getWorldMap,
   getWorldOverview,
   ensurePlayableCharacterStats,
@@ -163,6 +164,10 @@ app.post('/api/save/import', (req, res) => {
 
 app.get('/api/world', (_req, res) => {
   res.json(getWorldOverview());
+});
+
+app.get('/api/world/quests', (_req, res) => {
+  res.json(getQuestLog());
 });
 
 app.get('/api/world/schemas', (_req, res) => {

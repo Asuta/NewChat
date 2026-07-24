@@ -159,9 +159,49 @@ export interface WorldTimeState {
   currentSceneVisit: SceneVisitState;
 }
 
+export type QuestStatus = 'inactive' | 'active' | 'completed' | 'failed';
+
+export interface QuestLogItem {
+  id: string;
+  title: string;
+  description: string;
+  status: QuestStatus;
+  phaseStatus: string;
+  progressSummary: string;
+  completionCriteria: string;
+  nextSceneId: string | null;
+  displayOrder: number;
+  updatedAt: string;
+}
+
+export interface QuestUpdateEvent {
+  id: number;
+  type: 'quest.progressed' | 'quest.completed' | 'quest.failed' | 'quest.activated';
+  actorId: string | null;
+  targetId: string | null;
+  payload: {
+    questId?: string;
+    title?: string;
+    status?: QuestStatus;
+    summary?: string;
+    progressSummary?: string;
+    reason?: string;
+    activatedQuestIds?: string[];
+  };
+  createdAt: string;
+}
+
+export interface QuestLog {
+  items: QuestLogItem[];
+  activeCount: number;
+  completedCount: number;
+  latestUpdate: QuestUpdateEvent | null;
+}
+
 export interface WorldOverview {
   currentScene: WorldSceneState;
   time?: WorldTimeState;
+  quests?: QuestLog;
   counts: {
     entities: number;
     scenes: number;
