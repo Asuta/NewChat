@@ -1,12 +1,13 @@
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Circle,
   CircleDot,
   ListChecks,
   XCircle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { QuestLog, QuestLogItem } from '../types';
 
 interface QuestTrackerProps {
@@ -17,15 +18,50 @@ const MAX_VISIBLE_QUESTS = 4;
 
 export function QuestTracker({ quests }: QuestTrackerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
+  const questListRef = useRef<HTMLOListElement | null>(null);
+  const selectedQuestRef = useRef<HTMLLIElement | null>(null);
   const items = quests?.items || [];
   const activeQuests = items.filter((quest) => quest.status === 'active');
-  if (!items.length) return null;
-
   const visibleQuests = isExpanded
     ? items
     : activeQuests.slice(0, MAX_VISIBLE_QUESTS);
   const hiddenCount = Math.max(0, activeQuests.length - MAX_VISIBLE_QUESTS);
   const hasQuestHistory = items.length > activeQuests.length;
+
+  useLayoutEffect(() => {
+    const list = questListRef.current;
+    const selectedQuest = selectedQuestRef.current;
+    if (!isExpanded || !selectedQuestId || !list || !selectedQuest) return;
+
+    const listBounds = list.getBoundingClientRect();
+    const questBounds = selectedQuest.getBoundingClientRect();
+    if (questBounds.height > listBounds.height || questBounds.top < listBounds.top) {
+      list.scrollTop += questBounds.top - listBounds.top;
+      return;
+    }
+    if (questBounds.bottom > listBounds.bottom) {
+      list.scrollTop += questBounds.bottom - listBounds.bottom;
+    }
+  }, [isExpanded, selectedQuestId]);
+
+  if (!items.length) return null;
+
+  function toggleQuestLog() {
+    if (isExpanded) setSelectedQuestId(null);
+    setIsExpanded((expanded) => !expanded);
+  }
+
+  function toggleQuestDetails(questId: string) {
+    if (!isExpanded) {
+      setIsExpanded(true);
+      setSelectedQuestId(questId);
+      return;
+    }
+    setSelectedQuestId((currentQuestId) => (
+      currentQuestId === questId ? null : questId
+    ));
+  }
 
   return (
     <aside
@@ -38,35 +74,52 @@ export function QuestTracker({ quests }: QuestTrackerProps) {
         aria-controls="stage-quest-tracker-list"
         aria-expanded={isExpanded}
         aria-label={isExpanded ? '收起任务日志' : '展开任务日志'}
-        onClick={() => setIsExpanded((expanded) => !expanded)}
+        onClick={toggleQuestLog}
       >
         <ListChecks size={15} />
         <strong>{isExpanded ? '任务日志' : '当前任务'}</strong>
         <span>{isExpanded ? `${activeQuests.length} 进行中` : activeQuests.length}</span>
         <ChevronDown className="stage-quest-tracker-chevron" size={13} />
       </button>
-      <ol className="stage-quest-tracker-list" id="stage-quest-tracker-list">
+      <ol
+        className="stage-quest-tracker-list"
+        id="stage-quest-tracker-list"
+        ref={questListRef}
+      >
         {visibleQuests.map((quest) => {
           const summary = quest.progressSummary || quest.description || '等待新的剧情进展。';
+          const isSelected = isExpanded && selectedQuestId === quest.id;
+          const detailId = `stage-quest-detail-${quest.id}`;
           return (
             <li
-              className={`stage-quest-tracker-item is-${quest.status}`}
+              className={[
+                'stage-quest-tracker-item',
+                `is-${quest.status}`,
+                isSelected ? 'has-open-detail' : '',
+              ].filter(Boolean).join(' ')}
               key={quest.id}
-              title={summary}
+              ref={isSelected ? selectedQuestRef : undefined}
             >
-              <QuestStatusIcon quest={quest} />
-              <div>
-                <div className="stage-quest-tracker-title">
-                  <strong>{quest.title}</strong>
-                  {isExpanded ? <small>{getQuestStatusLabel(quest.status)}</small> : null}
+              <button
+                className="stage-quest-tracker-item-button"
+                type="button"
+                aria-controls={detailId}
+                aria-expanded={isSelected}
+                aria-label={`查看任务“${quest.title}”详情`}
+                title={summary}
+                onClick={() => toggleQuestDetails(quest.id)}
+              >
+                <QuestStatusIcon quest={quest} />
+                <div>
+                  <div className="stage-quest-tracker-title">
+                    <strong>{quest.title}</strong>
+                    {isExpanded ? <small>{getQuestStatusLabel(quest.status)}</small> : null}
+                  </div>
+                  <p>{summary}</p>
                 </div>
-                <p>{summary}</p>
-                {isExpanded && quest.status === 'active' && quest.completionCriteria ? (
-                  <span className="stage-quest-tracker-criteria" title={quest.completionCriteria}>
-                    目标：{quest.completionCriteria}
-                  </span>
-                ) : null}
-              </div>
+                <ChevronRight className="stage-quest-tracker-item-chevron" size={12} aria-hidden="true" />
+              </button>
+              <QuestDetails quest={quest} detailId={detailId} isVisible={isSelected} />
             </li>
           );
         })}
@@ -80,7 +133,7 @@ export function QuestTracker({ quests }: QuestTrackerProps) {
           type="button"
           aria-expanded={isExpanded}
           aria-controls="stage-quest-tracker-list"
-          onClick={() => setIsExpanded((expanded) => !expanded)}
+          onClick={toggleQuestLog}
         >
           {isExpanded
             ? '收起任务日志'
@@ -90,6 +143,45 @@ export function QuestTracker({ quests }: QuestTrackerProps) {
         </button>
       ) : null}
     </aside>
+  );
+}
+
+function QuestDetails({
+  quest,
+  detailId,
+  isVisible,
+}: {
+  quest: QuestLogItem;
+  detailId: string;
+  isVisible: boolean;
+}) {
+  return (
+    <div
+      className="stage-quest-tracker-detail"
+      id={detailId}
+      role="region"
+      aria-label={`${quest.title}任务详情`}
+      hidden={!isVisible}
+    >
+      <dl>
+        {quest.description ? (
+          <div>
+            <dt>任务说明</dt>
+            <dd>{quest.description}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>当前进度</dt>
+          <dd>{quest.progressSummary || '尚无进度记录。'}</dd>
+        </div>
+        {quest.completionCriteria ? (
+          <div className="is-objective">
+            <dt>达成条件</dt>
+            <dd>{quest.completionCriteria}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
   );
 }
 

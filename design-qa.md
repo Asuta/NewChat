@@ -21,6 +21,7 @@ No actionable P0, P1, or P2 differences remain.
 - The former bottom task tab and purple task panel are absent.
 - The tracker remains visible while switching between story and inventory.
 - The compact tracker can expand in place to expose every visible quest and its status without restoring the deep bottom frame.
+- Selecting a quest expands its description, current progress, and completion criteria inside the scrollable task log.
 - The transparent treatment preserves the background artwork while the dual text shadow keeps titles readable.
 
 ## Required fidelity surfaces
@@ -38,6 +39,7 @@ No actionable P0, P1, or P2 differences remain.
 - Returned to the story tab and confirmed the task tracker stayed visible.
 - Confirmed the old task tab is no longer rendered.
 - Expanded and collapsed the left tracker, confirming both controls and the active-task completion criteria.
+- Selected an individual task and confirmed its dedicated detail region can be opened and closed.
 - Checked the expanded data path: it renders the complete `quests.items` collection with status labels instead of the compact four-item active slice.
 
 ## Comparison history
