@@ -13,6 +13,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_current_scene: '读取当前场景',
   get_inventory: '读取玩家背包',
   execute_item_action: '执行道具动作',
+  get_world_actions: '读取可用世界动作',
+  execute_world_action: '执行世界动作',
   get_scene_entities: '读取场景实体',
   get_relationships: '读取关系',
   get_rule_toc: '读取规则目录',

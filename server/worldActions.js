@@ -11,31 +11,45 @@ import {
   withTransaction,
 } from './worldDb.js';
 
-export function listWorldActions({ actorId = 'player', targetId = '' } = {}) {
+const WORLD_ATTACK_KINDS = new Set(['attack.weapon', 'attack.unarmed']);
+
+export function listWorldActions({
+  actorId = 'player',
+  targetId = '',
+  includeUnarmed = false,
+} = {}) {
   return {
-    actions: getWeaponAttackActions({ actorId, targetId }),
+    actions: [
+      ...getWeaponAttackActions({ actorId, targetId }),
+      ...(includeUnarmed ? getUnarmedAttackActions({ actorId, targetId }) : []),
+    ],
   };
 }
 
 export function executeWorldAction(input = {}) {
-  const kind = String(input.kind || input.actionKind || '');
+  const requestedKind = String(input.kind || input.actionKind || '');
   const actionId = String(input.actionId || input.id || '');
-  if (kind && kind !== 'attack.weapon') {
+  const kind = requestedKind
+    || (actionId.startsWith('attack.unarmed:') ? 'attack.unarmed' : '')
+    || 'attack.weapon';
+  if (!WORLD_ATTACK_KINDS.has(kind)) {
     throw new Error(`未知动作类型：${kind}`);
   }
-  if (actionId && !actionId.startsWith('attack.weapon:')) {
+  if (actionId && !actionId.startsWith(`${kind}:`)) {
     throw new Error(`未知动作：${actionId}`);
   }
 
   const actorId = String(input.actorId || 'player');
   const targetId = String(input.targetId || '');
   const weaponId = String(input.weaponId || '');
-  const action = getWeaponAttackAction({ actorId, targetId, weaponId });
+  const action = kind === 'attack.unarmed'
+    ? getUnarmedAttackAction({ actorId, targetId })
+    : getWeaponAttackAction({ actorId, targetId, weaponId });
   if (!action) {
     throw new Error('当前状态下不能执行这个攻击动作。');
   }
 
-  return resolveWeaponAttack(action);
+  return resolveAttack(action);
 }
 
 function getWeaponAttackAction({ actorId = 'player', targetId = '', weaponId = '' } = {}) {
@@ -57,10 +71,25 @@ function getWeaponAttackActions({ actorId = 'player', targetId = '' } = {}) {
   return listOwnedWeapons(actorId).map((weapon) => createWeaponAttackAction(context, weapon));
 }
 
+function getUnarmedAttackAction({ actorId = 'player', targetId = '' } = {}) {
+  const context = getWeaponAttackContext(actorId, targetId);
+  return context ? createUnarmedAttackAction(context) : null;
+}
+
+function getUnarmedAttackActions({ actorId = 'player', targetId = '' } = {}) {
+  const action = getUnarmedAttackAction({ actorId, targetId });
+  return action ? [action] : [];
+}
+
 function getWeaponAttackContext(actorId, targetId) {
   const actor = getEntity(actorId);
   const target = getEntity(targetId);
-  if (!actor || !target || !['character', 'player'].includes(target.kind)) return null;
+  if (
+    !actor
+    || !target
+    || !['character', 'player'].includes(actor.kind)
+    || !['character', 'player'].includes(target.kind)
+  ) return null;
   if (!isEntityInCurrentScene(targetId) || !isEntityInCurrentScene(actorId)) return null;
 
   const actorStatus = getComponent(actorId, 'status') || {};
@@ -88,6 +117,11 @@ function isWeaponItem(itemId) {
 
 function createWeaponAttackAction({ actor, actorId, target, targetId }, weapon) {
   const weaponName = weapon.name || weapon.id;
+  const actorStats = getComponent(actorId, 'stats') || {};
+  const weaponIdentity = getComponent(weapon.id, 'identity') || {};
+  const ability = String(weaponIdentity.attackAbility || 'strength');
+  const abilityMod = numberValue(actorStats[`${ability}Mod`], 0);
+  const proficiencyBonus = weaponIdentity.proficient === false ? 0 : numberValue(actorStats.proficiencyBonus, 0);
   return {
     id: `attack.weapon:${actorId}:${targetId}:${weapon.id}`,
     kind: 'attack.weapon',
@@ -98,19 +132,86 @@ function createWeaponAttackAction({ actor, actorId, target, targetId }, weapon) 
     targetName: target.name,
     weaponId: weapon.id,
     weaponName,
+    attackName: weaponName,
+    attackBonus: abilityMod + proficiencyBonus,
+    damageDice: String(weaponIdentity.damageDice || '1d4'),
+    damageBonus: abilityMod,
+    damageType: String(weaponIdentity.damageType || 'weapon'),
   };
 }
 
-function resolveWeaponAttack(action) {
+function createUnarmedAttackAction({ actor, actorId, target, targetId }) {
+  const actorStats = getComponent(actorId, 'stats') || {};
+  const actorIdentity = getComponent(actorId, 'identity') || {};
+  const attackName = firstNonEmptyString(
+    actorStats.unarmedAttackName,
+    actorIdentity.unarmedAttackName,
+    actorStats.naturalAttackName,
+    actorIdentity.naturalAttackName,
+    '徒手',
+  );
+  const ability = firstNonEmptyString(
+    actorStats.unarmedAttackAbility,
+    actorIdentity.unarmedAttackAbility,
+    actorStats.naturalAttackAbility,
+    actorIdentity.naturalAttackAbility,
+    'strength',
+  );
+  const abilityMod = numberValue(actorStats[`${ability}Mod`], 0);
+  const proficiencyBonus = readBoolean(
+    actorStats.unarmedProficient,
+    actorIdentity.unarmedProficient,
+    actorStats.naturalAttackProficient,
+    actorIdentity.naturalAttackProficient,
+  ) === false
+    ? 0
+    : numberValue(actorStats.proficiencyBonus, 0);
+  const attackBonus = firstFiniteNumber(
+    actorStats.unarmedAttackBonus,
+    actorIdentity.unarmedAttackBonus,
+    actorStats.naturalAttackBonus,
+    actorIdentity.naturalAttackBonus,
+  ) ?? abilityMod + proficiencyBonus;
+  const damageBonus = firstFiniteNumber(
+    actorStats.unarmedDamageBonus,
+    actorIdentity.unarmedDamageBonus,
+    actorStats.naturalAttackDamageBonus,
+    actorIdentity.naturalAttackDamageBonus,
+  ) ?? abilityMod;
+
+  return {
+    id: `attack.unarmed:${actorId}:${targetId}`,
+    kind: 'attack.unarmed',
+    label: `使用${attackName}攻击`,
+    actorId,
+    actorName: actor.name,
+    targetId,
+    targetName: target.name,
+    attackName,
+    attackBonus,
+    damageDice: firstNonEmptyString(
+      actorStats.unarmedDamageDice,
+      actorIdentity.unarmedDamageDice,
+      actorStats.naturalAttackDamageDice,
+      actorIdentity.naturalAttackDamageDice,
+      '1d2',
+    ),
+    damageBonus,
+    damageType: firstNonEmptyString(
+      actorStats.unarmedDamageType,
+      actorIdentity.unarmedDamageType,
+      actorStats.naturalAttackDamageType,
+      actorIdentity.naturalAttackDamageType,
+      'bludgeoning',
+    ),
+  };
+}
+
+function resolveAttack(action) {
   return withTransaction(() => {
-    const actorStats = getComponent(action.actorId, 'stats') || {};
     const targetStats = getComponent(action.targetId, 'stats') || {};
     const targetStatusBefore = getComponent(action.targetId, 'status') || null;
-    const weaponIdentity = getComponent(action.weaponId, 'identity') || {};
-    const ability = String(weaponIdentity.attackAbility || 'strength');
-    const abilityMod = numberValue(actorStats[`${ability}Mod`], 0);
-    const proficiencyBonus = weaponIdentity.proficient === false ? 0 : numberValue(actorStats.proficiencyBonus, 0);
-    const attackBonus = abilityMod + proficiencyBonus;
+    const attackBonus = numberValue(action.attackBonus, 0);
     const targetArmorClass = numberValue(targetStats.armorClass, numberValue(targetStats.ac, 10));
     const attackDie = rollDie(20);
     const attackTotal = attackDie + attackBonus;
@@ -118,10 +219,11 @@ function resolveWeaponAttack(action) {
     const naturalOne = attackDie === 1;
     const hit = critical || (!naturalOne && attackTotal >= targetArmorClass);
 
-    const damageDice = String(weaponIdentity.damageDice || '1d4');
-    const damageType = String(weaponIdentity.damageType || 'weapon');
+    const damageDice = String(action.damageDice || '1d2');
+    const damageBonus = numberValue(action.damageBonus, 0);
+    const damageType = String(action.damageType || 'bludgeoning');
     const damageRoll = hit ? rollDiceExpression(damageDice, critical ? 2 : 1) : null;
-    const damage = hit ? Math.max(0, damageRoll.total + abilityMod) : 0;
+    const damage = hit ? Math.max(0, damageRoll.total + damageBonus) : 0;
     const hpBefore = Math.max(0, numberValue(targetStats.currentHitPoints, numberValue(targetStats.maxHitPoints, 0)));
     const hpAfter = hit ? Math.max(0, hpBefore - damage) : hpBefore;
     const targetStatsAfter = hit ? { ...targetStats, currentHitPoints: hpAfter } : targetStats;
@@ -159,8 +261,8 @@ function resolveWeaponAttack(action) {
     }
 
     const summary = hit
-      ? `${action.actorName}使用${action.weaponName}攻击${action.targetName}，命中，造成 ${damage} 点${formatDamageType(damageType)}伤害。${action.targetName} HP 从 ${hpBefore} 降到 ${hpAfter}。`
-      : `${action.actorName}使用${action.weaponName}攻击${action.targetName}，攻击检定 ${attackTotal} 未命中。`;
+      ? `${action.actorName}使用${action.attackName}攻击${action.targetName}，命中，造成 ${damage} 点${formatDamageType(damageType)}伤害。${action.targetName} HP 从 ${hpBefore} 降到 ${hpAfter}。`
+      : `${action.actorName}使用${action.attackName}攻击${action.targetName}，攻击检定 ${attackTotal} 未命中。`;
 
     const result = {
       type: 'attack.resolved',
@@ -168,9 +270,12 @@ function resolveWeaponAttack(action) {
       facts: {
         actor: { id: action.actorId, name: action.actorName },
         target: { id: action.targetId, name: action.targetName },
-        weapon: { id: action.weaponId, name: action.weaponName },
+        attack: { kind: action.kind, name: action.attackName },
+        ...(action.kind === 'attack.weapon'
+          ? { weapon: { id: action.weaponId, name: action.weaponName } }
+          : {}),
         attackRoll: {
-          expression: `1d20+${attackBonus}`,
+          expression: formatRollExpression('1d20', attackBonus),
           die: attackDie,
           bonus: attackBonus,
           total: attackTotal,
@@ -181,10 +286,10 @@ function resolveWeaponAttack(action) {
         naturalOne,
         damageRoll: damageRoll
           ? {
-              expression: `${critical ? '2x' : ''}${damageDice}+${abilityMod}`,
+              expression: `${critical ? '2x' : ''}${formatRollExpression(damageDice, damageBonus)}`,
               dice: damageRoll.dice,
               subtotal: damageRoll.total,
-              bonus: abilityMod,
+              bonus: damageBonus,
               total: damage,
               damageType,
             }
@@ -244,6 +349,38 @@ function numberValue(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    if (
+      value === null
+      || value === undefined
+      || (typeof value === 'string' && !value.trim())
+    ) continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function readBoolean(...values) {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+  }
+  return null;
+}
+
+function formatRollExpression(dice, bonus) {
+  if (!bonus) return dice;
+  return `${dice}${bonus > 0 ? '+' : ''}${bonus}`;
+}
+
 function formatDamageType(type) {
   if (type === 'slashing') return '挥砍';
   if (type === 'piercing') return '穿刺';
@@ -254,6 +391,6 @@ function formatDamageType(type) {
 function createVisibleEffects({ action, hit, critical, damage, hpAfter }) {
   if (!hit) return [`${action.targetName}避开了这次攻击。`];
   if (hpAfter <= 0) return [`${action.targetName}受到 ${damage} 点伤害并倒下。`];
-  if (critical) return [`${action.weaponName}结结实实命中${action.targetName}。`, `${action.targetName}仍然能够行动。`];
+  if (critical) return [`${action.attackName}结结实实命中${action.targetName}。`, `${action.targetName}仍然能够行动。`];
   return [`${action.targetName}受到 ${damage} 点伤害。`, `${action.targetName}仍然能够行动。`];
 }

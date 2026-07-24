@@ -34,6 +34,7 @@ import {
   sanitizeInventoryItemReferences,
 } from './lib/inventoryItemReferences';
 import {
+  getExecutedWorldActionResult,
   getWorldRealtimeSnapshot,
   isSuccessfulRealtimeWorldMutationStep,
 } from './lib/worldAgentRealtimeSync';
@@ -369,6 +370,14 @@ export default function App({ stageOnly = false }: AppProps) {
         }
 
         if (event.type === 'step') {
+          const executedWorldAction = getExecutedWorldActionResult(event.step);
+          if (executedWorldAction) {
+            const nextAttackFeedback = createCharacterAttackFeedbackEvent(
+              executedWorldAction.eventId,
+              executedWorldAction.result,
+            );
+            if (nextAttackFeedback) setCharacterAttackFeedback(nextAttackFeedback);
+          }
           const realtimeSnapshot = getWorldRealtimeSnapshot(event);
           if (realtimeSnapshot) {
             applyRealtimeWorldSnapshot(realtimeSnapshot);
@@ -1223,7 +1232,7 @@ export default function App({ stageOnly = false }: AppProps) {
       );
       applyWorldSnapshot(data.world);
       if (data.inventory) setInventory(data.inventory);
-      if (action.kind.startsWith('item.') || action.kind === 'attack.weapon') setIsInventoryOpen(false);
+      if (action.kind.startsWith('item.') || action.kind.startsWith('attack.')) setIsInventoryOpen(false);
       updateConversation(latestActiveConversation.id, (conversation) => ({
         ...conversation,
         updatedAt: Date.now(),
@@ -1240,8 +1249,11 @@ export default function App({ stageOnly = false }: AppProps) {
           `本轮唯一待叙事的是刚刚完成的本地硬逻辑动作事件 ${data.eventId}。`,
           'action_result 中的 facts 和 stateChanges 已经发生并写入世界数据，禁止重掷、重算、反转命中、伤害、治疗、持有关系或道具数量。',
           '只叙事化 current=true 的这一条 action_result；此前动作均已完成叙事，不得盘点、编号、补叙或总结历史动作。',
-          '先用 dm_speak 自然、具体地描写这一次动作的过程和可见结果，可结合受影响角色的身体动作、神态与即时反应；如 NPC 或周围环境需要进一步回应，再调用合适工具。',
-          '如果这是一次攻击，并且受击目标是仍能行动的 NPC，必须读取该 NPC 的实体详情，并在 DM 描写之后使用 npc_speak 让其依据性格和当前状态作出即时回应；目标已经失能、死亡或明确无法说话时除外。',
+          '先完成这一次动作所需的事实读取，再用 dm_speak 自然、具体地描写动作过程和可见结果，可结合受影响角色的身体动作、神态与即时反应；如 NPC 或周围环境需要进一步回应，再调用合适工具。',
+          '如果这是一次攻击，并且受击目标是仍能行动的 NPC，必须先读取该 NPC 的实体详情，再由你根据其性格、关系、动机、伤势、装备、人数和现场局势，自主判断它会反击、退缩、逃跑、求饶、呼救、防御、交涉、说话或暂时观望；不要固定选择某一种反应，也不要把 NPC 发言当成唯一反应。',
+          '如果你决定让任何角色发动会造成伤害的普通攻击，先调用 get_world_actions 查询合法动作，再调用 execute_world_action 权威结算；工具执行后再叙事化结果。不要自行掷攻击骰、计算伤害或直接修改 HP。',
+          '每次模型回复只调用一个工具，并等待工具结果返回后再决定下一步；不要把机械动作和叙述该动作结果的发言放在同一批工具调用中。',
+          '如果你决定不反击，也应自然表现角色的实际选择；不需要输出结构化决策或解释内部判断过程。',
           '篇幅根据这一次动作自然展开，不限制固定句数，但不要为了增加篇幅复述此前动作。',
           '不要输出“我已经完成”“历史记录显示”“此前共发生”等内部检查或工作汇报。',
         ].join('\n'),

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getExecutedWorldActionResult,
   getWorldRealtimeSnapshot,
   isSuccessfulRealtimeWorldMutationStep,
 } from './worldAgentRealtimeSync.ts';
@@ -24,7 +25,38 @@ const successfulLeaveScene = {
   result: { ok: true },
 };
 
-test('successful scene transitions, departures and world patches request an immediate UI sync', () => {
+const successfulWorldAction = {
+  tool: 'execute_world_action',
+  args: {
+    actionKind: 'attack.unarmed',
+    actorId: 'character_wandering_child',
+    targetId: 'player',
+  },
+  result: {
+    ok: true,
+    eventId: 77,
+    result: {
+      type: 'attack.resolved',
+      action: {
+        id: 'attack.unarmed:character_wandering_child:player',
+        kind: 'attack.unarmed',
+        label: '使用徒手攻击',
+        actorId: 'character_wandering_child',
+        targetId: 'player',
+        targetName: '马大帅',
+        attackName: '徒手',
+      },
+      facts: { hit: true, critical: false },
+      stateChanges: [],
+      narrationHints: {},
+      summary: '流浪孩子小头领的反击命中。',
+    },
+    summary: '流浪孩子小头领的反击命中。',
+  },
+};
+
+test('successful world actions, scene transitions, departures and world patches request an immediate UI sync', () => {
+  assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulWorldAction), true);
   assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulTransition), true);
   assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulLeaveScene), true);
   assert.equal(isSuccessfulRealtimeWorldMutationStep(successfulWorldPatch), true);
@@ -52,6 +84,11 @@ test('only a successful realtime world mutation exposes its snapshot', () => {
 
   assert.equal(getWorldRealtimeSnapshot({
     type: 'step',
+    step: successfulWorldAction,
+    realtimeSnapshot,
+  }), realtimeSnapshot);
+  assert.equal(getWorldRealtimeSnapshot({
+    type: 'step',
     step: successfulTransition,
     realtimeSnapshot,
   }), realtimeSnapshot);
@@ -76,5 +113,24 @@ test('only a successful realtime world mutation exposes its snapshot', () => {
     runId: 1,
     steps: [],
     world: realtimeSnapshot.world,
+  }), null);
+});
+
+test('a successful agent world action exposes its authoritative attack result for UI feedback', () => {
+  assert.deepEqual(getExecutedWorldActionResult(successfulWorldAction), {
+    eventId: 77,
+    result: successfulWorldAction.result.result,
+  });
+  assert.equal(getExecutedWorldActionResult({
+    ...successfulWorldAction,
+    result: { ok: false, error: '动作失效' },
+  }), null);
+  assert.equal(getExecutedWorldActionResult({
+    ...successfulWorldAction,
+    result: { ok: true, eventId: 77 },
+  }), null);
+  assert.equal(getExecutedWorldActionResult({
+    ...successfulWorldAction,
+    tool: 'get_world_actions',
   }), null);
 });

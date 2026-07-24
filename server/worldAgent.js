@@ -23,6 +23,10 @@ import { readFixedContextBundle } from './contextLoader.js';
 import { getRuleSection, getRuleToc, searchRules } from './rulesLoader.js';
 import { executeInventoryAction, getInventory } from './inventory.js';
 import {
+  executeWorldAction as executeValidatedWorldAction,
+  listWorldActions,
+} from './worldActions.js';
+import {
   normalizePortraitState,
   NPC_SPEECH_PORTRAIT_STATES,
 } from './presentationPortraits.js';
@@ -43,6 +47,7 @@ const WORLD_AGENT_NATIVE_TOOL_INSTRUCTION = [
   '只有位于玩家当前场景的 NPC 才能调用 npc_speak；场外 NPC 不能发言。',
   '本轮剧情中新发生并完成当前场景人物离开、逃走、撤离、被赶走或被带走时，必须在 dm_speak 叙述前成功调用 leave_scene；准备离开、声称要走、条件或假设情形不算已经离场，复述已有离场记录也不要重复调用。',
   '读取背包必须调用 get_inventory；使用、转交、展示、拾取或丢弃道具必须调用 execute_item_action，不要用 apply_world_patch 绕过背包校验。',
+  '角色发动会造成伤害的普通攻击时，先调用 get_world_actions 读取后端当前允许的攻击，再调用 execute_world_action 执行其中一项；不要自行掷攻击骰、计算伤害或用 apply_world_patch 直接扣 HP。',
 ].join('\n');
 const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '当前玩家请求附加提醒：需要使用工具命令调用时，一定要使用 tool_calls 调用对应工具。',
@@ -60,13 +65,17 @@ const WORLD_AGENT_CURRENT_TURN_TOOL_REMINDER = [
   '例子：玩家问 NPC“这个场景中还有哪些重要角色？”错误做法是直接让 NPC 编造或泛泛回答；正确做法是先调用 get_current_scene 或 get_scene_entities 确认当前场景人物，必要时读取重要角色详情，然后再用 dm_speak 或 npc_speak 按性格回答。',
   '只有当最近上下文里已经有明确、未过期的工具结果时，才可以直接用这些结果回答；否则不要编造，也不要只凭叙事直觉回答。',
   '玩家查看背包或询问持有物时调用 get_inventory。玩家使用、转交、展示、拾取或丢弃道具时，先读取背包确认 action.kind，再调用 execute_item_action；不要只叙述成功，也不要用 apply_world_patch 直接改 ownership 或数量。',
+  '角色若决定发动普通攻击，必须先调用 get_world_actions，再把其中仍然可用的动作交给 execute_world_action 权威结算；不要用 roll_dice 加 apply_world_patch 模拟普通攻击。',
 ].join('\n');
 const WORLD_AGENT_ACTION_NARRATION_INSTRUCTION = [
   '当前任务是对一条已经由本地硬逻辑完成的动作做即时叙事。',
   '上下文中 current=true 的 action_result 是本轮唯一待叙事结果；其他对话、实体 events 和工具结果都只作背景。',
   '禁止盘点、编号、补叙或总结此前动作，也不要输出“我已经完成”“历史记录显示”“此前共发生”等内部检查或工作汇报。',
-  '玩家可见内容必须通过 dm_speak 或 npc_speak 输出；优先用 dm_speak 自然、具体地描写当前动作如何发生，以及受影响角色的身体动作、神态和即时反应，有必要时再用 npc_speak 表现角色回应。',
-  '对于 attack.resolved：如果受击目标是仍能行动的 NPC，必须读取该 NPC 的实体详情；在 DM 描写之后，再调用 npc_speak 让其依据性格、当前状态和刚刚受到的攻击作出即时回应。只有目标已经失能、死亡或明确无法说话时才省略 NPC 发言。',
+  '每次模型回复只调用一个工具，等待该工具结果返回后再决定下一步；尤其不要把机械动作与叙述该动作结果的 dm_speak 放在同一批 tool_calls 中。',
+  '玩家可见内容必须通过 dm_speak 或 npc_speak 输出；优先用 dm_speak 自然、具体地描写当前动作如何发生，以及受影响角色的身体动作、神态和即时反应。',
+  '对于 attack.resolved：如果受击目标是仍能行动的 NPC，必须读取该 NPC 的实体详情，并由你根据其性格、关系、动机、伤势、装备、人数和现场局势，自主判断它会反击、退缩、逃跑、求饶、呼救、防御、交涉、说话或暂时观望。不要固定选择某一种反应，也不要把 npc_speak 当作唯一反应。',
+  '如果你自主决定让角色发动会造成伤害的普通攻击，必须先调用 get_world_actions 查询该角色针对目标的当前合法动作，再调用 execute_world_action 执行所选动作；命中、伤害、HP 和失能全部以工具结果为准。工具执行后再用 dm_speak 描写结果，需要直接对白时可调用 npc_speak。',
+  '如果你决定不反击，也应让场面自然体现该角色实际选择；不要求输出结构化决策或解释内部判断过程。',
   '这里只限制叙事范围，不限制固定句数或篇幅；根据当前动作的重要程度自然展开，不要为了增加篇幅复述历史。',
 ].join('\n');
 const WORLD_AGENT_ACTION_NARRATION_RETRY = [
@@ -74,12 +83,24 @@ const WORLD_AGENT_ACTION_NARRATION_RETRY = [
   '现在只处理 current=true 的 action_result，并调用 dm_speak 或 npc_speak 给出自然、具体的即时叙事；不要只复述命中、伤害或状态数值，可结合动作过程、身体反应和神态来表现这一结果。',
 ].join('\n');
 const WORLD_AGENT_ACTION_NARRATION_FORCE_ATTEMPTS = 2;
+const ACTION_NARRATION_REACTION_MUTATION_TOOLS = new Set([
+  'execute_world_action',
+  'execute_item_action',
+  'leave_scene',
+  'apply_world_patch',
+]);
+const ACTION_NARRATION_SPEECH_DEPENDENCY_TOOLS = new Set([
+  'get_entity_bundle',
+  ...ACTION_NARRATION_REACTION_MUTATION_TOOLS,
+]);
 const WORLD_AGENT_TOOL_NAMES = new Set([
   'search_entities',
   'get_entity_bundle',
   'get_current_scene',
   'get_inventory',
   'execute_item_action',
+  'get_world_actions',
+  'execute_world_action',
   'get_time_state',
   'update_time',
   'get_scene_entities',
@@ -114,6 +135,20 @@ const WORLD_AGENT_TOOL_SCHEMAS = [
     itemId: { type: 'string', description: '道具实体 id。' },
     targetId: { type: 'string', description: '可选目标实体 id；需要目标的使用或转交动作必须提供。' },
   }, ['actionKind', 'itemId']),
+  createToolSchema('get_world_actions', '读取一个角色针对目标当前可以执行的权威世界动作，包括持有武器攻击和徒手/天然攻击。只查询，不执行。', {
+    actorId: { type: 'string', description: '准备行动的玩家或 NPC 实体 id。' },
+    targetId: { type: 'string', description: '动作目标实体 id。' },
+  }, ['actorId', 'targetId']),
+  createToolSchema('execute_world_action', '执行 get_world_actions 刚返回的一项权威世界动作。普通攻击的命中、伤害、HP 与失能由后端原子结算。', {
+    actionKind: {
+      type: 'string',
+      enum: ['attack.weapon', 'attack.unarmed'],
+      description: '必须与 get_world_actions 返回动作的 kind 一致。',
+    },
+    actorId: { type: 'string', description: '必须与已查询动作的 actorId 一致。' },
+    targetId: { type: 'string', description: '必须与已查询动作的 targetId 一致。' },
+    weaponId: { type: 'string', description: 'attack.weapon 必须填写已查询动作的 weaponId；attack.unarmed 省略。' },
+  }, ['actionKind', 'actorId', 'targetId']),
   createToolSchema('get_time_state', '读取权威时间检查点、检查点之后尚未结算的剧情事件和可结算游标。返回的检查点不是无需计算的当前时间；必须分析 pendingEvents 后调用 update_time。', {}),
   createToolSchema('update_time', '在玩家查询时间时，根据检查点之后的未结算剧情分项计算耗时，推进世界时间并提交新的剧情游标。', {
     timeSegments: {
@@ -290,6 +325,8 @@ async function runWorldAgentTaskInternal(input, handlers) {
       modelTranscript: [],
       actionNarrationRecoveryAttempts: {},
       actionNarrationForcedTool: '',
+      actionNarrationPlannerTurn: 0,
+      actionNarrationStepRecords: [],
     };
 
     if (shouldUseNativeToolPlanner(input)) {
@@ -420,6 +457,7 @@ async function runNativeToolPlanningLoop({
   });
 
   while (state.stepIndex <= maxSteps) {
+    state.actionNarrationPlannerTurn += 1;
     const forcedToolName = state.actionNarrationForcedTool;
     state.actionNarrationForcedTool = '';
     const logEntry = {
@@ -474,13 +512,21 @@ async function runNativeToolPlanningLoop({
 
     if (!assistantMessage.tool_calls.length) {
       if (isActionNarration) {
-        const missingTool = getMissingActionNarrationTool(steps, actionNarrationRequirements);
+        const missingTool = getMissingActionNarrationTool(
+          steps,
+          actionNarrationRequirements,
+          state.actionNarrationStepRecords,
+        );
         const recoveryAttempts = Number(state.actionNarrationRecoveryAttempts[missingTool] || 0);
         if (missingTool && recoveryAttempts < WORLD_AGENT_ACTION_NARRATION_FORCE_ATTEMPTS) {
           messages.push(createNativeAssistantTranscriptMessage(assistantMessage));
           messages.push({
             role: 'system',
-            content: createActionNarrationRecoveryInstruction(missingTool, actionNarrationRequirements),
+            content: createActionNarrationRecoveryInstruction(
+              missingTool,
+              actionNarrationRequirements,
+              state.actionNarrationStepRecords,
+            ),
           });
           state.actionNarrationRecoveryAttempts[missingTool] = recoveryAttempts + 1;
           state.actionNarrationForcedTool = missingTool;
@@ -502,7 +548,11 @@ async function runNativeToolPlanningLoop({
           steps,
           visibleAnswer: state.visibleAnswer,
           assistantText: state.assistantText,
-          fallbackText: hasDmNarration ? '' : createActionNarrationFallback(baseContextEvents),
+          fallbackText: createActionNarrationCompletionFallback({
+            contextEvents: baseContextEvents,
+            visibleAnswer: state.visibleAnswer,
+            stepRecords: state.actionNarrationStepRecords,
+          }),
           fallbackMessageKind: 'dm-narration',
           requestLog,
           modelTranscript: state.modelTranscript,
@@ -563,12 +613,29 @@ async function runNativeToolPlanningLoop({
       });
     }
 
-    for (const toolCall of assistantMessage.tool_calls) {
-      const parsed = parseNativeToolCall(toolCall);
+    const parsedToolCalls = assistantMessage.tool_calls.map((toolCall) => ({
+      toolCall,
+      parsed: parseNativeToolCall(toolCall),
+    }));
+    const batchHasUnobservedSpeechDependency = isActionNarration
+      && parsedToolCalls.some(({ parsed }) => (
+        parsed.ok
+        && ACTION_NARRATION_SPEECH_DEPENDENCY_TOOLS.has(parsed.toolCall.tool)
+      ));
+
+    for (const { toolCall, parsed } of parsedToolCalls) {
       const decision = parsed.ok ? parsed.toolCall : parsed.toolCall;
-      const result = parsed.ok
-        ? executeWorldTool(decision.tool, decision.args, prompt)
-        : { ok: false, error: parsed.error };
+      const shouldDeferBlindSpeech = batchHasUnobservedSpeechDependency
+        && (decision.tool === 'dm_speak' || decision.tool === 'npc_speak');
+      const result = !parsed.ok
+        ? { ok: false, error: parsed.error }
+        : shouldDeferBlindSpeech
+          ? {
+              ok: true,
+              deferred: true,
+              summary: '同一批工具调用中包含尚未返回结果的读取或机械动作，本次发言未展示；请等待工具结果后重新发言。',
+            }
+          : executeWorldTool(decision.tool, decision.args, prompt);
 
       const toolResultForModel = prepareToolResultForAgentStep(decision.tool, result);
       const toolResultMessage = createNativeToolResultMessage(toolCall, toolResultForModel);
@@ -603,10 +670,14 @@ async function runNativeToolPlanningLoop({
     steps,
     visibleAnswer: state.visibleAnswer,
     assistantText: state.assistantText,
-    fallbackText: state.visibleAnswer
-      ? ''
-      : isActionNarration
-        ? createActionNarrationFallback(baseContextEvents)
+    fallbackText: isActionNarration
+      ? createActionNarrationCompletionFallback({
+          contextEvents: baseContextEvents,
+          visibleAnswer: state.visibleAnswer,
+          stepRecords: state.actionNarrationStepRecords,
+        })
+      : state.visibleAnswer
+        ? ''
         : summarizeAgentResult(prompt, steps),
     fallbackMessageKind: isActionNarration ? 'dm-narration' : '',
     requestLog,
@@ -620,6 +691,7 @@ function hasSuccessfulActionToolStep(steps, tool, predicate = () => true) {
   return steps.some((step) => (
     step.tool === tool
     && step.result?.ok !== false
+    && step.result?.deferred !== true
     && predicate(step)
   ));
 }
@@ -643,16 +715,16 @@ function getActionNarrationRequirements(contextEvents) {
   return {
     targetId,
     targetName,
-    requireNpcResponse: result.type === 'attack.resolved'
+    requireNpcReactionReview: result.type === 'attack.resolved'
       && targetCanAct
       && targetIsCurrentSceneNpc,
   };
 }
 
-function getMissingActionNarrationTool(steps, requirements) {
+function getMissingActionNarrationTool(steps, requirements, stepRecords = []) {
   const targetId = requirements?.targetId || '';
   if (
-    requirements?.requireNpcResponse
+    requirements?.requireNpcReactionReview
     && !hasSuccessfulActionToolStep(
       steps,
       'get_entity_bundle',
@@ -665,32 +737,105 @@ function getMissingActionNarrationTool(steps, requirements) {
     return 'dm_speak';
   }
   if (
-    requirements?.requireNpcResponse
-    && !hasSuccessfulActionToolStep(
-      steps,
-      'npc_speak',
-      (step) => String(step.args?.npcEntityId || '') === targetId,
-    )
+    requirements?.requireNpcReactionReview
+    && !hasVisibleNpcReactionAfterReview(stepRecords, targetId)
   ) {
-    return 'npc_speak';
+    return 'dm_speak';
+  }
+  if (hasUnnarratedActionReaction(stepRecords)) {
+    return 'dm_speak';
   }
   return '';
 }
 
-function createActionNarrationRecoveryInstruction(tool, requirements) {
+function hasVisibleNpcReactionAfterReview(stepRecords, targetId) {
+  const reviewRecord = stepRecords.find(({ step }) => (
+    isSuccessfulActionNarrationStep(step)
+    && step.tool === 'get_entity_bundle'
+    && String(step.args?.entityId || '') === targetId
+  ));
+  if (!reviewRecord) return false;
+
+  return stepRecords.some(({ step, plannerTurn }) => (
+    plannerTurn > reviewRecord.plannerTurn
+    && isSuccessfulActionNarrationStep(step)
+    && (step.tool === 'dm_speak' || step.tool === 'npc_speak')
+  ));
+}
+
+function hasUnnarratedActionReaction(stepRecords) {
+  return findUnnarratedActionReactions(stepRecords).length > 0;
+}
+
+function findUnnarratedActionReactions(stepRecords) {
+  const latestDmNarration = [...stepRecords]
+    .reverse()
+    .find(({ step }) => (
+      isSuccessfulActionNarrationStep(step)
+      && step.tool === 'dm_speak'
+    ));
+  const latestDmTurn = latestDmNarration?.plannerTurn ?? -1;
+  return stepRecords.filter(({ step, plannerTurn }) => (
+    plannerTurn >= latestDmTurn
+    && isSuccessfulActionNarrationStep(step)
+    && ACTION_NARRATION_REACTION_MUTATION_TOOLS.has(step.tool)
+  ));
+}
+
+function isSuccessfulActionNarrationStep(step) {
+  return step?.result?.ok !== false && step?.result?.deferred !== true;
+}
+
+function createActionNarrationRecoveryInstruction(tool, requirements, stepRecords = []) {
   if (tool === 'get_entity_bundle') {
     return [
       `受击者${requirements?.targetName ? `「${requirements.targetName}」` : ''}仍能行动，不能直接结束本轮。`,
-      `现在必须调用 get_entity_bundle 读取受击 NPC（entityId: ${requirements?.targetId || '未知'}）的身份、性格和当前状态，随后继续完成 DM 描写与 NPC 回应。`,
+      `现在必须调用 get_entity_bundle 读取受击 NPC（entityId: ${requirements?.targetId || '未知'}）的身份、性格和当前状态，随后由你结合局势自主判断其即时反应；不要默认只说一句话，也不要强制其反击。`,
     ].join('\n');
   }
-  if (tool === 'npc_speak') {
+  const pendingMutations = findUnnarratedActionReactions(stepRecords);
+  if (tool === 'dm_speak' && pendingMutations.length) {
+    const pendingSummaries = pendingMutations
+      .map(({ step }) => String(step?.result?.summary || step?.tool || '世界状态已经变化'))
+      .join('；');
     return [
-      `受击 NPC${requirements?.targetName ? `「${requirements.targetName}」` : ''}仍能行动，当前动作不能在 DM 描写后直接结束。`,
-      `现在必须调用 npc_speak（npcEntityId: ${requirements?.targetId || '未知'}），让其依据刚读取的性格、当前状态和这次攻击作出自然的即时回应；不要复述历史攻击。`,
+      '你刚刚已经执行了新的机械反应，但尚未向玩家叙述该结果。',
+      `现在调用 dm_speak，根据权威工具结果自然描写这些反应：${pendingSummaries}。不要重算结果。`,
+    ].join('\n');
+  }
+  if (
+    tool === 'dm_speak'
+    && requirements?.requireNpcReactionReview
+    && !hasVisibleNpcReactionAfterReview(stepRecords, requirements?.targetId || '')
+  ) {
+    return [
+      `你已经读取了受击 NPC${requirements?.targetName ? `「${requirements.targetName}」` : ''}的最新实体详情，但读取结果之后还没有向玩家表现其反应。`,
+      '现在调用 dm_speak，依据刚读取的性格、关系、状态和现场局势，自然描写该 NPC 的实际选择。可以不反击，也不要解释内部判断过程。',
     ].join('\n');
   }
   return WORLD_AGENT_ACTION_NARRATION_RETRY;
+}
+
+function createActionNarrationCompletionFallback({
+  contextEvents,
+  visibleAnswer = '',
+  stepRecords = [],
+}) {
+  const parts = [];
+  const existingAnswer = String(visibleAnswer || '').trim();
+  if (!existingAnswer) {
+    parts.push(createActionNarrationFallback(contextEvents));
+  }
+
+  const pendingSummaries = findUnnarratedActionReactions(stepRecords)
+    .map(({ step }) => String(step?.result?.summary || '').trim())
+    .filter(Boolean);
+  for (const pendingSummary of pendingSummaries) {
+    if (!existingAnswer.includes(pendingSummary) && !parts.includes(pendingSummary)) {
+      parts.push(pendingSummary);
+    }
+  }
+  return parts.filter(Boolean).join('\n\n');
 }
 
 function findCurrentActionResult(contextEvents) {
@@ -767,9 +912,15 @@ async function applyExecutedAgentTool({
     steps,
     handlers,
   });
+  if (input.taskKind === 'action-narration') {
+    state.actionNarrationStepRecords.push({
+      step,
+      plannerTurn: state.actionNarrationPlannerTurn,
+    });
+  }
   state.stepIndex += 1;
 
-  if (result.ok !== false && decision.tool === 'dm_speak') {
+  if (result.ok !== false && result.deferred !== true && decision.tool === 'dm_speak') {
     await appendDmSpeakToolResult({
       args,
       result,
@@ -780,7 +931,7 @@ async function applyExecutedAgentTool({
     });
   }
 
-  if (result.ok !== false && decision.tool === 'npc_speak') {
+  if (result.ok !== false && result.deferred !== true && decision.tool === 'npc_speak') {
     await appendNpcSpeakToolResult({
       args,
       result,
@@ -847,6 +998,13 @@ export function prepareToolResultForAgentStep(tool, result) {
   if (!isRecord(result) || result.ok === false) return result;
 
   if (tool === 'dm_speak') {
+    if (result.deferred === true) {
+      return {
+        ok: true,
+        deferred: true,
+        summary: String(result.summary || 'DM 发言已暂缓。'),
+      };
+    }
     return {
       ok: true,
       summary: 'DM 发言成功。',
@@ -854,6 +1012,13 @@ export function prepareToolResultForAgentStep(tool, result) {
   }
 
   if (tool === 'npc_speak') {
+    if (result.deferred === true) {
+      return {
+        ok: true,
+        deferred: true,
+        summary: String(result.summary || 'NPC 发言已暂缓。'),
+      };
+    }
     const npc = isRecord(result.npc) ? result.npc : {};
     return {
       ok: true,
@@ -1097,6 +1262,49 @@ export function executeWorldTool(tool, args, prompt = '') {
         eventId: executed.eventId,
         result: executed.result,
         inventory: executed.inventory,
+        summary: executed.result.summary,
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  if (tool === 'get_world_actions') {
+    try {
+      const actorId = String(args.actorId || '').trim();
+      const targetId = String(args.targetId || '').trim();
+      if (!actorId || !targetId) {
+        return { ok: false, error: 'get_world_actions.actorId 和 targetId 不能为空。' };
+      }
+      const actions = listWorldActions({
+        actorId,
+        targetId,
+        includeUnarmed: true,
+      }).actions;
+      return {
+        ok: true,
+        actions,
+        summary: actions.length
+          ? `已读取 ${actions.length} 个当前可执行的世界动作。`
+          : '当前没有可执行的世界动作。',
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  if (tool === 'execute_world_action') {
+    try {
+      const executed = executeValidatedWorldAction({
+        kind: args.actionKind || args.kind,
+        actorId: args.actorId,
+        targetId: args.targetId,
+        weaponId: args.weaponId,
+      });
+      return {
+        ok: true,
+        eventId: executed.eventId,
+        result: executed.result,
         summary: executed.result.summary,
       };
     } catch (error) {

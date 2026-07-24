@@ -57,6 +57,33 @@ test('attack feedback represents a miss without requiring a health change', () =
   });
 });
 
+test('attack feedback accepts an authoritative unarmed attack result', () => {
+  const event = createCharacterAttackFeedbackEvent('unarmed-1', {
+    type: 'attack.resolved',
+    action: {
+      id: 'attack.unarmed:character_wandering_child:player',
+      kind: 'attack.unarmed',
+      label: '使用徒手攻击',
+      actorId: 'character_wandering_child',
+      targetId: 'player',
+      targetName: '马大帅',
+      attackName: '徒手',
+    },
+    facts: { hit: true, critical: false },
+    stateChanges: [],
+    narrationHints: {},
+    summary: '反击命中。',
+  });
+
+  assert.deepEqual(event, {
+    id: 'attack:unarmed-1',
+    targetEntityId: 'player',
+    targetName: '马大帅',
+    hit: true,
+    critical: false,
+  });
+});
+
 test('attack feedback ignores unrelated or malformed action results', () => {
   const baseResult = {
     type: 'item.used',

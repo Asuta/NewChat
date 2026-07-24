@@ -331,7 +331,7 @@ app.post('/api/world/agent/stream', async (req, res) => {
         onStart: (event) => writeSseEvent(res, 'start', event),
         onStep: (event) => {
           const shouldSendRealtimeSnapshot = event.step?.result?.ok === true
-            && ['transition_scene', 'leave_scene', 'apply_world_patch'].includes(event.step?.tool);
+            && ['execute_world_action', 'transition_scene', 'leave_scene', 'apply_world_patch'].includes(event.step?.tool);
           let realtimeSnapshot;
           if (shouldSendRealtimeSnapshot) {
             try {

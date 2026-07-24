@@ -17,7 +17,7 @@ export function createCharacterAttackFeedbackEvent(
   if (
     !normalizedEventId
     || result.type !== 'attack.resolved'
-    || action?.kind !== 'attack.weapon'
+    || (action?.kind !== 'attack.weapon' && action?.kind !== 'attack.unarmed')
     || typeof result.facts.hit !== 'boolean'
   ) return null;
 

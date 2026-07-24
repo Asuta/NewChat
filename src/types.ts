@@ -314,17 +314,32 @@ export interface WorldActionMenuTarget {
   clientY: number;
 }
 
-export interface AttackWorldAction {
+interface BaseAttackWorldAction {
   id: string;
-  kind: 'attack.weapon';
   label: string;
   actorId: string;
   actorName?: string;
   targetId: string;
   targetName?: string;
+  attackName?: string;
+  attackBonus?: number;
+  damageDice?: string;
+  damageBonus?: number;
+  damageType?: string;
+}
+
+export interface WeaponAttackWorldAction extends BaseAttackWorldAction {
+  kind: 'attack.weapon';
   weaponId: string;
   weaponName: string;
 }
+
+export interface UnarmedAttackWorldAction extends BaseAttackWorldAction {
+  kind: 'attack.unarmed';
+  attackName: string;
+}
+
+export type AttackWorldAction = WeaponAttackWorldAction | UnarmedAttackWorldAction;
 
 export interface WeaponAttackTargetingAction {
   id: string;

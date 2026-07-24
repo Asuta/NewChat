@@ -322,6 +322,56 @@ test('weapon attacks reject a weapon that is no longer owned', () => {
   assert.match(result.error, /不能执行/);
 });
 
+test('NPC unarmed attacks are opt-in actions and use authoritative combat resolution', () => {
+  const result = runIsolatedInventoryScript(`
+    Math.random = () => 0.5;
+    const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
+    const worldActions = await import(${JSON.stringify(WORLD_ACTIONS_MODULE_URL)});
+    worldDb.migrateWorldDb();
+    worldDb.seedWorldIfEmpty();
+    const childStats = worldDb.getComponent('character_wandering_child', 'stats') || {};
+    worldDb.upsertComponent('character_wandering_child', 'stats', {
+      ...childStats,
+      strengthMod: 2,
+      proficiencyBonus: 1,
+      unarmedAttackBonus: null,
+      unarmedDamageBonus: '',
+    });
+    const defaultActions = worldActions.listWorldActions({
+      actorId: 'character_wandering_child',
+      targetId: 'player',
+    }).actions;
+    const availableActions = worldActions.listWorldActions({
+      actorId: 'character_wandering_child',
+      targetId: 'player',
+      includeUnarmed: true,
+    }).actions;
+    const executed = worldActions.executeWorldAction({
+      kind: 'attack.unarmed',
+      actorId: 'character_wandering_child',
+      targetId: 'player',
+    });
+    const playerStats = worldDb.getComponent('player', 'stats');
+    worldDb.closeWorldDb();
+    console.log(JSON.stringify({ defaultActions, availableActions, executed, playerStats }));
+  `);
+
+  assert.deepEqual(result.defaultActions, []);
+  assert.equal(result.availableActions.length, 1);
+  assert.equal(result.availableActions[0].kind, 'attack.unarmed');
+  assert.equal(result.availableActions[0].attackName, '徒手');
+  assert.equal(result.availableActions[0].attackBonus, 3);
+  assert.equal(result.availableActions[0].damageBonus, 2);
+  assert.equal(result.executed.result.action.kind, 'attack.unarmed');
+  assert.equal(result.executed.result.facts.attackRoll.die, 11);
+  assert.equal(result.executed.result.facts.attackRoll.total, 14);
+  assert.equal(result.executed.result.facts.hit, true);
+  assert.equal(result.executed.result.facts.damage, 4);
+  assert.equal(result.executed.result.facts.hpBefore, 14);
+  assert.equal(result.executed.result.facts.hpAfter, 10);
+  assert.equal(result.playerStats.currentHitPoints, 10);
+});
+
 test('weapon attacks accept mechanically classified owned weapons', () => {
   const result = runIsolatedInventoryScript(`
     const worldDb = await import(${JSON.stringify(WORLD_DB_MODULE_URL)});
